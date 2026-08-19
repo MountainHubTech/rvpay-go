@@ -1,21 +1,6 @@
 name: Deploy Environments
 
 on:
-  workflow_run:
-    workflows:
-      - Publish Build Artifacts
-    types:
-      - completed
-
-  push:
-    branches:
-      - main
-      - "release/**"
-    paths:
-      - ".github/workflows/deploy_single_environment.yaml"
-      - ".github/workflows/deploy_environments.yaml"
-      - "cd/environments.yaml"
-
   workflow_dispatch:
     inputs:
       environment:
