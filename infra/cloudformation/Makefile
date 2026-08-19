@@ -2,7 +2,7 @@ MAKEFILE_DIR := $(dir $(lastword $(MAKEFILE_LIST)))
 
 CF_DIR := $(MAKEFILE_DIR)
 
-AWS_PROFILE := rvpay-testing
+AWS_PROFILE ?= rvpay-testing
 AWS_REGION ?= us-east-1
 
 generate:
