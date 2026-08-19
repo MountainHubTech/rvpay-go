@@ -47,6 +47,16 @@ jobs:
             cut -f 1 -d ' ')
 
           echo "release_hash=${HASH}" >> "$GITHUB_OUTPUT"
+      
+      - name: Record infrastructure release hash
+        env:
+          ARTIFACT_HASH: ${{ steps.infra.outputs.release_hash }}
+        run: |
+          aws ssm put-parameter \
+            --name "/build-artifact/infra/${GITHUB_REF_NAME}" \
+            --type String \
+            --value "${ARTIFACT_HASH}" \
+            --overwrite
 
       - name: Publish CloudFormation artifacts
         env:
@@ -56,13 +66,3 @@ jobs:
           make -C infra/cloudformation publish \
             bucket_name="$BUCKET_NAME" \
             artifact_hash="$ARTIFACT_HASH"
-
-      - name: Store infrastructure release hash
-        env:
-          ARTIFACT_HASH: ${{ steps.infra.outputs.release_hash }}
-        run: |
-          aws ssm put-parameter \
-            --name "/build-artifact/infra/${GITHUB_REF_NAME}" \
-            --type String \
-            --value "$ARTIFACT_HASH" \
-            --overwrite

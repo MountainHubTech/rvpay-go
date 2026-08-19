@@ -51,7 +51,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.git_ref_name }}
+          ref: ${{ github.ref_name }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -63,7 +63,7 @@ jobs:
         id: infra
         run: |
           HASH=$(aws ssm get-parameter \
-            --name "/build-artifact/infra/${{ inputs.git_ref_name }}" \
+            --name "/build-artifact/infra/${{ github.ref_name }}" \
             --query "Parameter.Value" \
             --output text)
 
