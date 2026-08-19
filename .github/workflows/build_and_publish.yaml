@@ -15,6 +15,23 @@ env:
   ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
 
 jobs:
+  debug-oidc:
+    name: Debug GitHub OIDC
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    environment:
+      name: testing
+
+    steps:
+      - name: Debug OIDC token
+        uses: github/actions-oidc-debugger@main
+        with:
+          audience: sts.amazonaws.com
+
   build:
     name: Build and Publish Images
     runs-on: ubuntu-latest
