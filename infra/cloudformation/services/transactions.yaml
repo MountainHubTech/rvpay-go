@@ -210,7 +210,7 @@ Resources:
               - DnsName: !Ref AppName
                 Port: !Ref ContainerPort
 
-  ClientsTargetGroup:
+  TransactionsTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub "${EnvId}-${AppName}-TargetGroup"
