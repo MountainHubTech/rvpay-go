@@ -47,7 +47,18 @@ jobs:
             cut -f 1 -d ' ')
 
           echo "release_hash=${HASH}" >> "$GITHUB_OUTPUT"
-      
+
+      - name: Package database initialization Lambda
+        working-directory: infra/cloudformation/aws-cloudformation-templates/custom-resource-lambdas/src/pg-database
+        run: |
+          sed 's/\r$//' package.sh \
+            | sed 's/^rm \.\.\/\.\.\/zip\/pgDatabase\.zip$/rm -f ..\/..\/zip\/pgDatabase.zip/' \
+            > package-unix.sh
+
+          chmod +x package-unix.sh
+          ./package-unix.sh
+          rm package-unix.sh          
+          
       - name: Record infrastructure release hash
         env:
           ARTIFACT_HASH: ${{ steps.infra.outputs.release_hash }}
