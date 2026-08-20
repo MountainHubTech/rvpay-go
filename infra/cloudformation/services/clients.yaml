@@ -136,7 +136,7 @@ Resources:
               Value: !Ref ContainerPort
 
             - Name: MIGRATION_PATH
-              Value: "/app/db/migrations"
+              Value: "/app/clients/db/migrations"
 
             - Name: RUN_MIGRATIONS
               Value: "true"
