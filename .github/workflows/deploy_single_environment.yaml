@@ -29,6 +29,9 @@ on:
 
       CLOUDFORMATION_ARTIFACTS_BUCKET:
         required: true
+        
+      CERTIFICATE_ARN:
+        required: true
 
 jobs:
   deploy:
@@ -84,4 +87,5 @@ jobs:
               InfraReleaseHash="${{ steps.infra.outputs.release_hash }}" \
               ClientsImage="${ECR_REGISTRY}/rvpay/clients:${GITHUB_SHA}" \
               TransactionsImage="${ECR_REGISTRY}/rvpay/transactions:${GITHUB_SHA}" \
-              DomainName="${{ inputs.domain_name }}"
+              DomainName="${{ inputs.domain_name }}" \
+              CertificateArn="${{ secrets.CERTIFICATE_ARN }}"
