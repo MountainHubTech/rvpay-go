@@ -108,6 +108,9 @@ Resources:
             - Name: AWS_REGION
               Value: !Ref AWS::Region
 
+            - Name: DB_TLS_DISABLED
+              Value: "false"
+
           Secrets:
             - Name: DB_NAME
               ValueFrom: !Sub "${AppDatabaseSecret}:dbname::"
