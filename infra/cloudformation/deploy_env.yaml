@@ -185,7 +185,7 @@ Resources:
         HighLevelQueryUrl: !Sub "https://${DomainName}/payments/query"
         PublicBaseUrl: !Sub "https://${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
-        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.ListenerHTTPS
+        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
         DomainName: !Ref DomainName
       TemplateURL: !Sub
@@ -212,7 +212,7 @@ Resources:
         Image: !Ref TransactionsImage
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
-        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.ListenerHTTPS
+        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
         DomainName: !Ref DomainName
       TemplateURL: !Sub
