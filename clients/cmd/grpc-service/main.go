@@ -231,7 +231,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	httpMux.HandleFunc("/payments/custom-provider/query", paymentQueryHandler.Query)
 	httpMux.HandleFunc("/payments/custom-provider/webhook", paymentWebhookHandler.Payment)
 
-	httpPort := os.Getenv("PORT")
+	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
 		httpPort = "8080"
 	}
