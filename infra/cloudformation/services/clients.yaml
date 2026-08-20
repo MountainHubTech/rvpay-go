@@ -294,11 +294,13 @@ Resources:
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /healthz
-      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: "200-499"
 
   ClientsListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule

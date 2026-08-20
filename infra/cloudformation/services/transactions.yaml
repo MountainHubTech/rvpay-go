@@ -219,9 +219,13 @@ Resources:
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /healthz
+      HealthCheckPath: /
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
       Matcher:
-        HttpCode: "200"
+        HttpCode: "200-499"
 
   TransactionsListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule

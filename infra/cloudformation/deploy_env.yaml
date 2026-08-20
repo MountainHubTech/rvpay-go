@@ -104,6 +104,8 @@ Resources:
 
   EcsAdditionalSecurityGroupIngress:
     Type: AWS::EC2::SecurityGroupIngress
+    DependsOn:
+      - LoadBalancerStack
     Properties:
       GroupId: !GetAtt EcsAdditionalSecurityGroup.GroupId
       IpProtocol: tcp
