@@ -177,15 +177,6 @@ Resources:
             Action:
               - "sts:AssumeRole"
 
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: []
-                Resource: "*"
-
   EcsService:
     Type: AWS::ECS::Service
 
