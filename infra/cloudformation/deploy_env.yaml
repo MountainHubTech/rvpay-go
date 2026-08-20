@@ -102,6 +102,15 @@ Resources:
         - Key: Name
           Value: !Sub "${EnvId}-ecs-additional"
 
+  EcsAdditionalSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt EcsAdditionalSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
+
   EcsStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
@@ -186,7 +195,6 @@ Resources:
         PublicBaseUrl: !Sub "https://${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
-        LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
         DomainName: !Ref DomainName
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/clients.yaml"
@@ -213,7 +221,6 @@ Resources:
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
-        LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
         DomainName: !Ref DomainName
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/transactions.yaml"

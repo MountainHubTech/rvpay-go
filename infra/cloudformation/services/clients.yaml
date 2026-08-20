@@ -80,10 +80,6 @@ Parameters:
     Type: String
     Description: ARN of the HTTPS listener for the RVPay load balancer.
 
-  LoadBalancerSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: Security group ID of the RVPay load balancer.
-
   DomainName:
     Type: String
     Description: Domain name used by RVPay.
