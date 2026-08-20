@@ -87,7 +87,7 @@ Resources:
             - !GetAtt VpcStack.Outputs.SubnetBPrivate
         IsDevelopmentGrade: !Ref IsDevelopmentGrade
         LambdaS3BucketName: !Ref InfraArtifactsBucket
-        LambdaS3KeyPrefix: !Sub "cloudformation/${InfraReleaseHash}/aws-cloudformation-templates/"
+        LambdaS3KeyPrefix: !Sub "cloudformation/${InfraReleaseHash}/aws-cloudformation-templates"
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/aws-cloudformation-templates/core-components/rds.yaml"
         - Bucket: !Ref InfraArtifactsBucket
