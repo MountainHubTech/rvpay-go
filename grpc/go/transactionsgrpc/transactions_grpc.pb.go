@@ -711,6 +711,7 @@ var PaymentService_ServiceDesc = grpc.ServiceDesc{
 const (
 	PayoutService_RequestPayout_FullMethodName = "/transactionsgrpc.PayoutService/RequestPayout"
 	PayoutService_GetPayout_FullMethodName     = "/transactionsgrpc.PayoutService/GetPayout"
+	PayoutService_HealthCheck_FullMethodName   = "/transactionsgrpc.PayoutService/HealthCheck"
 )
 
 // PayoutServiceClient is the client API for PayoutService service.
@@ -723,6 +724,8 @@ type PayoutServiceClient interface {
 	RequestPayout(ctx context.Context, in *CreatePayoutRequest, opts ...grpc.CallOption) (*CreatePayoutResponse, error)
 	// GetPayout fetches a payout by id.
 	GetPayout(ctx context.Context, in *GetPayoutRequest, opts ...grpc.CallOption) (*GetPayoutResponse, error)
+	// HealthCheck returns a 200 to ensure the server is live.
+	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
 
 type payoutServiceClient struct {
@@ -753,6 +756,16 @@ func (c *payoutServiceClient) GetPayout(ctx context.Context, in *GetPayoutReques
 	return out, nil
 }
 
+func (c *payoutServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, PayoutService_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PayoutServiceServer is the server API for PayoutService service.
 // All implementations must embed UnimplementedPayoutServiceServer
 // for forward compatibility.
@@ -763,6 +776,8 @@ type PayoutServiceServer interface {
 	RequestPayout(context.Context, *CreatePayoutRequest) (*CreatePayoutResponse, error)
 	// GetPayout fetches a payout by id.
 	GetPayout(context.Context, *GetPayoutRequest) (*GetPayoutResponse, error)
+	// HealthCheck returns a 200 to ensure the server is live.
+	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedPayoutServiceServer()
 }
 
@@ -778,6 +793,9 @@ func (UnimplementedPayoutServiceServer) RequestPayout(context.Context, *CreatePa
 }
 func (UnimplementedPayoutServiceServer) GetPayout(context.Context, *GetPayoutRequest) (*GetPayoutResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPayout not implemented")
+}
+func (UnimplementedPayoutServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
 }
 func (UnimplementedPayoutServiceServer) mustEmbedUnimplementedPayoutServiceServer() {}
 func (UnimplementedPayoutServiceServer) testEmbeddedByValue()                       {}
@@ -836,6 +854,24 @@ func _PayoutService_GetPayout_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PayoutService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HealthCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PayoutServiceServer).HealthCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PayoutService_HealthCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PayoutServiceServer).HealthCheck(ctx, req.(*HealthCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PayoutService_ServiceDesc is the grpc.ServiceDesc for PayoutService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -850,6 +886,10 @@ var PayoutService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPayout",
 			Handler:    _PayoutService_GetPayout_Handler,
+		},
+		{
+			MethodName: "HealthCheck",
+			Handler:    _PayoutService_HealthCheck_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

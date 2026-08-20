@@ -2067,6 +2067,86 @@ func (x *SyncIntegrationResponse) GetIntegration() *Integration {
 	return nil
 }
 
+type HealthCheckRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheckRequest) Reset() {
+	*x = HealthCheckRequest{}
+	mi := &file_clients_proto_msgTypes[39]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheckRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheckRequest) ProtoMessage() {}
+
+func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[39]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
+func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{39}
+}
+
+type HealthCheckResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheckResponse) Reset() {
+	*x = HealthCheckResponse{}
+	mi := &file_clients_proto_msgTypes[40]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheckResponse) ProtoMessage() {}
+
+func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[40]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
+func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{40}
+}
+
+func (x *HealthCheckResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 var File_clients_proto protoreflect.FileDescriptor
 
 const file_clients_proto_rawDesc = "" +
@@ -2198,7 +2278,10 @@ const file_clients_proto_rawDesc = "" +
 	"\x16SyncIntegrationRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"U\n" +
 	"\x17SyncIntegrationResponse\x12:\n" +
-	"\vintegration\x18\x01 \x01(\v2\x18.clientsgrpc.IntegrationR\vintegration2\xe8\x06\n" +
+	"\vintegration\x18\x01 \x01(\v2\x18.clientsgrpc.IntegrationR\vintegration\"\x14\n" +
+	"\x12HealthCheckRequest\"-\n" +
+	"\x13HealthCheckResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status2\xe8\x06\n" +
 	"\x0eClientsService\x12r\n" +
 	"\fCreateClient\x12 .clientsgrpc.CreateClientRequest\x1a!.clientsgrpc.CreateClientResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/clients\x12w\n" +
 	"\fUpdateClient\x12 .clientsgrpc.UpdateClientRequest\x1a!.clientsgrpc.UpdateClientResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/v1/public/clients/{id}\x12t\n" +
@@ -2211,7 +2294,7 @@ const file_clients_proto_rawDesc = "" +
 	"\rListPlatforms\x12!.clientsgrpc.ListPlatformsRequest\x1a\".clientsgrpc.ListPlatformsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/public/platforms\x12s\n" +
 	"\vGetPlatform\x12\x1f.clientsgrpc.GetPlatformRequest\x1a .clientsgrpc.GetPlatformResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/public/platforms/{id}\x12\x86\x01\n" +
 	"\x0eEnablePlatform\x12\".clientsgrpc.EnablePlatformRequest\x1a#.clientsgrpc.EnablePlatformResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/public/platforms/{id}:enable\x12\x8a\x01\n" +
-	"\x0fDisablePlatform\x12#.clientsgrpc.DisablePlatformRequest\x1a$.clientsgrpc.DisablePlatformResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/platforms/{id}:disable2\xbb\b\n" +
+	"\x0fDisablePlatform\x12#.clientsgrpc.DisablePlatformRequest\x1a$.clientsgrpc.DisablePlatformResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/platforms/{id}:disable2\xad\t\n" +
 	"\x13IntegrationsService\x12\x89\x01\n" +
 	"\x12InstallIntegration\x12&.clientsgrpc.InstallIntegrationRequest\x1a'.clientsgrpc.InstallIntegrationResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/integrations\x12\x91\x01\n" +
 	"\x14UninstallIntegration\x12(.clientsgrpc.UninstallIntegrationRequest\x1a).clientsgrpc.UninstallIntegrationResponse\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/public/integrations/{id}\x12\x7f\n" +
@@ -2219,7 +2302,8 @@ const file_clients_proto_rawDesc = "" +
 	"\x10ListIntegrations\x12$.clientsgrpc.ListIntegrationsRequest\x1a%.clientsgrpc.ListIntegrationsResponse\"N\x82\xd3\xe4\x93\x02HZ-\x12+/v1/public/clients/{client_id}/integrations\x12\x17/v1/public/integrations\x12\x9e\x01\n" +
 	"\x14ReconnectIntegration\x12(.clientsgrpc.ReconnectIntegrationRequest\x1a).clientsgrpc.ReconnectIntegrationResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/public/integrations/{id}:reconnect\x12\xa2\x01\n" +
 	"\x15DisconnectIntegration\x12).clientsgrpc.DisconnectIntegrationRequest\x1a*.clientsgrpc.DisconnectIntegrationResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/public/integrations/{id}:disconnect\x12\x8a\x01\n" +
-	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:syncB5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
+	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync\x12p\n" +
+	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/healthcheckB5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
 var (
 	file_clients_proto_rawDescOnce sync.Once
@@ -2233,7 +2317,7 @@ func file_clients_proto_rawDescGZIP() []byte {
 	return file_clients_proto_rawDescData
 }
 
-var file_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 41)
 var file_clients_proto_goTypes = []any{
 	(*Client)(nil),                        // 0: clientsgrpc.Client
 	(*CreateClientRequest)(nil),           // 1: clientsgrpc.CreateClientRequest
@@ -2274,46 +2358,48 @@ var file_clients_proto_goTypes = []any{
 	(*DisconnectIntegrationResponse)(nil), // 36: clientsgrpc.DisconnectIntegrationResponse
 	(*SyncIntegrationRequest)(nil),        // 37: clientsgrpc.SyncIntegrationRequest
 	(*SyncIntegrationResponse)(nil),       // 38: clientsgrpc.SyncIntegrationResponse
-	(commongrpc.ClientStatus)(0),          // 39: commongrpc.ClientStatus
-	(*timestamppb.Timestamp)(nil),         // 40: google.protobuf.Timestamp
-	(*commongrpc.PaginationRequest)(nil),  // 41: commongrpc.PaginationRequest
-	(*commongrpc.PaginationResponse)(nil), // 42: commongrpc.PaginationResponse
-	(commongrpc.PlatformStatus)(0),        // 43: commongrpc.PlatformStatus
-	(commongrpc.ProviderCapability)(0),    // 44: commongrpc.ProviderCapability
-	(commongrpc.IntegrationStatus)(0),     // 45: commongrpc.IntegrationStatus
+	(*HealthCheckRequest)(nil),            // 39: clientsgrpc.HealthCheckRequest
+	(*HealthCheckResponse)(nil),           // 40: clientsgrpc.HealthCheckResponse
+	(commongrpc.ClientStatus)(0),          // 41: commongrpc.ClientStatus
+	(*timestamppb.Timestamp)(nil),         // 42: google.protobuf.Timestamp
+	(*commongrpc.PaginationRequest)(nil),  // 43: commongrpc.PaginationRequest
+	(*commongrpc.PaginationResponse)(nil), // 44: commongrpc.PaginationResponse
+	(commongrpc.PlatformStatus)(0),        // 45: commongrpc.PlatformStatus
+	(commongrpc.ProviderCapability)(0),    // 46: commongrpc.ProviderCapability
+	(commongrpc.IntegrationStatus)(0),     // 47: commongrpc.IntegrationStatus
 }
 var file_clients_proto_depIdxs = []int32{
-	39, // 0: clientsgrpc.Client.status:type_name -> commongrpc.ClientStatus
-	40, // 1: clientsgrpc.Client.created_at:type_name -> google.protobuf.Timestamp
-	40, // 2: clientsgrpc.Client.updated_at:type_name -> google.protobuf.Timestamp
+	41, // 0: clientsgrpc.Client.status:type_name -> commongrpc.ClientStatus
+	42, // 1: clientsgrpc.Client.created_at:type_name -> google.protobuf.Timestamp
+	42, // 2: clientsgrpc.Client.updated_at:type_name -> google.protobuf.Timestamp
 	0,  // 3: clientsgrpc.CreateClientResponse.client:type_name -> clientsgrpc.Client
 	0,  // 4: clientsgrpc.UpdateClientResponse.client:type_name -> clientsgrpc.Client
 	0,  // 5: clientsgrpc.GetClientResponse.client:type_name -> clientsgrpc.Client
-	41, // 6: clientsgrpc.ListClientsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	43, // 6: clientsgrpc.ListClientsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	0,  // 7: clientsgrpc.ListClientsResponse.clients:type_name -> clientsgrpc.Client
-	42, // 8: clientsgrpc.ListClientsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	44, // 8: clientsgrpc.ListClientsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	0,  // 9: clientsgrpc.ActivateClientResponse.client:type_name -> clientsgrpc.Client
 	0,  // 10: clientsgrpc.DeactivateClientResponse.client:type_name -> clientsgrpc.Client
-	43, // 11: clientsgrpc.Platform.status:type_name -> commongrpc.PlatformStatus
-	44, // 12: clientsgrpc.Platform.capabilities:type_name -> commongrpc.ProviderCapability
-	40, // 13: clientsgrpc.Platform.created_at:type_name -> google.protobuf.Timestamp
-	40, // 14: clientsgrpc.Platform.updated_at:type_name -> google.protobuf.Timestamp
-	41, // 15: clientsgrpc.ListPlatformsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	45, // 11: clientsgrpc.Platform.status:type_name -> commongrpc.PlatformStatus
+	46, // 12: clientsgrpc.Platform.capabilities:type_name -> commongrpc.ProviderCapability
+	42, // 13: clientsgrpc.Platform.created_at:type_name -> google.protobuf.Timestamp
+	42, // 14: clientsgrpc.Platform.updated_at:type_name -> google.protobuf.Timestamp
+	43, // 15: clientsgrpc.ListPlatformsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	15, // 16: clientsgrpc.ListPlatformsResponse.platforms:type_name -> clientsgrpc.Platform
-	42, // 17: clientsgrpc.ListPlatformsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	44, // 17: clientsgrpc.ListPlatformsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	15, // 18: clientsgrpc.GetPlatformResponse.platform:type_name -> clientsgrpc.Platform
 	15, // 19: clientsgrpc.EnablePlatformResponse.platform:type_name -> clientsgrpc.Platform
 	15, // 20: clientsgrpc.DisablePlatformResponse.platform:type_name -> clientsgrpc.Platform
-	45, // 21: clientsgrpc.Integration.status:type_name -> commongrpc.IntegrationStatus
-	40, // 22: clientsgrpc.Integration.installed_at:type_name -> google.protobuf.Timestamp
-	40, // 23: clientsgrpc.Integration.last_sync_at:type_name -> google.protobuf.Timestamp
-	40, // 24: clientsgrpc.Integration.created_at:type_name -> google.protobuf.Timestamp
-	40, // 25: clientsgrpc.Integration.updated_at:type_name -> google.protobuf.Timestamp
+	47, // 21: clientsgrpc.Integration.status:type_name -> commongrpc.IntegrationStatus
+	42, // 22: clientsgrpc.Integration.installed_at:type_name -> google.protobuf.Timestamp
+	42, // 23: clientsgrpc.Integration.last_sync_at:type_name -> google.protobuf.Timestamp
+	42, // 24: clientsgrpc.Integration.created_at:type_name -> google.protobuf.Timestamp
+	42, // 25: clientsgrpc.Integration.updated_at:type_name -> google.protobuf.Timestamp
 	24, // 26: clientsgrpc.InstallIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	24, // 27: clientsgrpc.GetIntegrationResponse.integration:type_name -> clientsgrpc.Integration
-	41, // 28: clientsgrpc.ListIntegrationsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	43, // 28: clientsgrpc.ListIntegrationsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	24, // 29: clientsgrpc.ListIntegrationsResponse.integrations:type_name -> clientsgrpc.Integration
-	42, // 30: clientsgrpc.ListIntegrationsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	44, // 30: clientsgrpc.ListIntegrationsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	24, // 31: clientsgrpc.ReconnectIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	24, // 32: clientsgrpc.DisconnectIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	24, // 33: clientsgrpc.SyncIntegrationResponse.integration:type_name -> clientsgrpc.Integration
@@ -2335,26 +2421,28 @@ var file_clients_proto_depIdxs = []int32{
 	33, // 49: clientsgrpc.IntegrationsService.ReconnectIntegration:input_type -> clientsgrpc.ReconnectIntegrationRequest
 	35, // 50: clientsgrpc.IntegrationsService.DisconnectIntegration:input_type -> clientsgrpc.DisconnectIntegrationRequest
 	37, // 51: clientsgrpc.IntegrationsService.SyncIntegration:input_type -> clientsgrpc.SyncIntegrationRequest
-	2,  // 52: clientsgrpc.ClientsService.CreateClient:output_type -> clientsgrpc.CreateClientResponse
-	4,  // 53: clientsgrpc.ClientsService.UpdateClient:output_type -> clientsgrpc.UpdateClientResponse
-	6,  // 54: clientsgrpc.ClientsService.DeleteClient:output_type -> clientsgrpc.DeleteClientResponse
-	8,  // 55: clientsgrpc.ClientsService.GetClient:output_type -> clientsgrpc.GetClientResponse
-	10, // 56: clientsgrpc.ClientsService.ListClients:output_type -> clientsgrpc.ListClientsResponse
-	12, // 57: clientsgrpc.ClientsService.ActivateClient:output_type -> clientsgrpc.ActivateClientResponse
-	14, // 58: clientsgrpc.ClientsService.DeactivateClient:output_type -> clientsgrpc.DeactivateClientResponse
-	17, // 59: clientsgrpc.PlatformsService.ListPlatforms:output_type -> clientsgrpc.ListPlatformsResponse
-	19, // 60: clientsgrpc.PlatformsService.GetPlatform:output_type -> clientsgrpc.GetPlatformResponse
-	21, // 61: clientsgrpc.PlatformsService.EnablePlatform:output_type -> clientsgrpc.EnablePlatformResponse
-	23, // 62: clientsgrpc.PlatformsService.DisablePlatform:output_type -> clientsgrpc.DisablePlatformResponse
-	26, // 63: clientsgrpc.IntegrationsService.InstallIntegration:output_type -> clientsgrpc.InstallIntegrationResponse
-	28, // 64: clientsgrpc.IntegrationsService.UninstallIntegration:output_type -> clientsgrpc.UninstallIntegrationResponse
-	30, // 65: clientsgrpc.IntegrationsService.GetIntegration:output_type -> clientsgrpc.GetIntegrationResponse
-	32, // 66: clientsgrpc.IntegrationsService.ListIntegrations:output_type -> clientsgrpc.ListIntegrationsResponse
-	34, // 67: clientsgrpc.IntegrationsService.ReconnectIntegration:output_type -> clientsgrpc.ReconnectIntegrationResponse
-	36, // 68: clientsgrpc.IntegrationsService.DisconnectIntegration:output_type -> clientsgrpc.DisconnectIntegrationResponse
-	38, // 69: clientsgrpc.IntegrationsService.SyncIntegration:output_type -> clientsgrpc.SyncIntegrationResponse
-	52, // [52:70] is the sub-list for method output_type
-	34, // [34:52] is the sub-list for method input_type
+	39, // 52: clientsgrpc.IntegrationsService.HealthCheck:input_type -> clientsgrpc.HealthCheckRequest
+	2,  // 53: clientsgrpc.ClientsService.CreateClient:output_type -> clientsgrpc.CreateClientResponse
+	4,  // 54: clientsgrpc.ClientsService.UpdateClient:output_type -> clientsgrpc.UpdateClientResponse
+	6,  // 55: clientsgrpc.ClientsService.DeleteClient:output_type -> clientsgrpc.DeleteClientResponse
+	8,  // 56: clientsgrpc.ClientsService.GetClient:output_type -> clientsgrpc.GetClientResponse
+	10, // 57: clientsgrpc.ClientsService.ListClients:output_type -> clientsgrpc.ListClientsResponse
+	12, // 58: clientsgrpc.ClientsService.ActivateClient:output_type -> clientsgrpc.ActivateClientResponse
+	14, // 59: clientsgrpc.ClientsService.DeactivateClient:output_type -> clientsgrpc.DeactivateClientResponse
+	17, // 60: clientsgrpc.PlatformsService.ListPlatforms:output_type -> clientsgrpc.ListPlatformsResponse
+	19, // 61: clientsgrpc.PlatformsService.GetPlatform:output_type -> clientsgrpc.GetPlatformResponse
+	21, // 62: clientsgrpc.PlatformsService.EnablePlatform:output_type -> clientsgrpc.EnablePlatformResponse
+	23, // 63: clientsgrpc.PlatformsService.DisablePlatform:output_type -> clientsgrpc.DisablePlatformResponse
+	26, // 64: clientsgrpc.IntegrationsService.InstallIntegration:output_type -> clientsgrpc.InstallIntegrationResponse
+	28, // 65: clientsgrpc.IntegrationsService.UninstallIntegration:output_type -> clientsgrpc.UninstallIntegrationResponse
+	30, // 66: clientsgrpc.IntegrationsService.GetIntegration:output_type -> clientsgrpc.GetIntegrationResponse
+	32, // 67: clientsgrpc.IntegrationsService.ListIntegrations:output_type -> clientsgrpc.ListIntegrationsResponse
+	34, // 68: clientsgrpc.IntegrationsService.ReconnectIntegration:output_type -> clientsgrpc.ReconnectIntegrationResponse
+	36, // 69: clientsgrpc.IntegrationsService.DisconnectIntegration:output_type -> clientsgrpc.DisconnectIntegrationResponse
+	38, // 70: clientsgrpc.IntegrationsService.SyncIntegration:output_type -> clientsgrpc.SyncIntegrationResponse
+	40, // 71: clientsgrpc.IntegrationsService.HealthCheck:output_type -> clientsgrpc.HealthCheckResponse
+	53, // [53:72] is the sub-list for method output_type
+	34, // [34:53] is the sub-list for method input_type
 	34, // [34:34] is the sub-list for extension type_name
 	34, // [34:34] is the sub-list for extension extendee
 	0,  // [0:34] is the sub-list for field type_name
@@ -2371,7 +2459,7 @@ func file_clients_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clients_proto_rawDesc), len(file_clients_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   41,
 			NumExtensions: 0,
 			NumServices:   3,
 		},

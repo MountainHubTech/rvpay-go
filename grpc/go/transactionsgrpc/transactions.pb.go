@@ -2085,6 +2085,86 @@ func (x *GetPayoutResponse) GetPayout() *Payout {
 	return nil
 }
 
+type HealthCheckRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheckRequest) Reset() {
+	*x = HealthCheckRequest{}
+	mi := &file_transactions_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheckRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheckRequest) ProtoMessage() {}
+
+func (x *HealthCheckRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheckRequest.ProtoReflect.Descriptor instead.
+func (*HealthCheckRequest) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{28}
+}
+
+type HealthCheckResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        string                 `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *HealthCheckResponse) Reset() {
+	*x = HealthCheckResponse{}
+	mi := &file_transactions_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HealthCheckResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HealthCheckResponse) ProtoMessage() {}
+
+func (x *HealthCheckResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HealthCheckResponse.ProtoReflect.Descriptor instead.
+func (*HealthCheckResponse) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *HealthCheckResponse) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
 var File_transactions_proto protoreflect.FileDescriptor
 
 const file_transactions_proto_rawDesc = "" +
@@ -2226,7 +2306,10 @@ const file_transactions_proto_rawDesc = "" +
 	"\x10GetPayoutRequest\x12\x1b\n" +
 	"\tpayout_id\x18\x01 \x01(\tR\bpayoutId\"E\n" +
 	"\x11GetPayoutResponse\x120\n" +
-	"\x06payout\x18\x01 \x01(\v2\x18.transactionsgrpc.PayoutR\x06payout*\xa8\x01\n" +
+	"\x06payout\x18\x01 \x01(\v2\x18.transactionsgrpc.PayoutR\x06payout\"\x14\n" +
+	"\x12HealthCheckRequest\"-\n" +
+	"\x13HealthCheckResponse\x12\x16\n" +
+	"\x06status\x18\x01 \x01(\tR\x06status*\xa8\x01\n" +
 	"\x0eMerchantStatus\x12\x1f\n" +
 	"\x1bMERCHANT_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19MERCHANT_STATUS_ONBOARDED\x10\x01\x12\x1a\n" +
@@ -2263,10 +2346,11 @@ const file_transactions_proto_rawDesc = "" +
 	"\x1cGetDepositByGHLTransactionID\x125.transactionsgrpc.GetDepositByGHLTransactionIDRequest\x1a6.transactionsgrpc.GetDepositByGHLTransactionIDResponse\"C\x82\xd3\xe4\x93\x02=\x12;/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}2\xbd\x02\n" +
 	"\x0ePaymentService\x12\x87\x01\n" +
 	"\rVerifyPayment\x12&.transactionsgrpc.VerifyPaymentRequest\x1a'.transactionsgrpc.VerifyPaymentResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/public/payments/verify\x12\xa0\x01\n" +
-	"\x15ProcessPaymentWebhook\x12..transactionsgrpc.ProcessPaymentWebhookRequest\x1a/.transactionsgrpc.ProcessPaymentWebhookResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/public/payments/webhook2\x8c\x02\n" +
+	"\x15ProcessPaymentWebhook\x12..transactionsgrpc.ProcessPaymentWebhookRequest\x1a/.transactionsgrpc.ProcessPaymentWebhookResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/public/payments/webhook2\x88\x03\n" +
 	"\rPayoutService\x12}\n" +
 	"\rRequestPayout\x12%.transactionsgrpc.CreatePayoutRequest\x1a&.transactionsgrpc.CreatePayoutResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/payouts\x12|\n" +
-	"\tGetPayout\x12\".transactionsgrpc.GetPayoutRequest\x1a#.transactionsgrpc.GetPayoutResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/payouts/{payout_id}B:Z8github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
+	"\tGetPayout\x12\".transactionsgrpc.GetPayoutRequest\x1a#.transactionsgrpc.GetPayoutResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/payouts/{payout_id}\x12z\n" +
+	"\vHealthCheck\x12$.transactionsgrpc.HealthCheckRequest\x1a%.transactionsgrpc.HealthCheckResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/healthcheckB:Z8github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
 
 var (
 	file_transactions_proto_rawDescOnce sync.Once
@@ -2281,7 +2365,7 @@ func file_transactions_proto_rawDescGZIP() []byte {
 }
 
 var file_transactions_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_transactions_proto_msgTypes = make([]protoimpl.MessageInfo, 28)
+var file_transactions_proto_msgTypes = make([]protoimpl.MessageInfo, 30)
 var file_transactions_proto_goTypes = []any{
 	(MerchantStatus)(0),                          // 0: transactionsgrpc.MerchantStatus
 	(CustomerStatus)(0),                          // 1: transactionsgrpc.CustomerStatus
@@ -2315,52 +2399,54 @@ var file_transactions_proto_goTypes = []any{
 	(*CreatePayoutResponse)(nil),                 // 29: transactionsgrpc.CreatePayoutResponse
 	(*GetPayoutRequest)(nil),                     // 30: transactionsgrpc.GetPayoutRequest
 	(*GetPayoutResponse)(nil),                    // 31: transactionsgrpc.GetPayoutResponse
-	(*timestamppb.Timestamp)(nil),                // 32: google.protobuf.Timestamp
-	(*commongrpc.Money)(nil),                     // 33: commongrpc.Money
-	(commongrpc.PaymentType)(0),                  // 34: commongrpc.PaymentType
-	(commongrpc.Provider)(0),                     // 35: commongrpc.Provider
-	(*commongrpc.PaginationRequest)(nil),         // 36: commongrpc.PaginationRequest
-	(*commongrpc.PaginationResponse)(nil),        // 37: commongrpc.PaginationResponse
+	(*HealthCheckRequest)(nil),                   // 32: transactionsgrpc.HealthCheckRequest
+	(*HealthCheckResponse)(nil),                  // 33: transactionsgrpc.HealthCheckResponse
+	(*timestamppb.Timestamp)(nil),                // 34: google.protobuf.Timestamp
+	(*commongrpc.Money)(nil),                     // 35: commongrpc.Money
+	(commongrpc.PaymentType)(0),                  // 36: commongrpc.PaymentType
+	(commongrpc.Provider)(0),                     // 37: commongrpc.Provider
+	(*commongrpc.PaginationRequest)(nil),         // 38: commongrpc.PaginationRequest
+	(*commongrpc.PaginationResponse)(nil),        // 39: commongrpc.PaginationResponse
 }
 var file_transactions_proto_depIdxs = []int32{
 	0,  // 0: transactionsgrpc.Merchant.status:type_name -> transactionsgrpc.MerchantStatus
-	32, // 1: transactionsgrpc.Merchant.created_at:type_name -> google.protobuf.Timestamp
-	32, // 2: transactionsgrpc.Merchant.updated_at:type_name -> google.protobuf.Timestamp
+	34, // 1: transactionsgrpc.Merchant.created_at:type_name -> google.protobuf.Timestamp
+	34, // 2: transactionsgrpc.Merchant.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: transactionsgrpc.Customer.status:type_name -> transactionsgrpc.CustomerStatus
-	32, // 4: transactionsgrpc.Customer.created_at:type_name -> google.protobuf.Timestamp
-	32, // 5: transactionsgrpc.Customer.updated_at:type_name -> google.protobuf.Timestamp
-	33, // 6: transactionsgrpc.Deposit.amount:type_name -> commongrpc.Money
-	34, // 7: transactionsgrpc.Deposit.payment_type:type_name -> commongrpc.PaymentType
-	35, // 8: transactionsgrpc.Deposit.provider:type_name -> commongrpc.Provider
+	34, // 4: transactionsgrpc.Customer.created_at:type_name -> google.protobuf.Timestamp
+	34, // 5: transactionsgrpc.Customer.updated_at:type_name -> google.protobuf.Timestamp
+	35, // 6: transactionsgrpc.Deposit.amount:type_name -> commongrpc.Money
+	36, // 7: transactionsgrpc.Deposit.payment_type:type_name -> commongrpc.PaymentType
+	37, // 8: transactionsgrpc.Deposit.provider:type_name -> commongrpc.Provider
 	2,  // 9: transactionsgrpc.Deposit.status:type_name -> transactionsgrpc.DepositStatus
-	32, // 10: transactionsgrpc.Deposit.initiated_at:type_name -> google.protobuf.Timestamp
-	32, // 11: transactionsgrpc.Deposit.completed_at:type_name -> google.protobuf.Timestamp
-	32, // 12: transactionsgrpc.Deposit.failed_at:type_name -> google.protobuf.Timestamp
-	32, // 13: transactionsgrpc.Deposit.created_at:type_name -> google.protobuf.Timestamp
-	32, // 14: transactionsgrpc.Deposit.updated_at:type_name -> google.protobuf.Timestamp
-	33, // 15: transactionsgrpc.Payout.amount:type_name -> commongrpc.Money
-	35, // 16: transactionsgrpc.Payout.provider:type_name -> commongrpc.Provider
+	34, // 10: transactionsgrpc.Deposit.initiated_at:type_name -> google.protobuf.Timestamp
+	34, // 11: transactionsgrpc.Deposit.completed_at:type_name -> google.protobuf.Timestamp
+	34, // 12: transactionsgrpc.Deposit.failed_at:type_name -> google.protobuf.Timestamp
+	34, // 13: transactionsgrpc.Deposit.created_at:type_name -> google.protobuf.Timestamp
+	34, // 14: transactionsgrpc.Deposit.updated_at:type_name -> google.protobuf.Timestamp
+	35, // 15: transactionsgrpc.Payout.amount:type_name -> commongrpc.Money
+	37, // 16: transactionsgrpc.Payout.provider:type_name -> commongrpc.Provider
 	3,  // 17: transactionsgrpc.Payout.status:type_name -> transactionsgrpc.PayoutStatus
-	32, // 18: transactionsgrpc.Payout.requested_at:type_name -> google.protobuf.Timestamp
-	32, // 19: transactionsgrpc.Payout.completed_at:type_name -> google.protobuf.Timestamp
-	32, // 20: transactionsgrpc.Payout.failed_at:type_name -> google.protobuf.Timestamp
-	32, // 21: transactionsgrpc.Payout.created_at:type_name -> google.protobuf.Timestamp
-	32, // 22: transactionsgrpc.Payout.updated_at:type_name -> google.protobuf.Timestamp
+	34, // 18: transactionsgrpc.Payout.requested_at:type_name -> google.protobuf.Timestamp
+	34, // 19: transactionsgrpc.Payout.completed_at:type_name -> google.protobuf.Timestamp
+	34, // 20: transactionsgrpc.Payout.failed_at:type_name -> google.protobuf.Timestamp
+	34, // 21: transactionsgrpc.Payout.created_at:type_name -> google.protobuf.Timestamp
+	34, // 22: transactionsgrpc.Payout.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 23: transactionsgrpc.CreateMerchantResponse.merchant:type_name -> transactionsgrpc.Merchant
 	4,  // 24: transactionsgrpc.GetMerchantResponse.merchant:type_name -> transactionsgrpc.Merchant
-	36, // 25: transactionsgrpc.ListMerchantsRequest.page:type_name -> commongrpc.PaginationRequest
+	38, // 25: transactionsgrpc.ListMerchantsRequest.page:type_name -> commongrpc.PaginationRequest
 	4,  // 26: transactionsgrpc.ListMerchantsResponse.merchants:type_name -> transactionsgrpc.Merchant
-	37, // 27: transactionsgrpc.ListMerchantsResponse.page:type_name -> commongrpc.PaginationResponse
+	39, // 27: transactionsgrpc.ListMerchantsResponse.page:type_name -> commongrpc.PaginationResponse
 	5,  // 28: transactionsgrpc.CreateCustomerResponse.customer:type_name -> transactionsgrpc.Customer
 	5,  // 29: transactionsgrpc.GetCustomerResponse.customer:type_name -> transactionsgrpc.Customer
-	33, // 30: transactionsgrpc.CreateDepositRequest.amount:type_name -> commongrpc.Money
-	34, // 31: transactionsgrpc.CreateDepositRequest.payment_type:type_name -> commongrpc.PaymentType
-	35, // 32: transactionsgrpc.CreateDepositRequest.provider:type_name -> commongrpc.Provider
+	35, // 30: transactionsgrpc.CreateDepositRequest.amount:type_name -> commongrpc.Money
+	36, // 31: transactionsgrpc.CreateDepositRequest.payment_type:type_name -> commongrpc.PaymentType
+	37, // 32: transactionsgrpc.CreateDepositRequest.provider:type_name -> commongrpc.Provider
 	6,  // 33: transactionsgrpc.CreateDepositResponse.deposit:type_name -> transactionsgrpc.Deposit
 	6,  // 34: transactionsgrpc.GetDepositResponse.deposit:type_name -> transactionsgrpc.Deposit
 	6,  // 35: transactionsgrpc.GetDepositByGHLTransactionIDResponse.deposit:type_name -> transactionsgrpc.Deposit
-	33, // 36: transactionsgrpc.CreatePayoutRequest.amount:type_name -> commongrpc.Money
-	35, // 37: transactionsgrpc.CreatePayoutRequest.provider:type_name -> commongrpc.Provider
+	35, // 36: transactionsgrpc.CreatePayoutRequest.amount:type_name -> commongrpc.Money
+	37, // 37: transactionsgrpc.CreatePayoutRequest.provider:type_name -> commongrpc.Provider
 	7,  // 38: transactionsgrpc.CreatePayoutResponse.payout:type_name -> transactionsgrpc.Payout
 	7,  // 39: transactionsgrpc.GetPayoutResponse.payout:type_name -> transactionsgrpc.Payout
 	8,  // 40: transactionsgrpc.MerchantService.CreateMerchant:input_type -> transactionsgrpc.CreateMerchantRequest
@@ -2375,20 +2461,22 @@ var file_transactions_proto_depIdxs = []int32{
 	26, // 49: transactionsgrpc.PaymentService.ProcessPaymentWebhook:input_type -> transactionsgrpc.ProcessPaymentWebhookRequest
 	28, // 50: transactionsgrpc.PayoutService.RequestPayout:input_type -> transactionsgrpc.CreatePayoutRequest
 	30, // 51: transactionsgrpc.PayoutService.GetPayout:input_type -> transactionsgrpc.GetPayoutRequest
-	9,  // 52: transactionsgrpc.MerchantService.CreateMerchant:output_type -> transactionsgrpc.CreateMerchantResponse
-	11, // 53: transactionsgrpc.MerchantService.GetMerchant:output_type -> transactionsgrpc.GetMerchantResponse
-	13, // 54: transactionsgrpc.MerchantService.ListMerchants:output_type -> transactionsgrpc.ListMerchantsResponse
-	15, // 55: transactionsgrpc.CustomerService.CreateCustomer:output_type -> transactionsgrpc.CreateCustomerResponse
-	17, // 56: transactionsgrpc.CustomerService.GetCustomer:output_type -> transactionsgrpc.GetCustomerResponse
-	19, // 57: transactionsgrpc.DepositService.InitiateDeposit:output_type -> transactionsgrpc.CreateDepositResponse
-	21, // 58: transactionsgrpc.DepositService.GetDeposit:output_type -> transactionsgrpc.GetDepositResponse
-	23, // 59: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:output_type -> transactionsgrpc.GetDepositByGHLTransactionIDResponse
-	25, // 60: transactionsgrpc.PaymentService.VerifyPayment:output_type -> transactionsgrpc.VerifyPaymentResponse
-	27, // 61: transactionsgrpc.PaymentService.ProcessPaymentWebhook:output_type -> transactionsgrpc.ProcessPaymentWebhookResponse
-	29, // 62: transactionsgrpc.PayoutService.RequestPayout:output_type -> transactionsgrpc.CreatePayoutResponse
-	31, // 63: transactionsgrpc.PayoutService.GetPayout:output_type -> transactionsgrpc.GetPayoutResponse
-	52, // [52:64] is the sub-list for method output_type
-	40, // [40:52] is the sub-list for method input_type
+	32, // 52: transactionsgrpc.PayoutService.HealthCheck:input_type -> transactionsgrpc.HealthCheckRequest
+	9,  // 53: transactionsgrpc.MerchantService.CreateMerchant:output_type -> transactionsgrpc.CreateMerchantResponse
+	11, // 54: transactionsgrpc.MerchantService.GetMerchant:output_type -> transactionsgrpc.GetMerchantResponse
+	13, // 55: transactionsgrpc.MerchantService.ListMerchants:output_type -> transactionsgrpc.ListMerchantsResponse
+	15, // 56: transactionsgrpc.CustomerService.CreateCustomer:output_type -> transactionsgrpc.CreateCustomerResponse
+	17, // 57: transactionsgrpc.CustomerService.GetCustomer:output_type -> transactionsgrpc.GetCustomerResponse
+	19, // 58: transactionsgrpc.DepositService.InitiateDeposit:output_type -> transactionsgrpc.CreateDepositResponse
+	21, // 59: transactionsgrpc.DepositService.GetDeposit:output_type -> transactionsgrpc.GetDepositResponse
+	23, // 60: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:output_type -> transactionsgrpc.GetDepositByGHLTransactionIDResponse
+	25, // 61: transactionsgrpc.PaymentService.VerifyPayment:output_type -> transactionsgrpc.VerifyPaymentResponse
+	27, // 62: transactionsgrpc.PaymentService.ProcessPaymentWebhook:output_type -> transactionsgrpc.ProcessPaymentWebhookResponse
+	29, // 63: transactionsgrpc.PayoutService.RequestPayout:output_type -> transactionsgrpc.CreatePayoutResponse
+	31, // 64: transactionsgrpc.PayoutService.GetPayout:output_type -> transactionsgrpc.GetPayoutResponse
+	33, // 65: transactionsgrpc.PayoutService.HealthCheck:output_type -> transactionsgrpc.HealthCheckResponse
+	53, // [53:66] is the sub-list for method output_type
+	40, // [40:53] is the sub-list for method input_type
 	40, // [40:40] is the sub-list for extension type_name
 	40, // [40:40] is the sub-list for extension extendee
 	0,  // [0:40] is the sub-list for field type_name
@@ -2405,7 +2493,7 @@ func file_transactions_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transactions_proto_rawDesc), len(file_transactions_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   28,
+			NumMessages:   30,
 			NumExtensions: 0,
 			NumServices:   5,
 		},

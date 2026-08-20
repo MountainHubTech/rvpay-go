@@ -358,6 +358,10 @@ message GetPayoutResponse {
   Payout payout = 1;
 }
 
+message HealthCheckRequest {}
+
+message HealthCheckResponse { string status = 1; }
+
 // MerchantService manages payment gateways.
 service MerchantService {
   // CreateMerchant registers a new merchant.
@@ -416,7 +420,8 @@ service DepositService {
   // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
   // transaction identifier. This is used by the GHL Custom Payment Provider
   // query endpoint to correlate a HighLevel transaction with an RVPay deposit.
-  rpc GetDepositByGHLTransactionID(GetDepositByGHLTransactionIDRequest) returns (GetDepositByGHLTransactionIDResponse) {
+  rpc GetDepositByGHLTransactionID(GetDepositByGHLTransactionIDRequest)
+      returns (GetDepositByGHLTransactionIDResponse) {
     option (google.api.http) = {
       get : "/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}"
     };
@@ -440,7 +445,8 @@ service PaymentService {
   // ProcessPaymentWebhook processes a payment-provider webhook event. It
   // correlates the HighLevel transaction/charge with an RVPay deposit and
   // records the GHL reference on the deposit.
-  rpc ProcessPaymentWebhook(ProcessPaymentWebhookRequest) returns (ProcessPaymentWebhookResponse) {
+  rpc ProcessPaymentWebhook(ProcessPaymentWebhookRequest)
+      returns (ProcessPaymentWebhookResponse) {
     option (google.api.http) = {
       post : "/v1/public/payments/webhook"
       body : "*"
@@ -461,6 +467,13 @@ service PayoutService {
   rpc GetPayout(GetPayoutRequest) returns (GetPayoutResponse) {
     option (google.api.http) = {
       get : "/v1/public/payouts/{payout_id}"
+    };
+  }
+
+  // HealthCheck returns a 200 to ensure the server is live.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/healthcheck"
     };
   }
 }

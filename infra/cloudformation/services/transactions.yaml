@@ -82,6 +82,8 @@ Resources:
 
           PortMappings:
             - ContainerPort: !Ref ContainerPort
+              HostPort: !Ref ContainerPort
+              Protocol: tcp
               Name: grpc
 
           LogConfiguration:
@@ -208,24 +210,29 @@ Resources:
               - DnsName: !Ref AppName
                 Port: !Ref ContainerPort
 
-  TransactionsTargetGroup:
+  ClientsTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${EnvId}-transactions"
-      Port: !Ref ContainerPort
-      Protocol: HTTP
+      Name: !Sub "${EnvId}-${AppName}-TargetGroup"
       VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: !Ref ContainerPort
       TargetType: instance
+
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /
+      HealthCheckPath: /v1/public/healthcheck
       HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
+      UnhealthyThresholdCount: 2
       Matcher:
-        HttpCode: "200-499"
+        HttpCode: "200"
+
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: "60"
 
   TransactionsListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule

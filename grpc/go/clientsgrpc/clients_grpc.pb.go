@@ -602,6 +602,7 @@ const (
 	IntegrationsService_ReconnectIntegration_FullMethodName  = "/clientsgrpc.IntegrationsService/ReconnectIntegration"
 	IntegrationsService_DisconnectIntegration_FullMethodName = "/clientsgrpc.IntegrationsService/DisconnectIntegration"
 	IntegrationsService_SyncIntegration_FullMethodName       = "/clientsgrpc.IntegrationsService/SyncIntegration"
+	IntegrationsService_HealthCheck_FullMethodName           = "/clientsgrpc.IntegrationsService/HealthCheck"
 )
 
 // IntegrationsServiceClient is the client API for IntegrationsService service.
@@ -624,6 +625,8 @@ type IntegrationsServiceClient interface {
 	DisconnectIntegration(ctx context.Context, in *DisconnectIntegrationRequest, opts ...grpc.CallOption) (*DisconnectIntegrationResponse, error)
 	// SyncIntegration synchronizes an integration.
 	SyncIntegration(ctx context.Context, in *SyncIntegrationRequest, opts ...grpc.CallOption) (*SyncIntegrationResponse, error)
+	// HealthCheck returns a 200 to ensure the server is live.
+	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 }
 
 type integrationsServiceClient struct {
@@ -704,6 +707,16 @@ func (c *integrationsServiceClient) SyncIntegration(ctx context.Context, in *Syn
 	return out, nil
 }
 
+func (c *integrationsServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, IntegrationsService_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // IntegrationsServiceServer is the server API for IntegrationsService service.
 // All implementations must embed UnimplementedIntegrationsServiceServer
 // for forward compatibility.
@@ -724,6 +737,8 @@ type IntegrationsServiceServer interface {
 	DisconnectIntegration(context.Context, *DisconnectIntegrationRequest) (*DisconnectIntegrationResponse, error)
 	// SyncIntegration synchronizes an integration.
 	SyncIntegration(context.Context, *SyncIntegrationRequest) (*SyncIntegrationResponse, error)
+	// HealthCheck returns a 200 to ensure the server is live.
+	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
 	mustEmbedUnimplementedIntegrationsServiceServer()
 }
 
@@ -754,6 +769,9 @@ func (UnimplementedIntegrationsServiceServer) DisconnectIntegration(context.Cont
 }
 func (UnimplementedIntegrationsServiceServer) SyncIntegration(context.Context, *SyncIntegrationRequest) (*SyncIntegrationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncIntegration not implemented")
+}
+func (UnimplementedIntegrationsServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
 }
 func (UnimplementedIntegrationsServiceServer) mustEmbedUnimplementedIntegrationsServiceServer() {}
 func (UnimplementedIntegrationsServiceServer) testEmbeddedByValue()                             {}
@@ -902,6 +920,24 @@ func _IntegrationsService_SyncIntegration_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _IntegrationsService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HealthCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(IntegrationsServiceServer).HealthCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: IntegrationsService_HealthCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(IntegrationsServiceServer).HealthCheck(ctx, req.(*HealthCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // IntegrationsService_ServiceDesc is the grpc.ServiceDesc for IntegrationsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -936,6 +972,10 @@ var IntegrationsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncIntegration",
 			Handler:    _IntegrationsService_SyncIntegration_Handler,
+		},
+		{
+			MethodName: "HealthCheck",
+			Handler:    _IntegrationsService_HealthCheck_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
