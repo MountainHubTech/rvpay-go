@@ -93,6 +93,15 @@ Resources:
         - Bucket: !Ref InfraArtifactsBucket
           ReleaseHash: !Ref InfraReleaseHash
 
+  EcsAdditionalSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Additional security group for RVPay ECS nodes
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvId}-ecs-additional"
+
   EcsStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
@@ -105,6 +114,7 @@ Resources:
           - ","
           - - !GetAtt VpcStack.Outputs.SubnetAPrivate
             - !GetAtt VpcStack.Outputs.SubnetBPrivate
+        AdditionalNodeSecurityGroupIds: !GetAtt EcsAdditionalSecurityGroup.GroupId
         IsDevelopmentGrade: !Ref IsDevelopmentGrade
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/aws-cloudformation-templates/core-components/ecs.yaml"
