@@ -298,7 +298,7 @@ Resources:
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /v1/public/healthcheck
+      HealthCheckPath: /v1/public/clients/healthcheck
       HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
@@ -319,7 +319,13 @@ Resources:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Ref "clients.${DomainName}"
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/v1/public/clients/*"
+              - "/v1/public/integrations/*"
+              - "/v1/public/platforms/*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref ClientsTargetGroup

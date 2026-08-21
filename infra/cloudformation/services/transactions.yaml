@@ -223,7 +223,7 @@ Resources:
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /v1/public/healthcheck
+      HealthCheckPath: /v1/public/transactions/healthcheck
       HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
@@ -240,12 +240,21 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 20
+      Priority: 30
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Sub "transactions.${DomainName}"
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/v1/public/merchants/*"
+              - "/v1/public/customers/*"
+              - "/v1/public/deposits/*"
+              - "/v1/public/payments/*"
+              - "/v1/public/payouts/*"
+              - "/v1/public/transactions/*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TransactionsTargetGroup

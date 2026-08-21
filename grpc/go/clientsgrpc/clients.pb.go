@@ -2302,9 +2302,9 @@ const file_clients_proto_rawDesc = "" +
 	"\x10ListIntegrations\x12$.clientsgrpc.ListIntegrationsRequest\x1a%.clientsgrpc.ListIntegrationsResponse\"N\x82\xd3\xe4\x93\x02HZ-\x12+/v1/public/clients/{client_id}/integrations\x12\x17/v1/public/integrations\x12\x9e\x01\n" +
 	"\x14ReconnectIntegration\x12(.clientsgrpc.ReconnectIntegrationRequest\x1a).clientsgrpc.ReconnectIntegrationResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/public/integrations/{id}:reconnect\x12\xa2\x01\n" +
 	"\x15DisconnectIntegration\x12).clientsgrpc.DisconnectIntegrationRequest\x1a*.clientsgrpc.DisconnectIntegrationResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/public/integrations/{id}:disconnect\x12\x8a\x01\n" +
-	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync2\x81\x01\n" +
-	"\rHealthService\x12p\n" +
-	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/healthcheckB5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
+	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync2\x89\x01\n" +
+	"\rHealthService\x12x\n" +
+	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/clients/healthcheckB5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
 var (
 	file_clients_proto_rawDescOnce sync.Once

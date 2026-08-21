@@ -191,10 +191,10 @@ Resources:
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         HighLevelClientSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelClientSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
-        HighLevelRedirectUri: !Sub "https://${DomainName}/clients/oauth/callback"
-        HighLevelPaymentUrl: !Sub "https://${DomainName}/payments"
-        HighLevelQueryUrl: !Sub "https://${DomainName}/payments/query"
-        PublicBaseUrl: !Sub "https://${DomainName}"
+        HighLevelRedirectUri: !Sub "https://api.${DomainName}/oauth/callback"
+        HighLevelPaymentUrl: !Sub "https://api.${DomainName}/payments/custom-provider/webhook"
+        HighLevelQueryUrl: !Sub "https://api.${DomainName}/payments/custom-provider/query"
+        PublicBaseUrl: !Sub "https://api.${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         DomainName: !Ref DomainName

@@ -463,7 +463,7 @@ message HealthCheckResponse { string status = 1; }
 service HealthService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
     option (google.api.http) = {
-      get : "/v1/public/healthcheck"
+      get : "/v1/public/clients/healthcheck"
     };
   }
 }

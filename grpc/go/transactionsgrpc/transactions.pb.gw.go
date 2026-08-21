@@ -483,24 +483,6 @@ func local_request_PayoutService_GetPayout_0(ctx context.Context, marshaler runt
 
 }
 
-func request_PayoutService_HealthCheck_0(ctx context.Context, marshaler runtime.Marshaler, client PayoutServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq HealthCheckRequest
-	var metadata runtime.ServerMetadata
-
-	msg, err := client.HealthCheck(ctx, &protoReq, grpc.Header(&metadata.HeaderMD), grpc.Trailer(&metadata.TrailerMD))
-	return msg, metadata, err
-
-}
-
-func local_request_PayoutService_HealthCheck_0(ctx context.Context, marshaler runtime.Marshaler, server PayoutServiceServer, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
-	var protoReq HealthCheckRequest
-	var metadata runtime.ServerMetadata
-
-	msg, err := server.HealthCheck(ctx, &protoReq)
-	return msg, metadata, err
-
-}
-
 func request_HealthService_HealthCheck_0(ctx context.Context, marshaler runtime.Marshaler, client HealthServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var protoReq HealthCheckRequest
 	var metadata runtime.ServerMetadata
@@ -866,31 +848,6 @@ func RegisterPayoutServiceHandlerServer(ctx context.Context, mux *runtime.ServeM
 
 	})
 
-	mux.Handle("GET", pattern_PayoutService_HealthCheck_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		var stream runtime.ServerTransportStream
-		ctx = grpc.NewContextWithServerTransportStream(ctx, &stream)
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PayoutService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/healthcheck"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := local_request_PayoutService_HealthCheck_0(annotatedContext, inboundMarshaler, server, req, pathParams)
-		md.HeaderMD, md.TrailerMD = metadata.Join(md.HeaderMD, stream.Header()), metadata.Join(md.TrailerMD, stream.Trailer())
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-
-		forward_PayoutService_HealthCheck_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
-	})
-
 	return nil
 }
 
@@ -909,7 +866,7 @@ func RegisterHealthServiceHandlerServer(ctx context.Context, mux *runtime.ServeM
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.HealthService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/healthcheck"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.HealthService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/transactions/healthcheck"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1451,28 +1408,6 @@ func RegisterPayoutServiceHandlerClient(ctx context.Context, mux *runtime.ServeM
 
 	})
 
-	mux.Handle("GET", pattern_PayoutService_HealthCheck_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PayoutService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/healthcheck"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_PayoutService_HealthCheck_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-
-		forward_PayoutService_HealthCheck_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
-
-	})
-
 	return nil
 }
 
@@ -1480,16 +1415,12 @@ var (
 	pattern_PayoutService_RequestPayout_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "payouts"}, ""))
 
 	pattern_PayoutService_GetPayout_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "public", "payouts", "payout_id"}, ""))
-
-	pattern_PayoutService_HealthCheck_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "healthcheck"}, ""))
 )
 
 var (
 	forward_PayoutService_RequestPayout_0 = runtime.ForwardResponseMessage
 
 	forward_PayoutService_GetPayout_0 = runtime.ForwardResponseMessage
-
-	forward_PayoutService_HealthCheck_0 = runtime.ForwardResponseMessage
 )
 
 // RegisterHealthServiceHandlerFromEndpoint is same as RegisterHealthServiceHandler but
@@ -1536,7 +1467,7 @@ func RegisterHealthServiceHandlerClient(ctx context.Context, mux *runtime.ServeM
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.HealthService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/healthcheck"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.HealthService/HealthCheck", runtime.WithHTTPPathPattern("/v1/public/transactions/healthcheck"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1556,7 +1487,7 @@ func RegisterHealthServiceHandlerClient(ctx context.Context, mux *runtime.ServeM
 }
 
 var (
-	pattern_HealthService_HealthCheck_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "healthcheck"}, ""))
+	pattern_HealthService_HealthCheck_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "public", "transactions", "healthcheck"}, ""))
 )
 
 var (

@@ -465,13 +465,6 @@ service PayoutService {
       get : "/v1/public/payouts/{payout_id}"
     };
   }
-
-  // HealthCheck returns a 200 to ensure the server is live.
-  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
-    option (google.api.http) = {
-      get : "/v1/public/healthcheck"
-    };
-  }
 }
 
 message HealthCheckRequest {}
@@ -481,7 +474,7 @@ message HealthCheckResponse { string status = 1; }
 service HealthService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
     option (google.api.http) = {
-      get : "/v1/public/healthcheck"
+      get : "/v1/public/transactions/healthcheck"
     };
   }
 }
