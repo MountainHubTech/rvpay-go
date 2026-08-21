@@ -2294,7 +2294,7 @@ const file_clients_proto_rawDesc = "" +
 	"\rListPlatforms\x12!.clientsgrpc.ListPlatformsRequest\x1a\".clientsgrpc.ListPlatformsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/public/platforms\x12s\n" +
 	"\vGetPlatform\x12\x1f.clientsgrpc.GetPlatformRequest\x1a .clientsgrpc.GetPlatformResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/public/platforms/{id}\x12\x86\x01\n" +
 	"\x0eEnablePlatform\x12\".clientsgrpc.EnablePlatformRequest\x1a#.clientsgrpc.EnablePlatformResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/public/platforms/{id}:enable\x12\x8a\x01\n" +
-	"\x0fDisablePlatform\x12#.clientsgrpc.DisablePlatformRequest\x1a$.clientsgrpc.DisablePlatformResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/platforms/{id}:disable2\xad\t\n" +
+	"\x0fDisablePlatform\x12#.clientsgrpc.DisablePlatformRequest\x1a$.clientsgrpc.DisablePlatformResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/platforms/{id}:disable2\xbb\b\n" +
 	"\x13IntegrationsService\x12\x89\x01\n" +
 	"\x12InstallIntegration\x12&.clientsgrpc.InstallIntegrationRequest\x1a'.clientsgrpc.InstallIntegrationResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/integrations\x12\x91\x01\n" +
 	"\x14UninstallIntegration\x12(.clientsgrpc.UninstallIntegrationRequest\x1a).clientsgrpc.UninstallIntegrationResponse\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/public/integrations/{id}\x12\x7f\n" +
@@ -2302,7 +2302,8 @@ const file_clients_proto_rawDesc = "" +
 	"\x10ListIntegrations\x12$.clientsgrpc.ListIntegrationsRequest\x1a%.clientsgrpc.ListIntegrationsResponse\"N\x82\xd3\xe4\x93\x02HZ-\x12+/v1/public/clients/{client_id}/integrations\x12\x17/v1/public/integrations\x12\x9e\x01\n" +
 	"\x14ReconnectIntegration\x12(.clientsgrpc.ReconnectIntegrationRequest\x1a).clientsgrpc.ReconnectIntegrationResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/public/integrations/{id}:reconnect\x12\xa2\x01\n" +
 	"\x15DisconnectIntegration\x12).clientsgrpc.DisconnectIntegrationRequest\x1a*.clientsgrpc.DisconnectIntegrationResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/public/integrations/{id}:disconnect\x12\x8a\x01\n" +
-	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync\x12p\n" +
+	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync2\x81\x01\n" +
+	"\rHealthService\x12p\n" +
 	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"\x1e\x82\xd3\xe4\x93\x02\x18\x12\x16/v1/public/healthcheckB5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
 var (
@@ -2421,7 +2422,7 @@ var file_clients_proto_depIdxs = []int32{
 	33, // 49: clientsgrpc.IntegrationsService.ReconnectIntegration:input_type -> clientsgrpc.ReconnectIntegrationRequest
 	35, // 50: clientsgrpc.IntegrationsService.DisconnectIntegration:input_type -> clientsgrpc.DisconnectIntegrationRequest
 	37, // 51: clientsgrpc.IntegrationsService.SyncIntegration:input_type -> clientsgrpc.SyncIntegrationRequest
-	39, // 52: clientsgrpc.IntegrationsService.HealthCheck:input_type -> clientsgrpc.HealthCheckRequest
+	39, // 52: clientsgrpc.HealthService.HealthCheck:input_type -> clientsgrpc.HealthCheckRequest
 	2,  // 53: clientsgrpc.ClientsService.CreateClient:output_type -> clientsgrpc.CreateClientResponse
 	4,  // 54: clientsgrpc.ClientsService.UpdateClient:output_type -> clientsgrpc.UpdateClientResponse
 	6,  // 55: clientsgrpc.ClientsService.DeleteClient:output_type -> clientsgrpc.DeleteClientResponse
@@ -2440,7 +2441,7 @@ var file_clients_proto_depIdxs = []int32{
 	34, // 68: clientsgrpc.IntegrationsService.ReconnectIntegration:output_type -> clientsgrpc.ReconnectIntegrationResponse
 	36, // 69: clientsgrpc.IntegrationsService.DisconnectIntegration:output_type -> clientsgrpc.DisconnectIntegrationResponse
 	38, // 70: clientsgrpc.IntegrationsService.SyncIntegration:output_type -> clientsgrpc.SyncIntegrationResponse
-	40, // 71: clientsgrpc.IntegrationsService.HealthCheck:output_type -> clientsgrpc.HealthCheckResponse
+	40, // 71: clientsgrpc.HealthService.HealthCheck:output_type -> clientsgrpc.HealthCheckResponse
 	53, // [53:72] is the sub-list for method output_type
 	34, // [34:53] is the sub-list for method input_type
 	34, // [34:34] is the sub-list for extension type_name
@@ -2461,7 +2462,7 @@ func file_clients_proto_init() {
 			NumEnums:      0,
 			NumMessages:   41,
 			NumExtensions: 0,
-			NumServices:   3,
+			NumServices:   4,
 		},
 		GoTypes:           file_clients_proto_goTypes,
 		DependencyIndexes: file_clients_proto_depIdxs,

@@ -302,10 +302,6 @@ message SyncIntegrationResponse {
   Integration integration = 1;
 }
 
-message HealthCheckRequest {}
-
-message HealthCheckResponse { string status = 1; }
-
 // ClientsService manages client accounts.
 service ClientsService {
   // CreateClient creates a new client account.
@@ -458,8 +454,13 @@ service IntegrationsService {
       body : "*"
     };
   }
+}
 
-  // HealthCheck returns a 200 to ensure the server is live.
+message HealthCheckRequest {}
+
+message HealthCheckResponse { string status = 1; }
+
+service HealthService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
     option (google.api.http) = {
       get : "/v1/public/healthcheck"

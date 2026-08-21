@@ -158,9 +158,3 @@ func (s *Impl) ListMerchants(ctx context.Context, req *transactionsgrpc.ListMerc
 
 	return response, nil
 }
-
-func (s *Impl) HealthCheck(ctx context.Context, req *transactionsgrpc.HealthCheckRequest) (*transactionsgrpc.HealthCheckResponse, error) {
-	return &transactionsgrpc.HealthCheckResponse{
-		Status: "ok",
-	}, nil
-}

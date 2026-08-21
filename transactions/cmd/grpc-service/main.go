@@ -20,6 +20,7 @@ import (
 	"github.com/I-Frostbyte/rvpay-go/transactions/customers"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/transactions/deposits"
+	health_check "github.com/I-Frostbyte/rvpay-go/transactions/health"
 	"github.com/I-Frostbyte/rvpay-go/transactions/merchants"
 	"github.com/I-Frostbyte/rvpay-go/transactions/payments"
 	"github.com/I-Frostbyte/rvpay-go/transactions/payouts"
@@ -103,6 +104,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	depositService := deposits.NewDepositService(depositRepo, customerRepo, logger)
 	paymentService := payments.NewPaymentService(depositRepo, logger)
 	payoutService := payouts.NewPayoutService(payoutRepo, logger)
+	healthCheck := health_check.NewHealthService(logger)
 
 	svrOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
@@ -121,6 +123,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	transactionsgrpc.RegisterDepositServiceServer(grpcServer, depositService)
 	transactionsgrpc.RegisterPaymentServiceServer(grpcServer, paymentService)
 	transactionsgrpc.RegisterPayoutServiceServer(grpcServer, payoutService)
+	transactionsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered Transactions services...")
 
@@ -143,6 +146,9 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		return fmt.Errorf("register grpc-gateway payment handler: %w", err)
 	}
 	if err := transactionsgrpc.RegisterPayoutServiceHandlerServer(ctx, gatewayMux, payoutService); err != nil {
+		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
+	}
+	if err := transactionsgrpc.RegisterHealthServiceHandlerServer(ctx, gatewayMux, healthCheck); err != nil {
 		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
 	}
 

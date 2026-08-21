@@ -219,9 +219,3 @@ func (s *ClientsServiceImpl) DeactivateClient(ctx context.Context, req *clientsg
 		Client: sqlcClientToProto(updated),
 	}, nil
 }
-
-func (s *ClientsServiceImpl) HealthCheck(ctx context.Context, req *clientsgrpc.HealthCheckRequest) (*clientsgrpc.HealthCheckResponse, error) {
-	return &clientsgrpc.HealthCheckResponse{
-		Status: "ok",
-	}, nil
-}

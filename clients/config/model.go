@@ -71,7 +71,7 @@ func (c *Config) LoadConfig() error {
 
 	c.DB.DBHost = getEnv("DB_HOST", "localhost")
 	c.DB.DBPort = getEnvAsInt("DB_PORT", 5432)
-	c.DB.DBName = getEnv("DB_NAME", "rvpay")
+	c.DB.DBName = getEnv("DB_NAME", "")
 	c.DB.DBUser = getEnv("DB_USER", "postgres")
 	c.DB.DBPassword = getEnv("DB_PASSWORD", "postgres")
 	c.DB.TLSDisabled = getEnvAsBool("DB_TLS_DISABLED", true)

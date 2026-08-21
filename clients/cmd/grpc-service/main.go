@@ -14,6 +14,7 @@ import (
 
 	"github.com/I-Frostbyte/rvpay-go/clients/config"
 	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
+	health_check "github.com/I-Frostbyte/rvpay-go/clients/health"
 	clientshttp "github.com/I-Frostbyte/rvpay-go/clients/http"
 	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
 	"github.com/I-Frostbyte/rvpay-go/clients/payments"
@@ -27,6 +28,7 @@ import (
 	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -109,6 +111,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	clientsService := service.NewClientsServiceImpl(clientRepo, logger)
 	platformsService := service.NewPlatformsServiceImpl(platformRepo, logger)
 	integrationsService := service.NewIntegrationsServiceImpl(integrationRepo, clientRepo, platformRepo, oauthTokenRepo, webhookSubscriptionRepo, logger)
+	healthCheck := health_check.NewHealthService(logger)
 
 	oauthService := oauth.NewService(
 		integrationRepo,
@@ -153,6 +156,13 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// transactions with RVPay deposits by calling the Transactions service via
 	// gRPC. The Transactions gRPC address comes from configuration
 	// (TRANSACTIONS_GRPC_ADDR); it is never hard-coded.
+
+	// Loads .env from the directory where you execute the command
+	// This only exists for local testing and development
+	err = godotenv.Load(".env")
+	if err != nil {
+		return fmt.Errorf("No .env file found, relying on system env")
+	}
 	transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
 	if transactionsAddr == "" {
 		return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
@@ -183,6 +193,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	clientsgrpc.RegisterClientsServiceServer(grpcServer, clientsService)
 	clientsgrpc.RegisterPlatformsServiceServer(grpcServer, platformsService)
 	clientsgrpc.RegisterIntegrationsServiceServer(grpcServer, integrationsService)
+	clientsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered gRPC services...")
 
@@ -203,6 +214,9 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	}
 	if err := clientsgrpc.RegisterIntegrationsServiceHandlerServer(ctx, gatewayMux, integrationsService); err != nil {
 		return fmt.Errorf("register integrations grpc-gateway handler: %w", err)
+	}
+	if err := clientsgrpc.RegisterHealthServiceHandlerServer(ctx, gatewayMux, healthCheck); err != nil {
+		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
 	}
 
 	httpMux := http.NewServeMux()
