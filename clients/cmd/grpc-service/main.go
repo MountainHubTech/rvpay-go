@@ -28,7 +28,7 @@ import (
 	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/joho/godotenv"
+	// "github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -158,11 +158,11 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// (TRANSACTIONS_GRPC_ADDR); it is never hard-coded.
 
 	// Loads .env from the directory where you execute the command
-	// This only exists for local testing and development
-	err = godotenv.Load(".env")
-	if err != nil {
-		return fmt.Errorf("No .env file found, relying on system env")
-	}
+	// // This only exists for local testing and development
+	// err = godotenv.Load(".env")
+	// if err != nil {
+	// 	return fmt.Errorf("No .env file found, relying on system env")
+	// }
 	transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
 	if transactionsAddr == "" {
 		return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
