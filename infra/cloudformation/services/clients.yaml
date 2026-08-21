@@ -314,12 +314,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 20
+      Priority: 25
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Sub "api.${DomainName}"
+              - !Ref DomainName
         - Field: path-pattern
           PathPatternConfig:
             Values:
