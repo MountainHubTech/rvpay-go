@@ -236,7 +236,7 @@ Resources:
         - Key: deregistration_delay.timeout_seconds
           Value: 60
 
-  TransactionsListenerRule:
+  TransactionsListenerRuleOne:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
@@ -252,12 +252,30 @@ Resources:
               - "/v1/public/merchants/*"
               - "/v1/public/customers/*"
               - "/v1/public/deposits/*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TransactionsTargetGroup
+
+  TransactionsListenerRuleTwo:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref LoadBalancerListenerArn
+      Priority: 31
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
               - "/v1/public/payments/*"
               - "/v1/public/payouts/*"
               - "/v1/public/transactions/*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TransactionsTargetGroup
+
 
 Outputs:
   ServiceName:
