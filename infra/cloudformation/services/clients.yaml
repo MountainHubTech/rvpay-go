@@ -115,9 +115,10 @@ Resources:
 
           PortMappings:
             - ContainerPort: !Ref ContainerPort
-              HostPort: !Ref ContainerPort
-              Protocol: tcp
               Name: grpc
+
+            - ContainerPort: 8080
+              Name: http
 
           LogConfiguration:
             LogDriver: awslogs
@@ -263,7 +264,7 @@ Resources:
 
       LoadBalancers:
         - ContainerName: App
-          ContainerPort: !Ref ContainerPort
+          ContainerPort: 8080
           TargetGroupArn: !Ref ClientsTargetGroup
 
       DeploymentConfiguration:
@@ -288,10 +289,10 @@ Resources:
   ClientsTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${EnvId}-${AppName}-TargetGroup"
+      Name: !Sub "${EnvId}-ClientsTargetGroup"
       VpcId: !Ref VPC
       Protocol: HTTP
-      Port: !Ref ContainerPort
+      Port: 8080
       TargetType: instance
 
       HealthCheckEnabled: true
@@ -307,7 +308,7 @@ Resources:
 
       TargetGroupAttributes:
         - Key: deregistration_delay.timeout_seconds
-          Value: "60"
+          Value: 60
 
   ClientsListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
