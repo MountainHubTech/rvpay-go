@@ -289,7 +289,7 @@ Resources:
   ClientsTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${EnvId}-ClientsTargetGroup"
+      Name: !Sub "${EnvId}-clients"
       VpcId: !Ref VPC
       Protocol: HTTP
       Port: 8080
@@ -314,12 +314,12 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 100
+      Priority: 20
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Ref DomainName
+              - !Ref "clients.${DomainName}"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref ClientsTargetGroup
