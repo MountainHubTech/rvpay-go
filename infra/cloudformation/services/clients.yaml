@@ -310,25 +310,25 @@ Resources:
         - Key: deregistration_delay.timeout_seconds
           Value: 60
 
-  ClientsListenerRule:
-    Type: AWS::ElasticLoadBalancingV2::ListenerRule
-    Properties:
-      ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 25
-      Conditions:
-        - Field: host-header
-          HostHeaderConfig:
-            Values:
-              - !Ref DomainName
-        - Field: path-pattern
-          PathPatternConfig:
-            Values:
-              - "/v1/public/clients/*"
-              - "/v1/public/integrations/*"
-              - "/v1/public/platforms/*"
-      Actions:
-        - Type: forward
-          TargetGroupArn: !Ref ClientsTargetGroup
+  # ClientsListenerRule:
+  #   Type: AWS::ElasticLoadBalancingV2::ListenerRule
+  #   Properties:
+  #     ListenerArn: !Ref LoadBalancerListenerArn
+  #     Priority: 25
+  #     Conditions:
+  #       - Field: host-header
+  #         HostHeaderConfig:
+  #           Values:
+  #             - !Ref DomainName
+  #       - Field: path-pattern
+  #         PathPatternConfig:
+  #           Values:
+  #             - "/v1/public/clients/*"
+  #             - "/v1/public/integrations/*"
+  #             - "/v1/public/platforms/*"
+  #     Actions:
+  #       - Type: forward
+  #         TargetGroupArn: !Ref ClientsTargetGroup
 
 
 Outputs:
