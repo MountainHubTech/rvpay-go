@@ -92,6 +92,12 @@ jobs:
           aws ecr create-repository \
             --repository-name rvpay/transactions
 
+          aws ecr describe-repositories \
+            --repository-names rvpay/admindashboard \
+            >/dev/null 2>&1 || \
+          aws ecr create-repository \
+            --repository-name rvpay/admindashboard
+
       - name: Build clients image
         run: |
           docker build \
@@ -109,6 +115,7 @@ jobs:
       - name: Build admindashboard image
         run: |
           docker build \
+            --no-cache \
             -t "${ECR_REGISTRY}/rvpay/admindashboard:${GITHUB_SHA}" \
             -f admindashboard/Dockerfile \
             .
