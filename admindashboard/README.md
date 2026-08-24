@@ -47,3 +47,14 @@ This application is being prepared for production Docker deployment through a se
 - `.project-next-steps` — AWS deployment guide (populated only after the sequence completes)
 
 AWS deployment steps are documented only after Agent 06 completes the Dockerization sequence.
+
+## Docker / AWS-Readiness Status
+
+The Dockerization sequence is complete for local production capability. The production image builds and the container starts successfully.
+
+- **Build:** multi-stage `node:22-alpine` build (`npm ci` from the committed lockfile → `next build` → minimal standalone runtime). `next.config.ts` uses `output: "standalone"`.
+- **Runtime:** minimal standalone server, listens on port **3000**, runs as non-root `nodejs` (uid/gid 1001), with `NODE_ENV=production` baked in.
+- **Image hygiene:** `.dockerignore` excludes env files and secret material; verified no `.env` / `.pem` / `.key` in the image.
+- **Environment:** the application uses **zero** environment variables; no `.env` is required at build or runtime.
+- **Workflow:** `make build`, `make run`, `make stop`, `make verify` cover the local Docker workflow. `make tag` / `make ecr-login` / `make ecr-push` are a thin AWS ECR push interface (require `AWS_REGION`, `AWS_ACCOUNT_ID`, `AWS_ECR_REPO`; no credentials are committed).
+- **AWS readiness:** the image can be built reproducibly, tagged, pushed to ECR, and run with runtime values, and it can sit behind a load balancer on port 3000. No AWS infrastructure is created here. Deployment steps and open architecture decisions are in `.project-next-steps.md`.
