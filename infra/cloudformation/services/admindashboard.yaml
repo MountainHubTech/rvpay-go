@@ -1,0 +1,218 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: The Admindashboard service
+
+Parameters:
+  EnvId:
+    Type: String
+    Description: Environment Id (used to namespace resources)
+    AllowedPattern: "[a-z][a-z0-9]{2,19}"
+    ConstraintDescription: Must be lower case letters between 3 and 20 characters.
+
+  VPC:
+    Type: AWS::EC2::VPC::Id
+
+  LogGroupName:
+    Type: String
+    Description: LogGroup name that should be used for the service.
+
+  ClusterArn:
+    Type: String
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+
+  Image:
+    Type: String
+
+  DomainName:
+    Type: String
+    Description: Domain name used by the admindashboard service.
+
+  LoadBalancerDNSName:
+    Type: String
+    Description: DNS name of the existing load balancer.
+
+  LoadBalancerCanonicalHostedZoneID:
+    Type: String
+    Description: Canonical hosted zone ID of the existing load balancer.
+
+  HttpsListener:
+    Type: String
+    Description: ARN of the existing HTTPS listener.
+
+  AdmindashboardSecretArn:
+    Type: String
+
+  WebPushSecretArn:
+    Type: String
+
+  ContainerPort:
+    Type: Number
+    Default: 3000
+
+  AppName:
+    Type: String
+    Default: admindashboard
+
+  DesiredCount:
+    Type: Number
+    Default: 1
+
+  SumsubClientId:
+    Type: String
+    Default: vsorpay.com
+
+Resources:
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${EnvId}-${AppName}"
+      NetworkMode: bridge
+      RequiresCompatibilities:
+        - EC2
+      Memory: 128
+      ExecutionRoleArn: !Ref ExecutionRole
+      TaskRoleArn: !Ref TaskRole
+      ContainerDefinitions:
+        - Name: !Ref AppName
+          Image: !Ref Image
+          PortMappings:
+            - ContainerPort: !Ref ContainerPort
+              Name: !Ref AppName
+
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Ref AWS::Region
+              awslogs-group: !Ref LogGroupName
+              awslogs-stream-prefix: !Ref AppName
+
+          Environment:
+            - Name: NEXT_PUBLIC_BASE_URL
+              Value: !Sub "https://api.${DomainName}"
+
+            - Name: NEXT_PUBLIC_SUMSUB_CLIENT_ID
+              Value: !Ref SumsubClientId
+
+          Secrets:
+            - Name: NEXTAUTH_SECRET
+              ValueFrom: !Sub "${AdmindashboardSecretArn}:nextAuthSecret::"
+
+            - Name: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+              ValueFrom: !Sub "${WebPushSecretArn}:vapid_public_key::"
+
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${AppName}-EcsExecutionRole"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: "sts:AssumeRole"
+
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+      Policies:
+        - PolicyName: secrets-manager-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetResourcePolicy
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:ListSecretVersionIds
+                  - secretsmanager:ListSecrets
+                Resource:
+                  - !Ref AdmindashboardSecretArn
+                  - !Ref WebPushSecretArn
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${EnvId}-${AppName}-TaskRole"
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+
+  EcsService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - TargetGroup
+      - ListenerRule
+    Properties:
+      ServiceName: !Sub "${EnvId}-${AppName}"
+      Cluster: !Ref ClusterArn
+      TaskDefinition: !Ref TaskDefinition
+
+      DeploymentConfiguration:
+        MinimumHealthyPercent: 100
+        MaximumPercent: 200
+
+      DesiredCount: !Ref DesiredCount
+
+      HealthCheckGracePeriodSeconds: 600
+
+      LaunchType: EC2
+
+      LoadBalancers:
+        - ContainerName: !Ref AppName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "${EnvId}-admindashboard"
+      VpcId: !Ref VPC
+      Protocol: HTTP
+      Port: !Ref ContainerPort
+      TargetType: instance
+
+      HealthCheckEnabled: true
+      HealthCheckProtocol: HTTP
+      HealthCheckPort: traffic-port
+      HealthCheckPath: /healthcheck
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
+
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref HttpsListener
+      Priority: 100
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "admindashboard.${DomainName}"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: !Sub "${DomainName}."
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !Ref LoadBalancerDNSName
+        HostedZoneId: !Ref LoadBalancerCanonicalHostedZoneID
