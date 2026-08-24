@@ -34,3 +34,16 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Dockerization Workflow
+
+This application is being prepared for production Docker deployment through a sequence of numbered Cline agents. The workflow is controlled by the project-control files in this repository:
+
+- `.clinerules.md` — rules all agents must follow
+- `.clineignore.md` — areas agents should avoid reading unless directly required
+- `.project-context.md` — stable facts, decisions, and unknowns
+- `.project-checkpoint.md` — chronological checkpoint ledger with reading map
+- `.clinecheck.md` — verification checklist for the sequence
+- `.project-next-steps` — AWS deployment guide (populated only after the sequence completes)
+
+AWS deployment steps are documented only after Agent 06 completes the Dockerization sequence.
