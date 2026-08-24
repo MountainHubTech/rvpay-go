@@ -105,6 +105,13 @@ jobs:
             -t "${ECR_REGISTRY}/rvpay/transactions:${GITHUB_SHA}" \
             -f transactions/Dockerfile \
             .
+      
+      - name: Build admindashboard image
+        run: |
+          docker build \
+            -t "${ECR_REGISTRY}/rvpay/admindashboard:${GITHUB_SHA}" \
+            -f admindashboard/Dockerfile \
+            .
 
       - name: Push clients image
         run: |
@@ -115,3 +122,8 @@ jobs:
         run: |
           docker push \
             "${ECR_REGISTRY}/rvpay/transactions:${GITHUB_SHA}"
+
+      - name: Push admindashboard image
+        run: |
+          docker push \
+            "${ECR_REGISTRY}/rvpay/admindashboard:${GITHUB_SHA}"

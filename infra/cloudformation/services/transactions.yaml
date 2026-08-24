@@ -245,7 +245,7 @@ Resources:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Ref DomainName
+              - !Sub "api.${DomainName}"
         - Field: path-pattern
           PathPatternConfig:
             Values:
@@ -265,7 +265,7 @@ Resources:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Ref DomainName
+              - !Sub "api.${DomainName}"
         - Field: path-pattern
           PathPatternConfig:
             Values:
