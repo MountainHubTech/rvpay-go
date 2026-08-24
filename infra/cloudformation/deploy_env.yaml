@@ -25,6 +25,14 @@ Parameters:
   TransactionsImage:
     Type: String
     Description: Container image for the Transactions service.
+  
+  AdmindashboardImageTag:
+    Type: String
+    Description: This is the docker image and tag (image:tag) that should be deployed for the admindashboard service.
+
+  AdmindashboardDomainName:
+    Type: String
+    Description: Domain name used by the admindashboard service.
 
   DomainName:
     Type: String
@@ -244,3 +252,48 @@ Resources:
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/monitoring.yaml"
         - Bucket: !Ref InfraArtifactsBucket
           ReleaseHash: !Ref InfraReleaseHash
+
+  AdmindashboardStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - VpcStack
+      - RdsStack
+      - EcsStack
+      - LoadBalancerStack
+      - ThirdPartySecretsStack
+    Properties:
+      Parameters:
+        EnvId: !Ref "EnvId"
+        VPC: !GetAtt VpcStack.Outputs.VPC
+        LogGroupName: !Ref LogGroup
+        ClusterArn: !GetAtt EcsStack.Outputs.ClusterArn
+        SubnetIds:
+          !Join [
+            ",",
+            [
+              !GetAtt VpcStack.Outputs.SubnetAPrivate,
+              !GetAtt VpcStack.Outputs.SubnetBPrivate,
+            ],
+          ]
+        DomainName: !Ref AdmindashboardDomainName
+        LoadBalancerCanonicalHostedZoneID: !GetAtt LoadBalancerStack.Outputs.LoadBalancerCanonicalHostedZoneID
+        LoadBalancerDNSName: !GetAtt LoadBalancerStack.Outputs.LoadBalancerDNSName
+        HttpsListener: !GetAtt LoadBalancerStack.Outputs.HttpsListener
+        AdmindashboardSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.AdmindashboardSecretArn"
+        WebPushSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.WebPushSecretArn"
+        Image: !Ref AdmindashboardImageTag
+        DesiredCount: 1
+      Tags:
+        - Key: EnvId
+          Value: !Ref "EnvId"
+      TemplateURL:
+        !Join [
+          "",
+          [
+            "https://s3.amazonaws.com/",
+            !Ref "InfraArtifactsBucket",
+            "/cloudformation/",
+            !Ref "InfraReleaseHash",
+            "/services/admindashboard.yaml",
+          ],
+        ]
