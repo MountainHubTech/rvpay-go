@@ -40,11 +40,11 @@ Parameters:
     Type: String
     Description: ARN of the existing HTTPS listener.
 
-  AdmindashboardSecretArn:
-    Type: String
+  # AdmindashboardSecretArn:
+  #   Type: String
 
-  WebPushSecretArn:
-    Type: String
+  # WebPushSecretArn:
+  #   Type: String
 
   ContainerPort:
     Type: Number
@@ -92,15 +92,12 @@ Resources:
             - Name: NEXT_PUBLIC_BASE_URL
               Value: !Sub "https://api.${DomainName}"
 
-            - Name: NEXT_PUBLIC_SUMSUB_CLIENT_ID
-              Value: !Ref SumsubClientId
+          # Secrets:
+          #   - Name: NEXTAUTH_SECRET
+          #     ValueFrom: !Sub "${AdmindashboardSecretArn}:nextAuthSecret::"
 
-          Secrets:
-            - Name: NEXTAUTH_SECRET
-              ValueFrom: !Sub "${AdmindashboardSecretArn}:nextAuthSecret::"
-
-            - Name: NEXT_PUBLIC_VAPID_PUBLIC_KEY
-              ValueFrom: !Sub "${WebPushSecretArn}:vapid_public_key::"
+          #   - Name: NEXT_PUBLIC_VAPID_PUBLIC_KEY
+          #     ValueFrom: !Sub "${WebPushSecretArn}:vapid_public_key::"
 
   ExecutionRole:
     Type: AWS::IAM::Role
@@ -128,9 +125,9 @@ Resources:
                   - secretsmanager:DescribeSecret
                   - secretsmanager:ListSecretVersionIds
                   - secretsmanager:ListSecrets
-                Resource:
-                  - !Ref AdmindashboardSecretArn
-                  - !Ref WebPushSecretArn
+                # Resource:
+                #   - !Ref AdmindashboardSecretArn
+                #   - !Ref WebPushSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
