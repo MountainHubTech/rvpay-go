@@ -3,8 +3,12 @@ package payouts
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/I-Frostbyte/pawapay_client"
+	pawapaypayouts "github.com/I-Frostbyte/pawapay_client/payouts"
 	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
@@ -18,8 +22,9 @@ import (
 
 // Impl implements the PayoutService gRPC server.
 type Impl struct {
-	payoutRepo repo.PayoutRepo
-	logger     zerolog.Logger
+	payoutRepo    repo.PayoutRepo
+	logger        zerolog.Logger
+	pawapayClient pawapay_client.Client
 
 	transactionsgrpc.UnimplementedPayoutServiceServer
 }
@@ -28,10 +33,12 @@ type Impl struct {
 func NewPayoutService(
 	payoutRepo repo.PayoutRepo,
 	logger zerolog.Logger,
+	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
-		payoutRepo: payoutRepo,
-		logger:     logger,
+		payoutRepo:    payoutRepo,
+		logger:        logger,
+		pawapayClient: pawapayClient,
 	}
 }
 
@@ -89,9 +96,48 @@ func (s *Impl) RequestPayout(ctx context.Context, req *transactionsgrpc.CreatePa
 
 	s.logger.Info().Str("payout_id", payout.ID.String()).Str("merchant_id", merchantID.String()).Msg("payout requested")
 
+	// Initiate the payout with PawaPay using the caller-supplied provider. The
+	// destination_reference is mapped to the PawaPay recipient phone number.
+	if err := s.initiatePawapayPayout(ctx, payout.ID, amount, currency, destinationReference, provider); err != nil {
+		s.logger.Error().Err(err).Str("payout_id", payout.ID.String()).Msg("could not initiate payout with pawapay")
+		return nil, status.Error(codes.Internal, "could not initiate payout with pawapay")
+	}
+
 	return &transactionsgrpc.CreatePayoutResponse{
 		Payout: payoutToProto(payout),
 	}, nil
+}
+
+// initiatePawapayPayout calls the PawaPay V2 Initiate Payout operation.
+// The amount is passed to the SDK as a decimal string to preserve monetary
+// precision. The payout domain exposes no dedicated phone-number field, so
+// the destination_reference is mapped to the SDK recipient phone number.
+func (s *Impl) initiatePawapayPayout(ctx context.Context, payoutID uuid.UUID, amount pgtype.Numeric, currency, phoneNumber string, provider sqlc.PaymentProvider) error {
+	pawapayProvider, err := sqlcPaymentProviderToPawapay(provider)
+	if err != nil {
+		return err
+	}
+
+	amountValue, err := amount.Float64Value()
+	if err != nil {
+		return err
+	}
+
+	req := &pawapaypayouts.InitiatePayoutRequest{
+		PayoutID: payoutID.String(),
+		Amount:   strconv.FormatFloat(amountValue.Float64, 'f', 2, 64),
+		Currency: currency,
+		Recipient: pawapaypayouts.Recipient{
+			Type: "MMO",
+			AccountDetails: pawapaypayouts.AccountDetails{
+				PhoneNumber: phoneNumber,
+				Provider:    pawapayProvider,
+			},
+		},
+	}
+
+	_, err = s.pawapayClient.Payouts.InitiatePayout(ctx, req)
+	return err
 }
 
 // GetPayout fetches a payout by id.
@@ -151,5 +197,18 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 		return sqlc.PaymentProviderORANGEMOMO, nil
 	default:
 		return "", status.Errorf(codes.InvalidArgument, "unsupported provider: %s", provider)
+	}
+}
+
+// sqlcPaymentProviderToPawapay maps a persisted payment provider to the
+// string value expected by the PawaPay V2 API.
+func sqlcPaymentProviderToPawapay(paymentProvider sqlc.PaymentProvider) (string, error) {
+	switch paymentProvider {
+	case sqlc.PaymentProviderMTNMOMO:
+		return "MTN_MOMO_CMR", nil
+	case sqlc.PaymentProviderORANGEMOMO:
+		return "ORANGE_MOMO_CMR", nil
+	default:
+		return "", fmt.Errorf("unsupported payment provider: %s", paymentProvider)
 	}
 }

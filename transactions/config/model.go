@@ -15,6 +15,9 @@ type Config struct {
 	MigrationPath string `conf:"env:MIGRATION_PATH,required"`
 	RunMigrations bool   `conf:"env:RUN_MIGRATIONS,default:true"`
 
+	APIURL string `conf:"env:PAWAPAY_API_URL"`
+	APIKey string `conf:"env:PAWAPAY_API_KEY"`
+
 	DB DBConfig
 }
 

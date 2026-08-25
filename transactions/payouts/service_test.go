@@ -3,8 +3,11 @@ package payouts
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/I-Frostbyte/pawapay_client"
 	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
@@ -40,7 +43,7 @@ func TestRequestPayoutValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-			service := NewPayoutService(payoutRepo, zerolog.Nop())
+			service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 			_, err := service.RequestPayout(context.Background(), tt.req)
 			if got := status.Code(err); got != tt.code {
@@ -57,7 +60,7 @@ func TestRequestPayoutZeroAmount(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	_, err := service.RequestPayout(context.Background(), &transactionsgrpc.CreatePayoutRequest{
 		ClientId:   uuid.New().String(),
@@ -76,7 +79,7 @@ func TestRequestPayoutMissingDestination(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	_, err := service.RequestPayout(context.Background(), &transactionsgrpc.CreatePayoutRequest{
 		ClientId:   uuid.New().String(),
@@ -92,11 +95,20 @@ func TestRequestPayoutMissingDestination(t *testing.T) {
 func TestRequestPayoutSuccess(t *testing.T) {
 	t.Parallel()
 
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/payouts" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"payoutId":"po-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
 
 	var amount pgtype.Numeric
 	if err := amount.Scan("1000.00"); err != nil {
@@ -121,6 +133,36 @@ func TestRequestPayoutSuccess(t *testing.T) {
 	}
 }
 
+func TestRequestPayoutProviderError(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"failureCode":"INTERNAL","failureMessage":"boom"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	payoutRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "XAF", sqlc.PaymentProviderMTNMOMO, "USER-123", sqlc.PayoutStatusREQUESTED, gomock.Any()).
+		Return(sqlc.Payout{ID: uuid.New()}, nil)
+
+	_, err := service.RequestPayout(context.Background(), &transactionsgrpc.CreatePayoutRequest{
+		ClientId:             uuid.New().String(),
+		MerchantId:           uuid.New().String(),
+		Amount:               &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
+		Provider:             commongrpc.Provider_PROVIDER_MTN_MOMO,
+		DestinationReference: "USER-123",
+	})
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+}
+
 func TestRequestPayoutDuplicate(t *testing.T) {
 	t.Parallel()
 
@@ -128,7 +170,7 @@ func TestRequestPayoutDuplicate(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	payoutRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.PayoutStatusREQUESTED, gomock.Any()).
 		Return(sqlc.Payout{}, repo.ErrDuplicate)
@@ -152,7 +194,7 @@ func TestGetPayout(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	payoutID := uuid.New()
 	payoutRepo.EXPECT().GetByID(gomock.Any(), payoutID).
@@ -176,7 +218,7 @@ func TestGetPayoutNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	payoutRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Payout{}, repo.ErrNotFound)
@@ -196,7 +238,7 @@ func TestGetPayoutInvalidID(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	_, err := service.GetPayout(context.Background(), &transactionsgrpc.GetPayoutRequest{
 		PayoutId: "not-a-uuid",
@@ -213,7 +255,7 @@ func TestGetPayoutRepositoryError(t *testing.T) {
 	defer ctrl.Finish()
 
 	payoutRepo := mocks.NewMockPayoutRepo(ctrl)
-	service := NewPayoutService(payoutRepo, zerolog.Nop())
+	service := NewPayoutService(payoutRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	payoutRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Payout{}, errors.New("database down"))

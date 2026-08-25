@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/I-Frostbyte/pawapay_client"
 	"github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	commondatabase "github.com/I-Frostbyte/rvpay-go/shared/database"
 	commonlogger "github.com/I-Frostbyte/rvpay-go/shared/logger"
@@ -99,11 +100,13 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	depositRepo := repo.NewDepositRepo(queries)
 	payoutRepo := repo.NewPayoutRepo(queries)
 
+	pawapayClient := pawapay_client.NewClient(config.APIURL, config.APIKey)
+
 	merchantService := merchants.NewMerchantService(merchantRepo, logger)
 	customerService := customers.NewCustomerService(customerRepo, logger)
-	depositService := deposits.NewDepositService(depositRepo, customerRepo, logger)
+	depositService := deposits.NewDepositService(depositRepo, customerRepo, logger, *pawapayClient)
 	paymentService := payments.NewPaymentService(depositRepo, logger)
-	payoutService := payouts.NewPayoutService(payoutRepo, logger)
+	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
 	healthCheck := health_check.NewHealthService(logger)
 
 	svrOpts := []grpc.ServerOption{

@@ -6,6 +6,8 @@ github.com/I-Frostbyte/pawapay_client v0.0.0-20260804084809-e34fd0f90bbc h1:FQJj
 github.com/I-Frostbyte/pawapay_client v0.0.0-20260804084809-e34fd0f90bbc/go.mod h1:jAHfBrPSzQ5EgWB5+LQM6jGGXmK1XcBwSLBOKyN7YUo=
 github.com/I-Frostbyte/pawapay_client v0.0.0-20260804143201-965ad719e682 h1:7iMYFphk+ttrZl4DEMPTcayXwG3D1SKVHxv/NNB/5Bs=
 github.com/I-Frostbyte/pawapay_client v0.0.0-20260804143201-965ad719e682/go.mod h1:jAHfBrPSzQ5EgWB5+LQM6jGGXmK1XcBwSLBOKyN7YUo=
+github.com/I-Frostbyte/pawapay_client v0.0.0-20260813104302-0841c026f9f4 h1:bl0OSr9NcgCPVhjxHmXB6Q7Q1i3DSP3/X040vILKn3o=
+github.com/I-Frostbyte/pawapay_client v0.0.0-20260813104302-0841c026f9f4/go.mod h1:S3/38y4xLVr9ZOGkuT63ZC+Tv4j2R/EK3kVVA5/0b6w=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/ardanlabs/conf/v3 v3.13.0 h1:XKQXX35fFq/jencPu19xh0a6NPMT4NrpcRP/F9x7ejY=
