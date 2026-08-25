@@ -118,7 +118,7 @@ jobs:
             --no-cache \
             -t "${ECR_REGISTRY}/rvpay/admindashboard:${GITHUB_SHA}" \
             -f admindashboard/Dockerfile \
-            .
+            admindashboard
 
       - name: Push clients image
         run: |
