@@ -26,13 +26,14 @@ Parameters:
     Type: String
     Description: Container image for the Transactions service.
   
-  AdmindashboardImageTag:
+  AdmindashboardImage:
     Type: String
-    Description: This is the docker image and tag (image:tag) that should be deployed for the admindashboard service.
+    Description: Container image for the admindashboard service.
+    # Description: This is the docker image and tag (image:tag) that should be deployed for the admindashboard service.
 
-  AdmindashboardDomainName:
-    Type: String
-    Description: Domain name used by the admindashboard service.
+  # AdmindashboardDomainName:
+  #   Type: String
+  #   Description: Domain name used by the admindashboard service.
 
   DomainName:
     Type: String
@@ -275,7 +276,7 @@ Resources:
               !GetAtt VpcStack.Outputs.SubnetBPrivate,
             ],
           ]
-        DomainName: !Ref AdmindashboardDomainName
+        DomainName: !Ref DomainName
         LoadBalancerCanonicalHostedZoneID: !GetAtt LoadBalancerStack.Outputs.LoadBalancerCanonicalHostedZoneID
         LoadBalancerDNSName: !GetAtt LoadBalancerStack.Outputs.LoadBalancerDNSName
         HttpsListener: !GetAtt LoadBalancerStack.Outputs.HttpsListener
