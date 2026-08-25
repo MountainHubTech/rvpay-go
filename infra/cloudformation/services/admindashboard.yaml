@@ -36,9 +36,9 @@ Parameters:
     Type: String
     Description: Canonical hosted zone ID of the existing load balancer.
 
-  HttpsListener:
+  LoadBalancerListenerArn:
     Type: String
-    Description: ARN of the existing HTTPS listener.
+    Description: ARN of the HTTPS listener for the RVPay load balancer.
 
   # AdmindashboardSecretArn:
   #   Type: String
@@ -193,13 +193,17 @@ Resources:
   ListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
-      ListenerArn: !Ref HttpsListener
+      ListenerArn: !Ref LoadBalancerListenerArn
       Priority: 100
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
               - !Sub "admindashboard.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TargetGroup
