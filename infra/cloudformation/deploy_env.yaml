@@ -282,7 +282,7 @@ Resources:
         HttpsListener: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         AdmindashboardSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.AdmindashboardSecretArn"
         WebPushSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.WebPushSecretArn"
-        Image: !Ref AdmindashboardImageTag
+        Image: !Ref AdmindashboardImage
         DesiredCount: 1
       Tags:
         - Key: EnvId
