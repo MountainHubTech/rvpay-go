@@ -40,8 +40,8 @@ Parameters:
     Type: String
     Description: ARN of the existing HTTPS listener.
 
-  # AdmindashboardSecretArn:
-  #   Type: String
+  AdmindashboardSecretArn:
+    Type: String
 
   # WebPushSecretArn:
   #   Type: String
@@ -125,8 +125,8 @@ Resources:
                   - secretsmanager:DescribeSecret
                   - secretsmanager:ListSecretVersionIds
                   - secretsmanager:ListSecrets
-                # Resource:
-                #   - !Ref AdmindashboardSecretArn
+                Resource:
+                  - !Ref AdmindashboardSecretArn
                 #   - !Ref WebPushSecretArn
 
   TaskRole:

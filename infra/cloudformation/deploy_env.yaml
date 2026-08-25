@@ -280,7 +280,7 @@ Resources:
         LoadBalancerCanonicalHostedZoneID: !GetAtt LoadBalancerStack.Outputs.LoadBalancerCanonicalHostedZoneID
         LoadBalancerDNSName: !GetAtt LoadBalancerStack.Outputs.LoadBalancerDNSName
         HttpsListener: !GetAtt LoadBalancerStack.Outputs.HttpsListener
-        # AdmindashboardSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.AdmindashboardSecretArn"
+        AdmindashboardSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.AdmindashboardSecretArn"
         # WebPushSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.WebPushSecretArn"
         Image: !Ref AdmindashboardImage
         DesiredCount: 1
