@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/I-Frostbyte/pawapay_client"
-	model "github.com/I-Frostbyte/pawapay_client/config"
+	pawapaydeposits "github.com/I-Frostbyte/pawapay_client/deposits"
 	"github.com/I-Frostbyte/rvpay-go/deposits/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/deposits/db/sqlc"
 	depositsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/depositsgrpc"
@@ -115,20 +116,20 @@ func (d *Impl) InitiateDeposit(ctx context.Context, req *depositsgrpc.CreateDepo
 		return nil, status.Errorf(codes.Internal, "could not parse sqlc type to string (payment provider): %v", err)
 	}
 
-	pawapayDeposit := model.Deposit{
+	// The amount is passed to the SDK as a decimal string to preserve monetary
+	// precision, matching the pawaPay V2 API contract.
+	_, err = pawapay.Deposits.InitiateDeposit(ctx, &pawapaydeposits.InitiateDepositRequest{
 		DepositID: newDeposit.ID.String(),
-		Amount:    amount.Float64,
+		Amount:    strconv.FormatFloat(amount.Float64, 'f', 2, 64),
 		Currency:  newDeposit.Currency,
-		Payer: model.Payer{
+		Payer: pawapaydeposits.Payer{
 			Type: payerType,
-			AccountDetails: model.AccountDetails{
+			AccountDetails: pawapaydeposits.AccountDetails{
 				PhoneNumber: newDeposit.PayerPhoneNumber,
 				Provider:    paymentProvider,
 			},
 		},
-	}
-
-	_, err = pawapay.DepositsService.InititateDeposit(&pawapayDeposit)
+	})
 	if err != nil {
 		return nil, status.Errorf(codes.Internal, "Could not initiate deposit with pawapay client: %v", err)
 	}
