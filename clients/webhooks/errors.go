@@ -27,6 +27,8 @@ var (
 	ErrIntegrationNotActive = status.Error(codes.FailedPrecondition, "integration is not active")
 	// ErrPlatformNotFound is returned when a platform does not exist.
 	ErrPlatformNotFound = status.Error(codes.NotFound, "platform not found")
+	// ErrClientNotFound is returned when a client does not exist.
+	ErrClientNotFound = status.Error(codes.NotFound, "client not found")
 )
 
 // translateError converts repository errors to business errors.

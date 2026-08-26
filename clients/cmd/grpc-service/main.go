@@ -147,7 +147,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 			QueryURL:    cfg.HighLevel.QueryURL,
 		},
 	)
-	webhookService := webhooks.NewService(integrationRepo, webhookSubscriptionRepo, webhookEventRepo, platformRepo, paymentProviderConfigRepo, providerRegistry, webhookDispatcher, logger)
+	webhookService := webhooks.NewService(integrationRepo, clientRepo, webhookSubscriptionRepo, webhookEventRepo, platformRepo, paymentProviderConfigRepo, providerRegistry, webhookDispatcher, logger)
 	oauthHandler := clientshttp.NewOAuthHandler(oauthService, logger)
 	webhookHandler := clientshttp.NewWebhookHandler(webhookService, logger)
 
