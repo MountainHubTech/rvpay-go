@@ -261,3 +261,43 @@ PostgreSQL
   `make generate`; never hand-edit `db/sqlc` output.
 - **Docker build** — the build context is the repository root:
   `docker build -f transactions/Dockerfile ..` from `transactions/`.
+
+## PawaPay Integration
+
+The Transactions service initiates transactions with the PawaPay V2 API through
+the `github.com/I-Frostbyte/pawapay_client` SDK.
+
+### Environment
+
+Only two PawaPay variables are used. Add them to `.env` (see `.env.example`):
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `PAWAPAY_API_URL` | No | PawaPay V2 base URL (e.g. `https://api.sandbox.pawapay.io`) |
+| `PAWAPAY_API_KEY` | No | PawaPay API key sent as `Authorization: Bearer <key>` |
+
+The client is constructed in `cmd/grpc-service/main.go` via
+`pawapay_client.NewClient(config.APIURL, config.APIKey)` and injected into the
+deposit and payout services.
+
+### Integrated methods
+
+Only the current PawaPay initiation operations are wired in:
+
+- **Deposits** — `Deposits.InitiateDeposit` is called after the deposit is
+  persisted (`deposits/service.go`). The SDK `Payer.Type` is fixed to `MMO`
+  and the provider is mapped as `MTN_MOMO` → `MTN_MOMO_CMR`,
+  `ORANGE_MOMO` → `ORANGE_MOMO_CMR`. The amount is sent as a decimal string.
+- **Payouts** — `Payouts.InitiatePayout` is called after the payout is
+  persisted (`payouts/service.go`). The SDK `Recipient.Type` is fixed to `MMO`
+  with the same provider mapping.
+
+Provider failures are surfaced as gRPC `INTERNAL` errors. No callbacks,
+reconciliation, status polling, retries, or webhooks are implemented.
+
+### Assumption
+
+The payout domain/proto has no dedicated phone-number field; the PawaPay SDK
+requires a recipient phone number. The payout `destination_reference` is mapped
+to `Recipient.AccountDetails.PhoneNumber`. Confirm that callers always populate
+`destination_reference` with a valid mobile-money phone number.

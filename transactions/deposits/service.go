@@ -3,8 +3,12 @@ package deposits
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/I-Frostbyte/pawapay_client"
+	pawapaydeposits "github.com/I-Frostbyte/pawapay_client/deposits"
 	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
@@ -18,9 +22,10 @@ import (
 
 // Impl implements the DepositService gRPC server.
 type Impl struct {
-	depositRepo  repo.DepositRepo
-	customerRepo repo.CustomerRepo
-	logger       zerolog.Logger
+	depositRepo   repo.DepositRepo
+	customerRepo  repo.CustomerRepo
+	logger        zerolog.Logger
+	pawapayClient pawapay_client.Client
 
 	transactionsgrpc.UnimplementedDepositServiceServer
 }
@@ -30,11 +35,13 @@ func NewDepositService(
 	depositRepo repo.DepositRepo,
 	customerRepo repo.CustomerRepo,
 	logger zerolog.Logger,
+	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
-		depositRepo:  depositRepo,
-		customerRepo: customerRepo,
-		logger:       logger,
+		depositRepo:   depositRepo,
+		customerRepo:  customerRepo,
+		logger:        logger,
+		pawapayClient: pawapayClient,
 	}
 }
 
@@ -114,9 +121,48 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 
 	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID.String()).Msg("deposit initiated")
 
+	// Initiate the deposit with PawaPay using the caller-supplied provider and
+	// payer phone number. The deposit was already persisted in the INITIATED
+	// lifecycle state; the PawaPay request is the external initiation step.
+	if err := s.initiatePawapayDeposit(ctx, deposit.ID, amount, currency, phoneNumber, provider); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not initiate deposit with pawapay")
+		return nil, status.Error(codes.Internal, "could not initiate deposit with pawapay")
+	}
+
 	return &transactionsgrpc.CreateDepositResponse{
 		Deposit: depositToProto(deposit),
 	}, nil
+}
+
+// initiatePawapayDeposit calls the PawaPay V2 Initiate Deposit operation.
+// The amount is passed to the SDK as a decimal string to preserve monetary
+// precision.
+func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, amount pgtype.Numeric, currency, phoneNumber string, provider sqlc.PaymentProvider) error {
+	pawapayProvider, err := sqlcPaymentProviderToPawapay(provider)
+	if err != nil {
+		return err
+	}
+
+	amountValue, err := amount.Float64Value()
+	if err != nil {
+		return err
+	}
+
+	req := &pawapaydeposits.InitiateDepositRequest{
+		DepositID: depositID.String(),
+		Amount:    strconv.FormatFloat(amountValue.Float64, 'f', 2, 64),
+		Currency:  currency,
+		Payer: pawapaydeposits.Payer{
+			Type: "MMO",
+			AccountDetails: pawapaydeposits.AccountDetails{
+				PhoneNumber: phoneNumber,
+				Provider:    pawapayProvider,
+			},
+		},
+	}
+
+	_, err = s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
+	return err
 }
 
 // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
@@ -216,5 +262,18 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 		return sqlc.PaymentProviderORANGEMOMO, nil
 	default:
 		return "", status.Errorf(codes.InvalidArgument, "unsupported provider: %s", provider)
+	}
+}
+
+// sqlcPaymentProviderToPawapay maps a persisted payment provider to the
+// string value expected by the PawaPay V2 API.
+func sqlcPaymentProviderToPawapay(paymentProvider sqlc.PaymentProvider) (string, error) {
+	switch paymentProvider {
+	case sqlc.PaymentProviderMTNMOMO:
+		return "MTN_MOMO_CMR", nil
+	case sqlc.PaymentProviderORANGEMOMO:
+		return "ORANGE_MOMO_CMR", nil
+	default:
+		return "", fmt.Errorf("unsupported payment provider: %s", paymentProvider)
 	}
 }
