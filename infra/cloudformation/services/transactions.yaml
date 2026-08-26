@@ -175,6 +175,7 @@ Resources:
                 Resource:
                   - !Ref AppDatabaseSecret
                   - !Ref DbAdminSecretArn
+                  - !Ref PawapaySecretArn            
 
   TaskRole:
     Type: AWS::IAM::Role
