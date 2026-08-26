@@ -260,9 +260,9 @@ Resources:
         - Field: path-pattern
           PathPatternConfig:
             Values:
-              - "/v1/public/merchants/*"
-              - "/v1/public/customers/*"
-              - "/v1/public/deposits/*"
+              - "/v1/public/merchants*"
+              - "/v1/public/customers*"
+              - "/v1/public/deposits*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TransactionsTargetGroup
@@ -280,9 +280,9 @@ Resources:
         - Field: path-pattern
           PathPatternConfig:
             Values:
-              - "/v1/public/payments/*"
-              - "/v1/public/payouts/*"
-              - "/v1/public/transactions/*"
+              - "/v1/public/payments*"
+              - "/v1/public/payouts*"
+              - "/v1/public/transactions*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TransactionsTargetGroup

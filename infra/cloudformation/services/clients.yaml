@@ -323,9 +323,9 @@ Resources:
         - Field: path-pattern
           PathPatternConfig:
             Values:
-              - "/v1/public/clients/*"
-              - "/v1/public/integrations/*"
-              - "/v1/public/platforms/*"
+              - "/v1/public/clients*"
+              - "/v1/public/integrations*"
+              - "/v1/public/platforms*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref ClientsTargetGroup
