@@ -16,6 +16,7 @@ import (
 // Service manages webhook lifecycle for provider integrations.
 type Service struct {
 	integrationsRepo          repo.IntegrationRepo
+	clientsRepo               repo.ClientRepo
 	webhookRepo               repo.WebhookSubscriptionRepo
 	webhookEventRepo          repo.WebhookEventRepo
 	platformsRepo             repo.PlatformRepo
@@ -29,8 +30,14 @@ type Service struct {
 // webhook event dispatcher used to process normalized events (e.g. the
 // HighLevel INSTALL/UNINSTALL lifecycle). It may be nil; when nil, events are
 // persisted but not dispatched.
+//
+// clientsRepo and platformsRepo are used by the HighLevel INSTALL flow to
+// provision the RVPay tenant (client + integration) when the GHL location is
+// not yet mapped. platformsRepo must resolve the already-existing HighLevel
+// platform; this service never creates platform records.
 func NewService(
 	integrationsRepo repo.IntegrationRepo,
+	clientsRepo repo.ClientRepo,
 	webhookRepo repo.WebhookSubscriptionRepo,
 	webhookEventRepo repo.WebhookEventRepo,
 	platformsRepo repo.PlatformRepo,
@@ -41,6 +48,7 @@ func NewService(
 ) *Service {
 	return &Service{
 		integrationsRepo:          integrationsRepo,
+		clientsRepo:               clientsRepo,
 		webhookRepo:               webhookRepo,
 		webhookEventRepo:          webhookEventRepo,
 		platformsRepo:             platformsRepo,
@@ -190,24 +198,16 @@ func (s *Service) ProcessWebhook(ctx context.Context, providerID string, headers
 	isInstall := providerID == "highlevel" && (event.EventType == "INSTALL" || event.EventType == "integration.installed")
 	if providerID == "highlevel" && event.LocationID != "" {
 		if isInstall {
-			// First-install flow: the integration is pre-provisioned with
-			// external_account_id = GHL locationId. Resolve it directly so the
-			// INSTALL handler can create the payment_provider_configs record.
-			integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, event.LocationID)
-			if err == repo.ErrNotFound {
-				// Fall back to the config mapping (integration already active).
-				config, configErr := s.paymentProviderConfigRepo.GetByLocationID(ctx, event.LocationID)
-				if configErr == repo.ErrNotFound {
-					return ErrIntegrationNotFound
-				}
-				if configErr != nil {
-					return translateError(configErr)
-				}
-				integrationID = config.IntegrationID
-			} else if err != nil {
-				return translateError(err)
-			} else {
-				integrationID = integration.ID
+			// First-install flow: resolve the tenant (client + integration) for
+			// this GHL sub-account. The pre-provisioned integration mapping
+			// (integrations.external_account_id = GHL locationId) is
+			// authoritative; fall back to the payment_provider_configs mapping;
+			// if neither exists, provision the tenant so the INSTALL flow can
+			// proceed. This is idempotent: a repeated INSTALL reuses existing
+			// records.
+			integrationID, err = s.resolveOrProvisionTenant(ctx, event.LocationID)
+			if err != nil {
+				return err
 			}
 		} else {
 			config, err := s.paymentProviderConfigRepo.GetByLocationID(ctx, event.LocationID)
@@ -290,4 +290,106 @@ func (s *Service) ProcessWebhook(ctx context.Context, providerID string, headers
 	s.logger.Info().Str("provider", providerID).Str("event_type", event.EventType).Str("event_id", event.ProviderEventID).Msg("Webhook processed successfully")
 
 	return nil
+}
+
+// resolveOrProvisionTenant resolves the RVPay integration for a HighLevel
+// INSTALL location. Resolution order:
+//  1. integrations.external_account_id = locationId (authoritative
+//     provisioning mapping established by a prior INSTALL).
+//  2. payment_provider_configs.location_id = locationId (integration already
+//     active with a registered payment provider config).
+//  3. Otherwise, provision the tenant: reuse the client for this GHL
+//     sub-account (create when missing) and create the integration mapped to
+//     the locationId. Only the INSTALL event triggers provisioning.
+//
+// It never creates or modifies platform records: the HighLevel platform is
+// resolved by slug and must already exist.
+func (s *Service) resolveOrProvisionTenant(ctx context.Context, locationID string) (uuid.UUID, error) {
+	// Authoritative provisioning mapping.
+	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, locationID)
+	if err == nil {
+		return integration.ID, nil
+	}
+	if err != repo.ErrNotFound {
+		return uuid.Nil, translateError(err)
+	}
+
+	// Fall back to the payment provider config mapping.
+	config, configErr := s.paymentProviderConfigRepo.GetByLocationID(ctx, locationID)
+	if configErr == nil {
+		return config.IntegrationID, nil
+	}
+	if configErr != repo.ErrNotFound {
+		return uuid.Nil, translateError(configErr)
+	}
+
+	return s.provisionTenant(ctx, locationID)
+}
+
+// provisionTenant creates the RVPay client and integration for a HighLevel
+// sub-account identified by its locationId, if they do not already exist. It
+// is idempotent: an existing client/integration is reused rather than
+// duplicated.
+func (s *Service) provisionTenant(ctx context.Context, locationID string) (uuid.UUID, error) {
+	if s.clientsRepo == nil {
+		return uuid.Nil, ErrIntegrationNotFound
+	}
+
+	// Resolve the existing HighLevel platform by slug. Never create/modify
+	// platform records.
+	platform, err := s.platformsRepo.GetBySlug(ctx, "highlevel")
+	if err == repo.ErrNotFound {
+		return uuid.Nil, ErrPlatformNotFound
+	}
+	if err != nil {
+		return uuid.Nil, translateError(err)
+	}
+
+	// Derive a deterministic tenant client name from the GHL sub-account so a
+	// repeated INSTALL reuses the same client.
+	clientName := "highlevel-" + locationID
+
+	// Reuse the client when it already exists; otherwise create it ACTIVE so
+	// the later OAuth callback can reuse it.
+	client, err := s.clientsRepo.GetByName(ctx, clientName)
+	if err == repo.ErrNotFound {
+		client, err = s.clientsRepo.Create(ctx, clientName, sqlc.ClientStatusACTIVE)
+	}
+	if err == repo.ErrDuplicate {
+		// A concurrent INSTALL created the client; reuse it.
+		client, err = s.clientsRepo.GetByName(ctx, clientName)
+	}
+	if err != nil {
+		if err == repo.ErrNotFound {
+			return uuid.Nil, ErrClientNotFound
+		}
+		return uuid.Nil, translateError(err)
+	}
+
+	// Reuse the integration when it already exists (idempotency); otherwise
+	// create it mapped to the locationId with status CREATED, which the OAuth
+	// callback activates later.
+	existing, existingErr := s.integrationsRepo.GetByClientAndPlatform(ctx, client.ID, platform.ID)
+	if existingErr == nil {
+		return existing.ID, nil
+	}
+	if existingErr != repo.ErrNotFound {
+		return uuid.Nil, translateError(existingErr)
+	}
+
+	integration, err := s.integrationsRepo.Create(ctx, client.ID, platform.ID, locationID, sqlc.IntegrationStatusCREATED)
+	if err == repo.ErrDuplicate {
+		// A concurrent INSTALL created the integration; reuse it.
+		integration, err = s.integrationsRepo.GetByExternalAccountID(ctx, locationID)
+	}
+	if err != nil {
+		if err == repo.ErrNotFound {
+			return uuid.Nil, ErrIntegrationNotFound
+		}
+		return uuid.Nil, translateError(err)
+	}
+
+	s.logger.Info().Str("location_id", locationID).Str("client_id", client.ID.String()).Str("integration_id", integration.ID.String()).Msg("HighLevel INSTALL provisioned client and integration")
+
+	return integration.ID, nil
 }

@@ -262,7 +262,10 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		return nil, translateError(err)
 	}
 
-	return s.ProcessCallback(ctx, integration.ClientID, integration.PlatformID, code, state)
+	// Continue with the already-exchanged token response. The authorization
+	// code was exchanged exactly once above; it must not be exchanged again by
+	// ProcessCallback.
+	return s.processCallbackWithToken(ctx, integration.ClientID, integration.PlatformID, provider, tokenResp)
 }
 
 // CallbackResult represents the result of an OAuth callback.
@@ -328,10 +331,44 @@ func (s *Service) ProcessCallback(ctx context.Context, clientID, platformID uuid
 		return nil, ErrClientInactive
 	}
 
+	// Exchange the authorization code exactly once. Downstream processing
+	// consumes the already-exchanged token response and never re-exchanges the
+	// raw authorization code, so a flow that already exchanged the code (e.g.
+	// the stateless HighLevel Marketplace callback) cannot cause a second
+	// exchange.
 	tokenResp, err := provider.OAuthProvider().ExchangeCode(ctx, code, s.redirectURI)
 	if err != nil {
 		s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth token exchange failed")
 		return nil, ErrTokenExchangeFailed
+	}
+
+	return s.processCallbackWithToken(ctx, clientID, platformID, provider, tokenResp)
+}
+
+// processCallbackWithToken continues an OAuth callback after the authorization
+// code has been exchanged once for a token response. Both the state-based flow
+// and the stateless HighLevel Marketplace flow converge here with the token
+// response from their single exchange, so the authorization code is never
+// exchanged twice.
+//
+// It re-validates the active integration's client, resolves the provider user
+// info, reuses (CREATED) or creates the integration, persists the OAuth token,
+// and triggers the HighLevel Custom Payment Provider registration lifecycle.
+func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platformID uuid.UUID, provider providers.Provider, tokenResp *providers.TokenResponse) (*CallbackResult, error) {
+	// Re-validate the client for the stateless Marketplace flow, where the tenant
+	// may have been provisioned by the INSTALL webhook earlier. The state-based
+	// flow already validated the client before the exchange, so this is a
+	// harmless redundant check that keeps both paths converging here correct.
+	client, err := s.clientsRepo.GetByID(ctx, clientID)
+	if err == repo.ErrNotFound {
+		return nil, ErrClientNotFound
+	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	if client.Status != sqlc.ClientStatusACTIVE {
+		return nil, ErrClientInactive
 	}
 
 	providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)

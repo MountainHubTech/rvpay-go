@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -898,6 +899,98 @@ func TestHandleCallbackNoState_ResolvesByExternalAccountID(t *testing.T) {
 	}
 	if len(configRepo.configs) != 1 {
 		t.Fatalf("expected 1 provider config, got %d", len(configRepo.configs))
+	}
+}
+
+func TestHandleCallbackNoState_ExchangesCodeExactlyOnce(t *testing.T) {
+	t.Parallel()
+
+	// The stateless Marketplace callback must exchange the authorization code
+	// exactly once. The exchange happens in HandleCallback, then the
+	// already-exchanged token response is passed downstream; ProcessCallback
+	// must NOT exchange it a second time.
+	var tokenExchanges int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			atomic.AddInt32(&tokenExchanges, 1)
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"accessToken":"test-access-token",
+				"refreshToken":"test-refresh-token",
+				"expiresIn":3600,
+				"tokenType":"Bearer",
+				"scope":"read write",
+				"locationId":"loc-123"
+			}`))
+		case "/v1/users/me":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"loc-123"}`))
+		default:
+			// Custom Payment Provider endpoints succeed.
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"success":true}`))
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	paymentClient := providers.NewHighLevelPaymentProviderClient(srv.URL, nil)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProviderWithURLs(
+		"test-client",
+		"test-secret",
+		"https://example.com/callback",
+		"",
+		srv.URL+"/oauth/authorize",
+		srv.URL+"/oauth/token",
+		srv.URL+"/v1/users/me",
+		paymentClient,
+	))
+
+	integrationRepo := newMockIntegrationRepo()
+	tokenRepo := newMockOAuthTokenRepo()
+	clientRepo := newMockClientRepo()
+	platformRepo := newMockPlatformRepo()
+	stateRepo := newMockOAuthStateRepo()
+	configRepo := newMockPaymentProviderConfigRepo()
+
+	clientID := uuid.New()
+	platformID := uuid.New()
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+	// The integration established by INSTALL maps to the GHL locationId.
+	preProvisioned, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusCREATED)
+	if err != nil {
+		t.Fatalf("create pre-provisioned integration: %v", err)
+	}
+
+	svc := NewService(
+		integrationRepo,
+		tokenRepo,
+		clientRepo,
+		platformRepo,
+		stateRepo,
+		configRepo,
+		registry,
+		"https://example.com/callback",
+		ProviderConfigSettings{},
+		zerolog.Nop(),
+	)
+
+	result, err := svc.HandleCallback(context.Background(), "test-code", "")
+	if err != nil {
+		t.Fatalf("HandleCallback failed: %v", err)
+	}
+
+	if got := atomic.LoadInt32(&tokenExchanges); got != 1 {
+		t.Fatalf("authorization code exchanged %d times, want exactly 1", got)
+	}
+	if result.IntegrationID != preProvisioned.ID {
+		t.Fatalf("IntegrationID = %v, want %v (pre-provisioned)", result.IntegrationID, preProvisioned.ID)
+	}
+	// Exactly one token must be persisted for the active integration.
+	if len(tokenRepo.tokens) != 1 {
+		t.Fatalf("expected 1 persisted token, got %d", len(tokenRepo.tokens))
 	}
 }
 

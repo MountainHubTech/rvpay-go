@@ -234,6 +234,7 @@ func newTestWebhookHandler(t *testing.T, publicKeyPEM string) (*WebhookHandler, 
 
 	svc := webhooks.NewService(
 		newTestWebhookIntegrationRepo(),
+		newTestOAuthClientRepo(),
 		subRepo,
 		eventRepo,
 		newTestWebhookPlatformRepo(),

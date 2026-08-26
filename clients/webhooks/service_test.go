@@ -62,7 +62,21 @@ func newMockWebhookIntegrationRepo() *mockWebhookIntegrationRepo {
 }
 
 func (m *mockWebhookIntegrationRepo) Create(ctx context.Context, clientID, platformID uuid.UUID, externalAccountID string, status sqlc.IntegrationStatus) (sqlc.Integration, error) {
-	return sqlc.Integration{}, nil
+	// Simulate the unique (client_id, platform_id) constraint.
+	for _, i := range m.integrations {
+		if i.ClientID == clientID && i.PlatformID == platformID {
+			return sqlc.Integration{}, repo.ErrDuplicate
+		}
+	}
+	integration := sqlc.Integration{
+		ID:                uuid.New(),
+		ClientID:          clientID,
+		PlatformID:        platformID,
+		ExternalAccountID: externalAccountID,
+		Status:            status,
+	}
+	m.integrations[integration.ID.String()] = integration
+	return integration, nil
 }
 
 func (m *mockWebhookIntegrationRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Integration, error) {
@@ -74,6 +88,11 @@ func (m *mockWebhookIntegrationRepo) GetByID(ctx context.Context, id uuid.UUID) 
 }
 
 func (m *mockWebhookIntegrationRepo) GetByClientAndPlatform(ctx context.Context, clientID, platformID uuid.UUID) (sqlc.Integration, error) {
+	for _, i := range m.integrations {
+		if i.ClientID == clientID && i.PlatformID == platformID {
+			return i, nil
+		}
+	}
 	return sqlc.Integration{}, repo.ErrNotFound
 }
 
@@ -177,6 +196,88 @@ func (m *mockPaymentProviderConfigRepo) Delete(ctx context.Context, integrationI
 	return nil
 }
 
+// mockWebhookClientRepo is a minimal ClientRepo test double for the INSTALL
+// tenant-provisioning flow.
+type mockWebhookClientRepo struct {
+	clients map[string]sqlc.Client
+}
+
+func newMockWebhookClientRepo() *mockWebhookClientRepo {
+	cr := &mockWebhookClientRepo{
+		clients: make(map[string]sqlc.Client),
+	}
+	return cr
+}
+
+func (m *mockWebhookClientRepo) Create(ctx context.Context, name string, status sqlc.ClientStatus) (sqlc.Client, error) {
+	for _, c := range m.clients {
+		if c.ClientName == name {
+			// Simulate the unique-name collision; return the existing record so
+			// callers can reuse it idempotently.
+			return c, repo.ErrDuplicate
+		}
+	}
+	client := sqlc.Client{
+		ID:         uuid.New(),
+		ClientName: name,
+		Status:     status,
+	}
+	m.clients[client.ID.String()] = client
+	return client, nil
+}
+
+func (m *mockWebhookClientRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Client, error) {
+	client, ok := m.clients[id.String()]
+	if !ok {
+		return sqlc.Client{}, repo.ErrNotFound
+	}
+	return client, nil
+}
+
+func (m *mockWebhookClientRepo) GetByName(ctx context.Context, name string) (sqlc.Client, error) {
+	for _, c := range m.clients {
+		if c.ClientName == name {
+			return c, nil
+		}
+	}
+	return sqlc.Client{}, repo.ErrNotFound
+}
+
+func (m *mockWebhookClientRepo) List(ctx context.Context, limit, offset int32) ([]sqlc.Client, error) {
+	return nil, nil
+}
+
+func (m *mockWebhookClientRepo) ListActive(ctx context.Context, limit, offset int32) ([]sqlc.Client, error) {
+	return nil, nil
+}
+
+func (m *mockWebhookClientRepo) Count(ctx context.Context) (int64, error) {
+	return int64(len(m.clients)), nil
+}
+
+func (m *mockWebhookClientRepo) ExistsByID(ctx context.Context, id uuid.UUID) (bool, error) {
+	_, ok := m.clients[id.String()]
+	return ok, nil
+}
+
+func (m *mockWebhookClientRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.ClientStatus) (sqlc.Client, error) {
+	client, ok := m.clients[id.String()]
+	if !ok {
+		return sqlc.Client{}, repo.ErrNotFound
+	}
+	client.Status = status
+	m.clients[id.String()] = client
+	return client, nil
+}
+
+func (m *mockWebhookClientRepo) Delete(ctx context.Context, id uuid.UUID) error {
+	if _, ok := m.clients[id.String()]; !ok {
+		return repo.ErrNotFound
+	}
+	delete(m.clients, id.String())
+	return nil
+}
+
 // mockWebhookPlatformRepo is a minimal PlatformRepo test double
 type mockWebhookPlatformRepo struct {
 	platforms map[string]sqlc.Platform
@@ -205,6 +306,11 @@ func (m *mockWebhookPlatformRepo) GetByName(ctx context.Context, name string) (s
 }
 
 func (m *mockWebhookPlatformRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Platform, error) {
+	for _, p := range m.platforms {
+		if p.Slug == slug {
+			return p, nil
+		}
+	}
 	return sqlc.Platform{}, repo.ErrNotFound
 }
 
@@ -359,6 +465,7 @@ func TestProcessWebhookUnknownProvider(t *testing.T) {
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -382,6 +489,7 @@ func TestProcessWebhookInvalidSignature(t *testing.T) {
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -406,6 +514,7 @@ func TestRegisterWebhookIntegrationNotFound(t *testing.T) {
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -429,6 +538,7 @@ func TestUnregisterWebhookNotFound(t *testing.T) {
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -475,6 +585,7 @@ func newTestWebhookService(t *testing.T, dispatcher providers.WebhookDispatcher)
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		webhookRepo,
 		eventRepo,
 		newMockWebhookPlatformRepo(),
@@ -553,6 +664,7 @@ func TestProcessWebhook_InstallCreatesConfig(t *testing.T) {
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -616,6 +728,7 @@ func TestProcessWebhook_InstallReusesExistingConfig(t *testing.T) {
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -676,6 +789,7 @@ func TestProcessWebhook_InstallMultipleClientsSelectsCorrect(t *testing.T) {
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -750,6 +864,7 @@ func TestProcessWebhook_InstallMissingMappingFailsSafely(t *testing.T) {
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -792,6 +907,7 @@ func TestProcessWebhook_NonInstallRequiresConfig(t *testing.T) {
 
 	svc := NewService(
 		integrationRepo,
+		newMockWebhookClientRepo(),
 		newMockWebhookRepo(),
 		newMockWebhookEventRepo(),
 		newMockWebhookPlatformRepo(),
@@ -815,6 +931,140 @@ func TestProcessWebhook_NonInstallRequiresConfig(t *testing.T) {
 	// The dispatcher must NOT have been called.
 	if len(dispatcher.events) != 0 {
 		t.Fatalf("expected 0 dispatched events, got %d", len(dispatcher.events))
+	}
+}
+
+func TestProcessWebhook_InstallProvisionsTenantAndConfig(t *testing.T) {
+	t.Parallel()
+
+	// A fresh INSTALL for an unmapped GHL location must provision the RVPay
+	// tenant (client + integration) and then create the payment provider
+	// config. No platform records are created; the HighLevel platform already
+	// exists and is resolved by slug.
+	integrationRepo := newMockWebhookIntegrationRepo()
+	clientRepo := newMockWebhookClientRepo()
+	configRepo := newMockPaymentProviderConfigRepo()
+	platformRepo := newMockWebhookPlatformRepo()
+
+	platformID := uuid.New()
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+
+	dispatcher := providers.NewHighLevelWebhookDispatcher(
+		&testWebhookLogger{},
+		integrationRepo,
+		configRepo,
+		providers.ProviderConfigSettings{Name: "RVPay", QueryURL: "https://api.example.com/query", PaymentsURL: "https://checkout.example.com/pay"},
+	)
+
+	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+
+	svc := NewService(
+		integrationRepo,
+		clientRepo,
+		newMockWebhookRepo(),
+		newMockWebhookEventRepo(),
+		platformRepo,
+		configRepo,
+		registry,
+		dispatcher,
+		zerolog.Nop(),
+	)
+
+	body := []byte(`{"type":"INSTALL","appId":"app-1","locationId":"GHL_LOC_NEW","companyId":"company-1","timestamp":"2026-08-17T09:06:59.366Z","webhookId":"evt-install-new"}`)
+	headers := map[string]string{
+		"X-GHL-Signature": signWebhookBody(t, priv, body),
+	}
+
+	err := svc.ProcessWebhook(context.Background(), "highlevel", headers, body)
+	if err != nil {
+		t.Fatalf("ProcessWebhook failed: %v", err)
+	}
+
+	// A client and an integration must have been provisioned.
+	if len(clientRepo.clients) != 1 {
+		t.Fatalf("expected 1 provisioned client, got %d", len(clientRepo.clients))
+	}
+	if len(integrationRepo.integrations) != 1 {
+		t.Fatalf("expected 1 provisioned integration, got %d", len(integrationRepo.integrations))
+	}
+	// The integration must map to the GHL locationId via external_account_id.
+	for _, i := range integrationRepo.integrations {
+		if i.ExternalAccountID != "GHL_LOC_NEW" {
+			t.Fatalf("integration external_account_id = %q, want GHL_LOC_NEW", i.ExternalAccountID)
+		}
+	}
+	// The payment provider config must be created for the provisioned integration.
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("expected 1 provider config, got %d", len(configRepo.configs))
+	}
+}
+
+func TestProcessWebhook_InstallRepeatedReusesRecords(t *testing.T) {
+	t.Parallel()
+
+	// A second INSTALL for the same GHL location must reuse the existing
+	// client, integration, and payment provider config rather than duplicating
+	// them.
+	integrationRepo := newMockWebhookIntegrationRepo()
+	clientRepo := newMockWebhookClientRepo()
+	configRepo := newMockPaymentProviderConfigRepo()
+	platformRepo := newMockWebhookPlatformRepo()
+
+	platformID := uuid.New()
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+
+	dispatcher := providers.NewHighLevelWebhookDispatcher(
+		&testWebhookLogger{},
+		integrationRepo,
+		configRepo,
+		providers.ProviderConfigSettings{Name: "RVPay", QueryURL: "https://api.example.com/query", PaymentsURL: "https://checkout.example.com/pay"},
+	)
+
+	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+
+	svc := NewService(
+		integrationRepo,
+		clientRepo,
+		newMockWebhookRepo(),
+		newMockWebhookEventRepo(),
+		platformRepo,
+		configRepo,
+		registry,
+		dispatcher,
+		zerolog.Nop(),
+	)
+
+	// First INSTALL provisions the tenant.
+	body := []byte(`{"type":"INSTALL","appId":"app-1","locationId":"GHL_LOC_A","companyId":"company-1","timestamp":"2026-08-17T09:06:59.366Z","webhookId":"evt-install-1"}`)
+	headers := map[string]string{
+		"X-GHL-Signature": signWebhookBody(t, priv, body),
+	}
+	if err := svc.ProcessWebhook(context.Background(), "highlevel", headers, body); err != nil {
+		t.Fatalf("first INSTALL failed: %v", err)
+	}
+
+	// A fresh (non-duplicate webhookId) INSTALL for the same location reuses
+	// the tenant records.
+	body2 := []byte(`{"type":"INSTALL","appId":"app-1","locationId":"GHL_LOC_A","companyId":"company-1","timestamp":"2026-08-17T09:07:01.000Z","webhookId":"evt-install-2"}`)
+	headers2 := map[string]string{
+		"X-GHL-Signature": signWebhookBody(t, priv, body2),
+	}
+	if err := svc.ProcessWebhook(context.Background(), "highlevel", headers2, body2); err != nil {
+		t.Fatalf("second INSTALL failed: %v", err)
+	}
+
+	if len(clientRepo.clients) != 1 {
+		t.Fatalf("expected 1 client (reused), got %d", len(clientRepo.clients))
+	}
+	if len(integrationRepo.integrations) != 1 {
+		t.Fatalf("expected 1 integration (reused), got %d", len(integrationRepo.integrations))
+	}
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("expected 1 provider config (reused), got %d", len(configRepo.configs))
 	}
 }
 
