@@ -232,6 +232,7 @@ Resources:
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
+        PawapaySecretArn: !GetAtt ThirdPartySecretsStack.Outputs.PawapaySecretArn
         DomainName: !Ref DomainName
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/transactions.yaml"

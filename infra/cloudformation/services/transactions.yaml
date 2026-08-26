@@ -51,6 +51,10 @@ Parameters:
   DomainName:
     Type: String
 
+  PawapaySecretArn:
+    Type: String
+    Description: ARN of the PawaPay Secrets Manager secret.
+
 Resources:
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
@@ -125,6 +129,12 @@ Resources:
 
             - Name: DB_PASSWORD
               ValueFrom: !Sub "${AppDatabaseSecret}:password::"
+            
+            - Name: PAWAPAY_API_URL
+              ValueFrom: !Sub "${PawapaySecretArn}:PAWAPAY_API_URL::"
+
+            - Name: PAWAPAY_API_KEY
+              ValueFrom: !Sub "${PawapaySecretArn}:PAWAPAY_API_KEY::"
 
   AppDatabase:
     Type: Custom::PgDatabase
