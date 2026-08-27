@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -34,6 +35,7 @@ func newTestPaymentProviderServer(t *testing.T, handler http.HandlerFunc) (*http
 func TestCreateProviderAssociation_Success(t *testing.T) {
 	t.Parallel()
 
+	var reqBody []byte
 	srv, requests := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
@@ -41,15 +43,37 @@ func TestCreateProviderAssociation_Success(t *testing.T) {
 		if r.URL.Path != "/payments/custom-provider/provider" {
 			t.Errorf("path = %s, want /payments/custom-provider/provider", r.URL.Path)
 		}
+		// The v3 create-integration contract requires Version: v3 and Bearer auth.
+		if got := r.Header.Get("Version"); got != "v3" {
+			t.Errorf("Version header = %q, want v3", got)
+		}
 		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
 			t.Errorf("Authorization = %q, want Bearer test-access-token", got)
 		}
+		// locationId must be a REQUIRED QUERY parameter, not in the body.
+		if got := r.URL.Query().Get("locationId"); got != "loc-123" {
+			t.Errorf("query locationId = %q, want loc-123", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+		reqBody = body
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
 
+	cfg := ProviderConfig{
+		Name:                         "RVPay",
+		Description:                  "RVPay payment provider",
+		ImageURL:                     "https://example.com/logo.jpg",
+		LocationID:                   "loc-123",
+		QueryURL:                     "https://api.example.com/payments/custom-provider/query",
+		PaymentsURL:                  "https://checkout.example.com/payment/checkout",
+		SupportsSubscriptionSchedule: false,
+	}
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "test-access-token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "test-access-token", cfg)
 	if err != nil {
 		t.Fatalf("CreateProviderAssociation failed: %v", err)
 	}
@@ -57,13 +81,39 @@ func TestCreateProviderAssociation_Success(t *testing.T) {
 	if len(*requests) != 1 {
 		t.Fatalf("expected 1 request, got %d", len(*requests))
 	}
+
+	// The provider metadata must be sent in the JSON body (this is what makes
+	// RVPay appear on HighLevel's Payments > Integrations page).
+	var body map[string]interface{}
+	if err := json.Unmarshal(reqBody, &body); err != nil {
+		t.Fatalf("failed to decode request body: %v", err)
+	}
+	if got := body["name"]; got != "RVPay" {
+		t.Errorf("body name = %v, want RVPay", got)
+	}
+	if got := body["paymentsUrl"]; got != "https://checkout.example.com/payment/checkout" {
+		t.Errorf("body paymentsUrl = %v, want configured URL", got)
+	}
+	if got := body["queryUrl"]; got != "https://api.example.com/payments/custom-provider/query" {
+		t.Errorf("body queryUrl = %v, want configured URL", got)
+	}
+	if got := body["imageUrl"]; got != "https://example.com/logo.jpg" {
+		t.Errorf("body imageUrl = %v, want logo URL", got)
+	}
+	if got := body["supportsSubscriptionSchedule"]; got != false {
+		t.Errorf("body supportsSubscriptionSchedule = %v, want false", got)
+	}
+	// locationId must NOT be in the body.
+	if _, ok := body["locationId"]; ok {
+		t.Error("body must not contain locationId (it is a query parameter)")
+	}
 }
 
 func TestCreateProviderAssociation_MissingAccessToken(t *testing.T) {
 	t.Parallel()
 
 	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
-	err := client.CreateProviderAssociation(context.Background(), "", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "", ProviderConfig{LocationID: "loc-123"})
 	if !errors.Is(err, ErrMissingAccessToken) {
 		t.Fatalf("expected ErrMissingAccessToken, got %v", err)
 	}
@@ -73,7 +123,7 @@ func TestCreateProviderAssociation_MissingLocationID(t *testing.T) {
 	t.Parallel()
 
 	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
-	err := client.CreateProviderAssociation(context.Background(), "token", "")
+	err := client.CreateProviderAssociation(context.Background(), "token", ProviderConfig{})
 	if !errors.Is(err, ErrMissingLocationID) {
 		t.Fatalf("expected ErrMissingLocationID, got %v", err)
 	}
@@ -88,7 +138,7 @@ func TestCreateProviderAssociation_BadRequest(t *testing.T) {
 	})
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
 	if !errors.Is(err, ErrBadRequest) {
 		t.Fatalf("expected ErrBadRequest, got %v", err)
 	}
@@ -103,7 +153,7 @@ func TestCreateProviderAssociation_Unauthorized(t *testing.T) {
 	})
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
 	if !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("expected ErrUnauthorized, got %v", err)
 	}
@@ -118,7 +168,7 @@ func TestCreateProviderAssociation_UnprocessableEntity(t *testing.T) {
 	})
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
 	if !errors.Is(err, ErrUnprocessableEntity) {
 		t.Fatalf("expected ErrUnprocessableEntity, got %v", err)
 	}
@@ -132,7 +182,7 @@ func TestCreateProviderAssociation_NetworkError(t *testing.T) {
 	srv.Close()
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
 	if err == nil {
 		t.Fatal("expected network error")
 	}
@@ -151,134 +201,9 @@ func TestCreateProviderAssociation_ContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	err := client.CreateProviderAssociation(ctx, "token", "loc-123")
+	err := client.CreateProviderAssociation(ctx, "token", ProviderConfig{LocationID: "loc-123"})
 	if err == nil {
 		t.Fatal("expected context cancellation error")
-	}
-}
-
-func TestCreateProviderConfig_Success(t *testing.T) {
-	t.Parallel()
-
-	srv, requests := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method = %s, want POST", r.Method)
-		}
-		if r.URL.Path != "/payments/custom-provider/connect" {
-			t.Errorf("path = %s, want /payments/custom-provider/connect", r.URL.Path)
-		}
-		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
-			t.Errorf("Authorization = %q, want Bearer test-access-token", got)
-		}
-
-		// Verify the request body contains the expected fields.
-		var body map[string]interface{}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Errorf("failed to decode request body: %v", err)
-		}
-		if body["name"] != "RVPay" {
-			t.Errorf("name = %v, want RVPay", body["name"])
-		}
-		if body["locationId"] != "loc-123" {
-			t.Errorf("locationId = %v, want loc-123", body["locationId"])
-		}
-		if body["queryUrl"] != "https://api.example.com/payments/custom-provider/query" {
-			t.Errorf("queryUrl = %v, want configured URL", body["queryUrl"])
-		}
-		if body["paymentsUrl"] != "https://checkout.example.com/payment/checkout" {
-			t.Errorf("paymentsUrl = %v, want configured URL", body["paymentsUrl"])
-		}
-		if body["supportsSubscriptionSchedule"] != false {
-			t.Errorf("supportsSubscriptionSchedule = %v, want false", body["supportsSubscriptionSchedule"])
-		}
-
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"success":true}`))
-	})
-
-	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	config := ProviderConfig{
-		Name:                         "RVPay",
-		Description:                  "RVPay payment provider",
-		ImageURL:                     "https://example.com/logo.jpg",
-		LocationID:                   "loc-123",
-		QueryURL:                     "https://api.example.com/payments/custom-provider/query",
-		PaymentsURL:                  "https://checkout.example.com/payment/checkout",
-		SupportsSubscriptionSchedule: false,
-	}
-
-	err := client.CreateProviderConfig(context.Background(), "test-access-token", config)
-	if err != nil {
-		t.Fatalf("CreateProviderConfig failed: %v", err)
-	}
-
-	if len(*requests) != 1 {
-		t.Fatalf("expected 1 request, got %d", len(*requests))
-	}
-}
-
-func TestCreateProviderConfig_MissingAccessToken(t *testing.T) {
-	t.Parallel()
-
-	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
-	err := client.CreateProviderConfig(context.Background(), "", ProviderConfig{LocationID: "loc-123"})
-	if !errors.Is(err, ErrMissingAccessToken) {
-		t.Fatalf("expected ErrMissingAccessToken, got %v", err)
-	}
-}
-
-func TestCreateProviderConfig_MissingLocationID(t *testing.T) {
-	t.Parallel()
-
-	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
-	err := client.CreateProviderConfig(context.Background(), "token", ProviderConfig{})
-	if !errors.Is(err, ErrMissingLocationID) {
-		t.Fatalf("expected ErrMissingLocationID, got %v", err)
-	}
-}
-
-func TestCreateProviderConfig_BadRequest(t *testing.T) {
-	t.Parallel()
-
-	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"message":"invalid config"}`))
-	})
-
-	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderConfig(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
-	if !errors.Is(err, ErrBadRequest) {
-		t.Fatalf("expected ErrBadRequest, got %v", err)
-	}
-}
-
-func TestCreateProviderConfig_Unauthorized(t *testing.T) {
-	t.Parallel()
-
-	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"message":"invalid token"}`))
-	})
-
-	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderConfig(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
-	if !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("expected ErrUnauthorized, got %v", err)
-	}
-}
-
-func TestCreateProviderConfig_UnprocessableEntity(t *testing.T) {
-	t.Parallel()
-
-	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = w.Write([]byte(`{"message":"validation failed"}`))
-	})
-
-	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderConfig(context.Background(), "token", ProviderConfig{LocationID: "loc-123"})
-	if !errors.Is(err, ErrUnprocessableEntity) {
-		t.Fatalf("expected ErrUnprocessableEntity, got %v", err)
 	}
 }
 
@@ -480,7 +405,7 @@ func TestAccessTokenNotInErrors(t *testing.T) {
 	})
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "super-secret-access-token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "super-secret-access-token", ProviderConfig{LocationID: "loc-123"})
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -500,7 +425,7 @@ func TestAccessTokenNotInLogs(t *testing.T) {
 	})
 
 	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
-	err := client.CreateProviderAssociation(context.Background(), "super-secret-access-token", "loc-123")
+	err := client.CreateProviderAssociation(context.Background(), "super-secret-access-token", ProviderConfig{LocationID: "loc-123"})
 	if err != nil {
 		t.Fatalf("CreateProviderAssociation failed: %v", err)
 	}

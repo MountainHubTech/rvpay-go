@@ -323,6 +323,6 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 }
 
 func getPostgresConnectionURL(cfg config.DBConfig) string {
-	fmt.Println("\nCommon Database: \n", commondatabase.PostgresURL(cfg.DBUser, cfg.DBPassword, cfg.DBPort, cfg.DBHost, cfg.DBName, cfg.TLSDisabled))
+	// The DSN contains the DB password; it must never be printed to stdout.
 	return commondatabase.PostgresURL(cfg.DBUser, cfg.DBPassword, cfg.DBPort, cfg.DBHost, cfg.DBName, cfg.TLSDisabled)
 }

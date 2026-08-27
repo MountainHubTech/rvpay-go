@@ -1515,10 +1515,12 @@ func TestProcessCallback_ProviderAssociationFailure(t *testing.T) {
 	}
 }
 
-func TestProcessCallback_ProviderConfigFailure(t *testing.T) {
+func TestProcessCallback_FetchConfigFailureIsNonFatal(t *testing.T) {
 	t.Parallel()
 
-	// Mock HighLevel: association succeeds, config creation fails with 500.
+	// Mock HighLevel: association succeeds, but fetching the existing
+	// provider configuration returns a transient 500. Registration must still
+	// succeed (best-effort fetch) and persist the configured metadata locally.
 	svc, _, _, clientRepo, platformRepo, stateRepo, _ := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/payments/custom-provider/provider":
@@ -1539,14 +1541,13 @@ func TestProcessCallback_ProviderConfigFailure(t *testing.T) {
 		t.Fatalf("HandleCallback failed: %v", err)
 	}
 
-	if result.ProviderRegistered {
-		t.Fatal("ProviderRegistered should be false when config creation fails")
+	// A fetch failure must not roll back a successful registration; the
+	// configured (non-empty) metadata is used.
+	if !result.ProviderRegistered {
+		t.Fatal("ProviderRegistered should be true; fetch of existing config is best-effort")
 	}
-	if result.ProviderRegistrationError == nil {
-		t.Fatal("ProviderRegistrationError should be set when config creation fails")
-	}
-	if status.Code(result.ProviderRegistrationError) != codes.Internal {
-		t.Fatalf("ProviderRegistrationError code = %s, want %s", status.Code(result.ProviderRegistrationError), codes.Internal)
+	if result.ProviderRegistrationError != nil {
+		t.Fatalf("ProviderRegistrationError should be nil, got %v", result.ProviderRegistrationError)
 	}
 }
 

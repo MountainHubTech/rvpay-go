@@ -40,53 +40,42 @@ func NewHighLevelPaymentProviderClient(baseURL string, httpClient *http.Client) 
 	}
 }
 
-// CreateProviderAssociation creates the association between the Marketplace
-// app and the HighLevel location.
+// CreateProviderAssociation registers the Custom Payment Provider for the
+// supplied HighLevel location. Per the HighLevel v3 contract, `locationId`
+// is a required QUERY parameter and the provider metadata
+// (name, description, paymentsUrl, queryUrl, imageUrl,
+// supportsSubscriptionSchedule) is sent in the JSON body. This call is what
+// makes RVPay appear and work on HighLevel's Payments > Integrations page.
 //
-// POST /payments/custom-provider/provider
-func (c *HighLevelPaymentProviderClient) CreateProviderAssociation(ctx context.Context, accessToken, locationID string) error {
+// POST /payments/custom-provider/provider?locationId=<id>
+func (c *HighLevelPaymentProviderClient) CreateProviderAssociation(ctx context.Context, accessToken string, cfg ProviderConfig) error {
 	if strings.TrimSpace(accessToken) == "" {
 		return ErrMissingAccessToken
 	}
-	if strings.TrimSpace(locationID) == "" {
+	if strings.TrimSpace(cfg.LocationID) == "" {
 		return ErrMissingLocationID
 	}
 
-	body := map[string]string{
-		"locationId": locationID,
-	}
+	// locationId is a required query parameter per the v3 create-integration
+	// contract. It is NOT part of the JSON body.
+	q := url.Values{}
+	q.Set("locationId", cfg.LocationID)
+	path := "/payments/custom-provider/provider" + "?" + q.Encode()
 
-	var respBody map[string]interface{}
-	if err := c.doJSON(ctx, http.MethodPost, "/payments/custom-provider/provider", accessToken, body, &respBody); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// CreateProviderConfig creates the provider configuration for a location.
-//
-// POST /payments/custom-provider/connect
-func (c *HighLevelPaymentProviderClient) CreateProviderConfig(ctx context.Context, accessToken string, config ProviderConfig) error {
-	if strings.TrimSpace(accessToken) == "" {
-		return ErrMissingAccessToken
-	}
-	if strings.TrimSpace(config.LocationID) == "" {
-		return ErrMissingLocationID
-	}
-
+	// The provider metadata is sent in the JSON body. This is what registers
+	// RVPay as the Custom Payment Provider for the location and what HighLevel
+	// displays on the Payments > Integrations page.
 	body := map[string]interface{}{
-		"name":                         config.Name,
-		"description":                  config.Description,
-		"imageUrl":                     config.ImageURL,
-		"locationId":                   config.LocationID,
-		"queryUrl":                     config.QueryURL,
-		"paymentsUrl":                  config.PaymentsURL,
-		"supportsSubscriptionSchedule": config.SupportsSubscriptionSchedule,
+		"name":                         cfg.Name,
+		"description":                  cfg.Description,
+		"paymentsUrl":                  cfg.PaymentsURL,
+		"queryUrl":                     cfg.QueryURL,
+		"imageUrl":                     cfg.ImageURL,
+		"supportsSubscriptionSchedule": cfg.SupportsSubscriptionSchedule,
 	}
 
 	var respBody map[string]interface{}
-	if err := c.doJSON(ctx, http.MethodPost, "/payments/custom-provider/connect", accessToken, body, &respBody); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, accessToken, body, &respBody); err != nil {
 		return err
 	}
 

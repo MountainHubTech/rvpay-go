@@ -191,7 +191,6 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		return nil, ErrMissingCode
 	}
 
-	s.logger.Info().Msgf("\n Code generated from Go Highlevel Marketplace: %v \n", code)
 
 	if state != "" {
 		// Atomically consume the state. ConsumeOAuthState only succeeds when the
@@ -396,7 +395,6 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 
 	s.logger.Info().Msgf("\n Client that was created or already existed already: %v \n", client)
 
-	s.logger.Info().Msgf("\n Access Token for our client: %v \n", tokenResp.AccessToken)
 
 	// providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
 	// if err != nil {
@@ -438,6 +436,24 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 		s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return nil, translateError(err)
+	} else {
+		// No integration exists for this client/platform yet. Create it now,
+		// mapped to the HighLevel location id, and activate it so the OAuth
+		// token persistence and provider registration have a complete
+		// integration to target. This mirrors the idempotent provisioning done
+		// by the stateless Marketplace callback.
+		integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, tokenResp.LocationID, sqlc.IntegrationStatusCREATED)
+		if err == repo.ErrDuplicate {
+			// A concurrent callback already created the integration; reuse it.
+			integration, err = s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
+		}
+		if err != nil {
+			return nil, translateError(err)
+		}
+		integration, err = s.integrationsRepo.UpdateStatus(ctx, integration.ID, sqlc.IntegrationStatusACTIVE)
+		if err != nil {
+			return nil, translateError(err)
+		}
 	}
 	// else {
 	// 	integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, providerUserID, sqlc.IntegrationStatusACTIVE)
@@ -486,17 +502,26 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	return result, nil
 }
 
-// RegisterProvider performs the HighLevel Custom Payment Provider registration
-// lifecycle for an installed integration. It:
+// RegisterProvider registers RVPay as the HighLevel Custom Payment Provider
+// for an installed location and persists the local provider configuration.
+// It:
 //
-//  1. Creates the provider association (POST /payments/custom-provider/provider).
-//  2. Creates the provider configuration (POST /payments/custom-provider/connect).
-//  3. Persists the provider configuration locally.
+//  1. Registers the provider association
+//     (POST /payments/custom-provider/provider?locationId=<id>) with the
+//     provider metadata in the body. This is what makes RVPay appear and work
+//     on HighLevel's Payments > Integrations page.
+//  2. Fetches the real provider configuration
+//     (GET /payments/custom-provider/connect?locationId=<id>) to persist
+//     genuine remote metadata instead of empty/default values.
+//  3. Persists the local provider configuration, reusing an existing API key
+//     when a valid local config already exists.
 //
-// The operation is idempotent: if the provider is already associated or
-// configured, the existing configuration is fetched and persisted instead of
-// creating a duplicate. Registration failures return a typed error; the
-// integration remains installed and the operation can be retried safely.
+// The operation is idempotent: if the provider is already associated, the
+// existing configuration is fetched and persisted instead of creating a
+// duplicate. It does not classify every 400/422 as "already exists"; an
+// association failure is confirmed via the fetch before being treated as
+// idempotent. Registration failures return a typed error; the integration
+// remains installed and the operation can be retried safely.
 func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID, locationID, accessToken string) error {
 	if s.configRepo == nil {
 		return ErrProviderConfigRepoNotConfigured
@@ -534,27 +559,9 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		return ErrPaymentProviderNotSupported
 	}
 
-	// Step 1: Create the provider association. If the provider is already
-	// associated, HighLevel may return a 400/422; we treat that as idempotent
-	// and continue to the configuration step.
-	err = paymentClient.CreateProviderAssociation(ctx, accessToken, locationID)
-	if err != nil {
-		if errors.Is(err, providers.ErrBadRequest) || errors.Is(err, providers.ErrUnprocessableEntity) {
-			s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association already exists; continuing with configuration")
-		} else {
-			s.logger.Error().
-				Err(err).
-				Str("integration_id", integrationID.String()).
-				Str("location_id", locationID).
-				Msg("HighLevel provider association failed")
-
-			return ErrProviderAssociationFailed
-		}
-	}
-
-	// Step 2: Create the provider configuration. If the configuration already
-	// exists, fetch the existing configuration instead of creating a duplicate.
-	config := providers.ProviderConfig{
+	// Build the provider metadata sent to HighLevel from RVPay configuration.
+	// Nothing is hard-coded; all values come from environment configuration.
+	metadata := providers.ProviderConfig{
 		Name:                         s.providerConfig.Name,
 		Description:                  s.providerConfig.Description,
 		ImageURL:                     s.providerConfig.ImageURL,
@@ -564,39 +571,73 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		SupportsSubscriptionSchedule: false, // RVPay supports one-time payments only.
 	}
 
-	err = paymentClient.CreateProviderConfig(ctx, accessToken, config)
+	// Step 1: Register the provider association. This is the correct v3 step
+	// for metadata registration: locationId is a required query parameter and
+	// the metadata is sent in the body. We do not treat every 400/422 as
+	// "already exists"; we confirm via the fetch in Step 2 and only treat it as
+	// idempotent when a real provider configuration is returned.
+	err = paymentClient.CreateProviderAssociation(ctx, accessToken, metadata)
 	if err != nil {
-		if errors.Is(err, providers.ErrBadRequest) || errors.Is(err, providers.ErrUnprocessableEntity) {
-			// The configuration may already exist. Fetch the existing
-			// configuration to confirm and persist it locally.
-			s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider config may already exist; fetching existing configuration")
-			existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
-			if fetchErr != nil {
-				return ErrProviderConfigFailed
+		if !errors.Is(err, providers.ErrBadRequest) && !errors.Is(err, providers.ErrUnprocessableEntity) {
+			s.logger.Error().
+				Err(err).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("HighLevel provider association failed")
+
+			return ErrProviderAssociationFailed
+		}
+		s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association may already exist; confirming via fetch")
+	}
+
+	// Step 2: Fetch the existing provider configuration so the local record
+	// reflects genuine remote metadata rather than empty defaults. Fetch is
+	// best-effort: on a freshly created association the remote record may not
+	// be retrievable yet, so a fetch failure is non-fatal and we keep the
+	// configured (non-empty) metadata.
+	if existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID); fetchErr == nil {
+		if existing.Name != "" || existing.QueryURL != "" || existing.PaymentsURL != "" {
+			if existing.LocationID == "" {
+				existing.LocationID = locationID
 			}
-			config = *existing
-		} else {
-			return ErrProviderConfigFailed
+			metadata = *existing
 		}
+	} else {
+		s.logger.Warn().Err(fetchErr).Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("failed to fetch provider configuration; using configured metadata")
 	}
 
-	// Step 3: Persist the provider configuration locally. The provider API key
-	// is a generated random value used to authenticate HighLevel query
-	// requests; it is distinct from the OAuth access token and the pawaPay
-	// API key.
-	apiKey, err := generateAPIKey()
-	if err != nil {
-		return ErrAPIKeyGenerationFailed
+	// Step 3: Persist the local provider configuration, reusing an existing API
+	// key when a valid local config already exists. The provider API key is a
+	// generated random value used to authenticate HighLevel query requests; it
+	// is distinct from the OAuth access token and the pawaPay API key. It is
+	// only regenerated when no local config with a non-empty key exists.
+	existingLocal, getLocalErr := s.configRepo.GetByIntegrationID(ctx, integrationID)
+	haveLocal := getLocalErr == nil
+	if getLocalErr != nil && getLocalErr != repo.ErrNotFound {
+		return translateError(getLocalErr)
 	}
 
-	_, err = s.configRepo.Create(ctx, integrationID, config.Name, config.Description, config.ImageURL, config.LocationID, config.QueryURL, config.PaymentsURL, config.SupportsSubscriptionSchedule, apiKey)
-	if err == repo.ErrDuplicate {
-		// The config already exists locally; update it instead.
-		_, err = s.configRepo.Update(ctx, integrationID, config.Name, config.Description, config.ImageURL, config.LocationID, config.QueryURL, config.PaymentsURL, config.SupportsSubscriptionSchedule, apiKey)
+	apiKey := ""
+	if haveLocal && existingLocal.ProviderApiKey != "" {
+		apiKey = existingLocal.ProviderApiKey
+	}
+	if apiKey == "" {
+		apiKey, err = generateAPIKey()
 		if err != nil {
-			return translateError(err)
+			return ErrAPIKeyGenerationFailed
 		}
-	} else if err != nil {
+	}
+
+	if haveLocal {
+		_, err = s.configRepo.Update(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	} else {
+		_, err = s.configRepo.Create(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	}
+	if err == repo.ErrDuplicate {
+		// A concurrent registration created the local config; update it instead.
+		_, err = s.configRepo.Update(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	}
+	if err != nil {
 		return translateError(err)
 	}
 

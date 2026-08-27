@@ -10,26 +10,35 @@ import "context"
 // Each operation requires the installed location's OAuth access token. The
 // access token is used only to authenticate the outbound call and is never
 // logged or returned in errors.
+//
+// GHL v3 distinction:
+//   - The association (POST /payments/custom-provider/provider) registers the
+//     provider NAME/URLs/LOGO metadata for a location and is what makes RVPay
+//     appear and work on HighLevel's Payments > Integrations page.
+//   - FetchProviderConfig (GET /payments/custom-provider/connect) retrieves the
+//     existing provider configuration for a location (same provider metadata
+//     shape).
+//
+// The separate "connect" endpoint (POST /payments/custom-provider/connect)
+// stores live/test processing keys that RVPay does not currently configure, so
+// it is intentionally not exposed as a registration step.
 type PaymentProviderClient interface {
-	// CreateProviderAssociation creates the association between the
-	// Marketplace app and the HighLevel location.
+	// CreateProviderAssociation registers the RVPay Custom Payment Provider for
+	// the supplied HighLevel location, sending the provider metadata.
 	//
-	// POST /payments/custom-provider/provider
-	CreateProviderAssociation(ctx context.Context, accessToken, locationID string) error
+	// POST /payments/custom-provider/provider?locationId=<id>
+	// Body: {name, description, paymentsUrl, queryUrl, imageUrl, supportsSubscriptionSchedule}
+	CreateProviderAssociation(ctx context.Context, accessToken string, cfg ProviderConfig) error
 
-	// CreateProviderConfig creates the provider configuration for a location.
+	// FetchProviderConfig fetches the existing provider configuration for a
+	// location, returning the real provider metadata registered with HighLevel.
 	//
-	// POST /payments/custom-provider/connect
-	CreateProviderConfig(ctx context.Context, accessToken string, config ProviderConfig) error
-
-	// FetchProviderConfig fetches the provider configuration for a location.
-	//
-	// GET /payments/custom-provider/connect
+	// GET /payments/custom-provider/connect?locationId=<id>
 	FetchProviderConfig(ctx context.Context, accessToken, locationID string) (*ProviderConfig, error)
 
 	// DisconnectProvider disconnects the provider configuration for a location.
 	//
-	// DELETE /payments/custom-provider/connect
+	// DELETE /payments/custom-provider/connect?locationId=<id>
 	DisconnectProvider(ctx context.Context, accessToken, locationID string) error
 }
 

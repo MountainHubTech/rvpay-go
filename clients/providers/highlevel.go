@@ -153,8 +153,6 @@ func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redir
 	// user type.
 	data.Set("userType", "Location")
 
-	p.logger.Info().Msgf("\n HighLevel Data Set: %v \n", data)
-
 	req, err := http.NewRequestWithContext(ctx, "POST", p.tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token request: %w", err)
