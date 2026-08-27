@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // newTestPaymentProviderServer creates an httptest.Server that records the
@@ -634,14 +636,14 @@ func TestHighLevelProviderPaymentProviderCapability(t *testing.T) {
 	// A provider with a payment provider client should advertise the
 	// CapabilityPaymentProvider capability.
 	paymentClient := NewHighLevelPaymentProviderClient("https://example.com", nil)
-	provider := NewHighLevelProvider("client-id", "client-secret", "https://example.com/callback", "", paymentClient)
+	provider := NewHighLevelProvider("client-id", "client-secret", "https://example.com/callback", "", paymentClient, zerolog.Nop())
 
 	if !provider.HasCapability(CapabilityPaymentProvider) {
 		t.Fatal("provider should have CapabilityPaymentProvider when payment client is set")
 	}
 
 	// A provider without a payment provider client should not advertise it.
-	providerNoPayment := NewHighLevelProvider("client-id", "client-secret", "https://example.com/callback", "", nil)
+	providerNoPayment := NewHighLevelProvider("client-id", "client-secret", "https://example.com/callback", "", nil, zerolog.Nop())
 	if providerNoPayment.HasCapability(CapabilityPaymentProvider) {
 		t.Fatal("provider should not have CapabilityPaymentProvider when payment client is nil")
 	}

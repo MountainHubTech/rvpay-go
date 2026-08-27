@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 // HighLevelProvider implements the unified Provider interface for HighLevel.
@@ -25,6 +27,7 @@ type HighLevelProvider struct {
 	scopes           []string
 	httpClient       *http.Client
 	paymentProvider  PaymentProviderClient
+	logger           zerolog.Logger
 }
 
 // NewHighLevelProvider creates a new HighLevel provider. webhookPublicKey is
@@ -36,7 +39,7 @@ type HighLevelProvider struct {
 // paymentProvider is the Custom Payment Provider client used for outbound
 // HighLevel provider registration/configuration calls. It may be nil if the
 // provider does not support Custom Payment Provider operations.
-func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey string, paymentProvider PaymentProviderClient) *HighLevelProvider {
+func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey string, paymentProvider PaymentProviderClient, logger zerolog.Logger) *HighLevelProvider {
 	return &HighLevelProvider{
 		clientID:         clientID,
 		clientSecret:     clientSecret,
@@ -50,6 +53,7 @@ func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey 
 		// connections are pooled and reused rather than recreated per request.
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		paymentProvider: paymentProvider,
+		logger: logger,
 	}
 }
 
@@ -135,6 +139,7 @@ func (p *HighLevelProvider) GenerateAuthorizationURL(ctx context.Context, state 
 }
 
 func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redirectURI string) (*TokenResponse, error) {
+	p.logger.Info().Msg("\n HighLevelProvider ExchangeCode method initiated...")
 	data := url.Values{}
 	// HighLevel OAuth v3 contract uses camelCase property names.
 	data.Set("clientId", p.clientID)
@@ -147,6 +152,8 @@ func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redir
 	// targeting Sub-accounts, so the token exchange must declare the Location
 	// user type.
 	data.Set("userType", "Location")
+
+	p.logger.Info().Msgf("\n HighLevel Data Set: %v \n", data)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", p.tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -184,6 +191,8 @@ func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redir
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
+
+	p.logger.Info().Msgf("\n Response from token exhange: %v \n", tokenResp)
 
 	return &TokenResponse{
 		AccessToken:  tokenResp.AccessToken,

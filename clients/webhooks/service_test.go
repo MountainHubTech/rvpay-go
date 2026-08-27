@@ -485,7 +485,7 @@ func TestProcessWebhookInvalidSignature(t *testing.T) {
 	t.Parallel()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
@@ -510,7 +510,7 @@ func TestRegisterWebhookIntegrationNotFound(t *testing.T) {
 	t.Parallel()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
@@ -534,7 +534,7 @@ func TestUnregisterWebhookNotFound(t *testing.T) {
 	t.Parallel()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockWebhookIntegrationRepo(),
@@ -581,7 +581,7 @@ func newTestWebhookService(t *testing.T, dispatcher providers.WebhookDispatcher)
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -660,7 +660,7 @@ func TestProcessWebhook_InstallCreatesConfig(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -724,7 +724,7 @@ func TestProcessWebhook_InstallReusesExistingConfig(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -785,7 +785,7 @@ func TestProcessWebhook_InstallMultipleClientsSelectsCorrect(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -860,7 +860,7 @@ func TestProcessWebhook_InstallMissingMappingFailsSafely(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -903,7 +903,7 @@ func TestProcessWebhook_NonInstallRequiresConfig(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -958,7 +958,7 @@ func TestProcessWebhook_InstallProvisionsTenantAndConfig(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,
@@ -1024,7 +1024,7 @@ func TestProcessWebhook_InstallRepeatedReusesRecords(t *testing.T) {
 
 	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := NewService(
 		integrationRepo,

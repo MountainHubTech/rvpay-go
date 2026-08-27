@@ -186,14 +186,19 @@ func (s *Service) BeginAuthorization(ctx context.Context, clientID, platformID u
 //     client_id/platform_id are used to continue the existing
 //     ProcessCallback/integration flow.
 func (s *Service) HandleCallback(ctx context.Context, code, state string) (*CallbackResult, error) {
+	s.logger.Info().Msg("\n HandleCallback method initiated... \n")
+
 	if code == "" {
 		return nil, ErrMissingCode
 	}
+
+	s.logger.Info().Msgf("\n Code generated from Go Highlevel Marketplace: %v \n", code)
 
 	if state != "" {
 		// Atomically consume the state. ConsumeOAuthState only succeeds when the
 		// state exists, is not already consumed, and has not expired. This both
 		// validates the state and prevents replay attacks in a single operation.
+		s.logger.Info().Msg("\n State exists and is being consumed... \n")
 		record, err := s.oauthStateRepo.Consume(ctx, state)
 		if err == repo.ErrNotFound {
 			// Distinguish expired/consumed from unknown for clearer errors.
@@ -216,6 +221,7 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 	// No state: resolve the client/platform context from the GHL locationId.
 	// Exchange the authorization code first to obtain the locationId, then
 	// resolve locationId -> integration via the deterministic mapping.
+	s.logger.Info().Msg("\n State doesn't exist, resolving client/platform context... \n ")
 	if s.configRepo == nil {
 		return nil, ErrProviderConfigRepoNotConfigured
 	}
@@ -233,6 +239,8 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 	if tokenResp.LocationID == "" {
 		return nil, ErrMissingLocationID
 	}
+
+	s.logger.Info().Msgf("\n Location ID: %v \n", tokenResp.LocationID)
 
 	// Resolve the integration deterministically from the GHL locationId.
 	// First try the provisioning mapping: integration.external_account_id =

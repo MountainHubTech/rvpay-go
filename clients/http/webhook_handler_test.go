@@ -230,7 +230,7 @@ func newTestWebhookHandler(t *testing.T, publicKeyPEM string) (*WebhookHandler, 
 	configRepo := newTestPaymentProviderConfigRepo()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
 
 	svc := webhooks.NewService(
 		newTestWebhookIntegrationRepo(),

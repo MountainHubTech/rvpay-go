@@ -20,7 +20,7 @@ func newRuntimeMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	oauthService := oauth.NewService(nil, nil, nil, nil, nil, nil, registry, "https://example.com/callback", oauth.ProviderConfigSettings{}, zerolog.Nop())
 	webhookService := webhooks.NewService(nil, nil, nil, nil, nil, nil, registry, nil, zerolog.Nop())

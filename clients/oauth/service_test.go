@@ -572,7 +572,7 @@ func TestAuthorizationURL(t *testing.T) {
 	}
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),
@@ -620,7 +620,7 @@ func TestAuthorizationURLDisabledPlatform(t *testing.T) {
 	}
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "test-webhook-secret", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),
@@ -654,7 +654,7 @@ func TestBeginAuthorization(t *testing.T) {
 	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),
@@ -707,7 +707,7 @@ func TestBeginAuthorizationInactiveClient(t *testing.T) {
 	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),
@@ -783,7 +783,7 @@ func TestHandleCallbackNoState_ConfigRepoNotConfigured(t *testing.T) {
 	// When state is absent and the payment provider config repo is nil, the
 	// stateless resolution cannot proceed and returns a clear error.
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),
@@ -1693,7 +1693,7 @@ func TestRegisterProvider_NoConfigRepo(t *testing.T) {
 
 	// Build a service with a nil config repo.
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := NewService(
 		newMockIntegrationRepo(),

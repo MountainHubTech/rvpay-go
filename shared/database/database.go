@@ -43,6 +43,8 @@ func PostgresURL(dbUser, dbPassword string, dbPort int, dbHost, dbName string, t
 		RawQuery: queryValues.Encode(),
 	}
 
+	fmt.Println("\nDBUrl: \n", dbURL)
+
 	return dbURL.String()
 }
 

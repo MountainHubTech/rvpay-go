@@ -228,7 +228,7 @@ func newTestOAuthHandler(t *testing.T) (*OAuthHandler, *testOAuthStateRepo, *tes
 	stateRepo := newTestOAuthStateRepo()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := oauth.NewService(
 		newTestOAuthIntegrationRepo(),
