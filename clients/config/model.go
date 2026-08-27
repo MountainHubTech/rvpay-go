@@ -23,6 +23,8 @@ type Config struct {
 	RunMigrations bool `conf:"env:RUN_MIGRATIONS,default:true"`
 
 	HighLevel HighLevelConfig
+
+	TransactionsAddr string `conf:"env:TRANSACTIONS_GRPC_ADDR"`
 }
 
 // DBConfig holds database configuration.

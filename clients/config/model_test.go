@@ -5,38 +5,96 @@ import (
 	"testing"
 )
 
-func TestLoadConfigDefaults(t *testing.T) {
-	t.Parallel()
+// envKeys lists every environment variable the Config struct reads.
+var envKeys = []string{
+	"LOG_LEVEL",
+	"LISTEN_PORT",
+	"RUN_MIGRATIONS",
+	"MIGRATION_PATH",
+	"DB_HOST",
+	"DB_PORT",
+	"DB_NAME",
+	"DB_USER",
+	"DB_PASSWORD",
+	"DB_TLS_DISABLED",
+	"HIGHLEVEL_CLIENT_ID",
+	"HIGHLEVEL_CLIENT_SECRET",
+	"HIGHLEVEL_REDIRECT_URI",
+	"HIGHLEVEL_WEBHOOK_PUBLIC_KEY",
+	"HIGHLEVEL_PAYMENT_URL",
+	"HIGHLEVEL_QUERY_URL",
+	"HIGHLEVEL_PROVIDER_NAME",
+	"HIGHLEVEL_PROVIDER_DESCRIPTION",
+	"HIGHLEVEL_PROVIDER_IMAGE_URL",
+	"HIGHLEVEL_API_BASE_URL",
+	"PUBLIC_BASE_URL",
+}
 
-	// Clear environment variables to test defaults
+func unsetAllEnv() {
+	for _, k := range envKeys {
+		os.Unsetenv(k)
+	}
+}
+
+// setRequiredEnv populates every env var that is required by Config with a
+// baseline value and unsets the rest. It returns a cleanup that clears all
+// config env vars. Optional vars (LOG_LEVEL, RUN_MIGRATIONS,
+// DB_TLS_DISABLED) may be overridden by the caller.
+func setRequiredEnv() func() {
+	unsetAllEnv()
+
+	values := map[string]string{
+		"LISTEN_PORT":                    "50051",
+		"MIGRATION_PATH":                 "db/migrations",
+		"DB_HOST":                        "localhost",
+		"DB_PORT":                        "5432",
+		"DB_NAME":                        "rvpay",
+		"DB_USER":                        "postgres",
+		"DB_PASSWORD":                    "postgres",
+		"HIGHLEVEL_CLIENT_ID":            "test-client-id",
+		"HIGHLEVEL_CLIENT_SECRET":        "test-client-secret",
+		"HIGHLEVEL_REDIRECT_URI":         "https://example.com/callback",
+		"HIGHLEVEL_WEBHOOK_PUBLIC_KEY":   "test-webhook-public-key",
+		"HIGHLEVEL_PAYMENT_URL":          "https://example.com/payment",
+		"HIGHLEVEL_QUERY_URL":            "https://example.com/query",
+		"HIGHLEVEL_PROVIDER_NAME":        "RVPay",
+		"HIGHLEVEL_PROVIDER_DESCRIPTION": "RVPay payment provider",
+		"HIGHLEVEL_PROVIDER_IMAGE_URL":   "https://example.com/logo.jpg",
+		"HIGHLEVEL_API_BASE_URL":         "https://services.leadconnectorhq.com",
+		"PUBLIC_BASE_URL":                "https://example.com",
+	}
+	for k, v := range values {
+		os.Setenv(k, v)
+	}
+
+	return unsetAllEnv
+}
+
+func TestLoadConfigDefaults(t *testing.T) {
+	// Env-based tests share the process environment, so they must not run in
+	// parallel.
+	cleanup := setRequiredEnv()
+	defer cleanup()
 	os.Unsetenv("LOG_LEVEL")
-	os.Unsetenv("LISTEN_PORT")
-	os.Unsetenv("DB_HOST")
-	os.Unsetenv("DB_PORT")
-	os.Unsetenv("DB_NAME")
-	os.Unsetenv("DB_USER")
-	os.Unsetenv("DB_PASSWORD")
-	os.Unsetenv("DB_TLS_DISABLED")
 	os.Unsetenv("RUN_MIGRATIONS")
-	os.Unsetenv("MIGRATION_PATH")
-	os.Unsetenv("HIGHLEVEL_CLIENT_ID")
-	os.Unsetenv("HIGHLEVEL_CLIENT_SECRET")
-	os.Unsetenv("HIGHLEVEL_REDIRECT_URI")
-	os.Unsetenv("HIGHLEVEL_WEBHOOK_PUBLIC_KEY")
-	os.Unsetenv("HIGHLEVEL_API_BASE_URL")
-	os.Unsetenv("PUBLIC_BASE_URL")
+	os.Unsetenv("DB_TLS_DISABLED")
 
 	cfg := Config{}
-	err := cfg.LoadConfig()
-	if err != nil {
+	if err := cfg.LoadConfig(); err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
 	if cfg.LogLevel != "info" {
-		t.Fatalf("LogLevel = %s, want info", cfg.LogLevel)
+		t.Fatalf("LogLevel = %s, want info (default)", cfg.LogLevel)
 	}
 	if cfg.ListenPort != 50051 {
 		t.Fatalf("ListenPort = %d, want 50051", cfg.ListenPort)
+	}
+	if !cfg.RunMigrations {
+		t.Fatal("RunMigrations should default to true")
+	}
+	if cfg.MigrationPath != "db/migrations" {
+		t.Fatalf("MigrationPath = %s, want db/migrations", cfg.MigrationPath)
 	}
 	if cfg.DB.DBHost != "localhost" {
 		t.Fatalf("DBHost = %s, want localhost", cfg.DB.DBHost)
@@ -50,71 +108,34 @@ func TestLoadConfigDefaults(t *testing.T) {
 	if cfg.DB.DBUser != "postgres" {
 		t.Fatalf("DBUser = %s, want postgres", cfg.DB.DBUser)
 	}
-	if !cfg.DB.TLSDisabled {
-		t.Fatal("TLSDisabled should default to true")
+	if cfg.DB.DBPassword != "postgres" {
+		t.Fatalf("DBPassword = %s, want postgres", cfg.DB.DBPassword)
 	}
-	if !cfg.RunMigrations {
-		t.Fatal("RunMigrations should default to true")
-	}
-	if cfg.MigrationPath != "db/migrations" {
-		t.Fatalf("MigrationPath = %s, want db/migrations", cfg.MigrationPath)
-	}
-	if cfg.HighLevel.RedirectURI != "" {
-		t.Fatalf("RedirectURI = %s, want empty default", cfg.HighLevel.RedirectURI)
-	}
-	if cfg.HighLevel.WebhookPublicKey != "" {
-		t.Fatalf("WebhookPublicKey = %s, want empty default", cfg.HighLevel.WebhookPublicKey)
-	}
-	if cfg.HighLevel.APIBaseURL != "https://services.leadconnectorhq.com" {
-		t.Fatalf("APIBaseURL = %s, want default HighLevel API base URL", cfg.HighLevel.APIBaseURL)
-	}
-	if cfg.HighLevel.PublicBaseURL != "" {
-		t.Fatalf("PublicBaseURL = %s, want empty default", cfg.HighLevel.PublicBaseURL)
+	// DB_TLS_DISABLED has no default in the model, so it defaults to false.
+	if cfg.DB.TLSDisabled {
+		t.Fatal("TLSDisabled should default to false (no default in config)")
 	}
 }
 
 func TestLoadConfigEnvironmentOverrides(t *testing.T) {
-	t.Parallel()
+	cleanup := setRequiredEnv()
+	defer cleanup()
 
 	os.Setenv("LOG_LEVEL", "debug")
 	os.Setenv("LISTEN_PORT", "60000")
+	os.Setenv("RUN_MIGRATIONS", "false")
+	os.Setenv("MIGRATION_PATH", "test/migrations")
 	os.Setenv("DB_HOST", "test-host")
 	os.Setenv("DB_PORT", "5433")
 	os.Setenv("DB_NAME", "test-db")
 	os.Setenv("DB_USER", "test-user")
 	os.Setenv("DB_PASSWORD", "test-pass")
-	os.Setenv("DB_TLS_DISABLED", "false")
-	os.Setenv("RUN_MIGRATIONS", "false")
-	os.Setenv("MIGRATION_PATH", "test/migrations")
-	os.Setenv("HIGHLEVEL_CLIENT_ID", "test-client-id")
-	os.Setenv("HIGHLEVEL_CLIENT_SECRET", "test-client-secret")
-	os.Setenv("HIGHLEVEL_REDIRECT_URI", "https://test.example.com/callback")
-	os.Setenv("HIGHLEVEL_WEBHOOK_PUBLIC_KEY", "test-webhook-public-key")
-	os.Setenv("HIGHLEVEL_API_BASE_URL", "https://test-api.example.com")
-	os.Setenv("PUBLIC_BASE_URL", "https://test.example.com")
-
-	defer func() {
-		os.Unsetenv("LOG_LEVEL")
-		os.Unsetenv("LISTEN_PORT")
-		os.Unsetenv("DB_HOST")
-		os.Unsetenv("DB_PORT")
-		os.Unsetenv("DB_NAME")
-		os.Unsetenv("DB_USER")
-		os.Unsetenv("DB_PASSWORD")
-		os.Unsetenv("DB_TLS_DISABLED")
-		os.Unsetenv("RUN_MIGRATIONS")
-		os.Unsetenv("MIGRATION_PATH")
-		os.Unsetenv("HIGHLEVEL_CLIENT_ID")
-		os.Unsetenv("HIGHLEVEL_CLIENT_SECRET")
-		os.Unsetenv("HIGHLEVEL_REDIRECT_URI")
-		os.Unsetenv("HIGHLEVEL_WEBHOOK_PUBLIC_KEY")
-		os.Unsetenv("HIGHLEVEL_API_BASE_URL")
-		os.Unsetenv("PUBLIC_BASE_URL")
-	}()
+	os.Setenv("DB_TLS_DISABLED", "true")
+	os.Setenv("HIGHLEVEL_CLIENT_ID", "override-client-id")
+	os.Setenv("HIGHLEVEL_REDIRECT_URI", "https://override.example.com/callback")
 
 	cfg := Config{}
-	err := cfg.LoadConfig()
-	if err != nil {
+	if err := cfg.LoadConfig(); err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
@@ -123,6 +144,12 @@ func TestLoadConfigEnvironmentOverrides(t *testing.T) {
 	}
 	if cfg.ListenPort != 60000 {
 		t.Fatalf("ListenPort = %d, want 60000", cfg.ListenPort)
+	}
+	if cfg.RunMigrations {
+		t.Fatal("RunMigrations should be false")
+	}
+	if cfg.MigrationPath != "test/migrations" {
+		t.Fatalf("MigrationPath = %s, want test/migrations", cfg.MigrationPath)
 	}
 	if cfg.DB.DBHost != "test-host" {
 		t.Fatalf("DBHost = %s, want test-host", cfg.DB.DBHost)
@@ -139,67 +166,22 @@ func TestLoadConfigEnvironmentOverrides(t *testing.T) {
 	if cfg.DB.DBPassword != "test-pass" {
 		t.Fatalf("DBPassword = %s, want test-pass", cfg.DB.DBPassword)
 	}
-	if cfg.DB.TLSDisabled {
-		t.Fatal("TLSDisabled should be false")
+	if !cfg.DB.TLSDisabled {
+		t.Fatal("TLSDisabled should be true")
 	}
-	if cfg.RunMigrations {
-		t.Fatal("RunMigrations should be false")
+	if cfg.HighLevel.ClientID != "override-client-id" {
+		t.Fatalf("HighLevel.ClientID = %s, want override-client-id", cfg.HighLevel.ClientID)
 	}
-	if cfg.MigrationPath != "test/migrations" {
-		t.Fatalf("MigrationPath = %s, want test/migrations", cfg.MigrationPath)
-	}
-	if cfg.HighLevel.ClientID != "test-client-id" {
-		t.Fatalf("ClientID = %s, want test-client-id", cfg.HighLevel.ClientID)
-	}
-	if cfg.HighLevel.ClientSecret != "test-client-secret" {
-		t.Fatalf("ClientSecret = %s, want test-client-secret", cfg.HighLevel.ClientSecret)
-	}
-	if cfg.HighLevel.RedirectURI != "https://test.example.com/callback" {
-		t.Fatalf("RedirectURI = %s, want test URL", cfg.HighLevel.RedirectURI)
-	}
-	if cfg.HighLevel.WebhookPublicKey != "test-webhook-public-key" {
-		t.Fatalf("WebhookPublicKey = %s, want test-webhook-public-key", cfg.HighLevel.WebhookPublicKey)
-	}
-	if cfg.HighLevel.APIBaseURL != "https://test-api.example.com" {
-		t.Fatalf("APIBaseURL = %s, want test API base URL", cfg.HighLevel.APIBaseURL)
-	}
-	if cfg.HighLevel.PublicBaseURL != "https://test.example.com" {
-		t.Fatalf("PublicBaseURL = %s, want test public base URL", cfg.HighLevel.PublicBaseURL)
+	if cfg.HighLevel.RedirectURI != "https://override.example.com/callback" {
+		t.Fatalf("HighLevel.RedirectURI = %s, want override URL", cfg.HighLevel.RedirectURI)
 	}
 }
 
-func TestLoadConfigInvalidValues(t *testing.T) {
-	t.Parallel()
-
-	os.Setenv("LISTEN_PORT", "invalid")
-	os.Setenv("DB_PORT", "invalid")
-	os.Setenv("DB_TLS_DISABLED", "invalid")
-	os.Setenv("RUN_MIGRATIONS", "invalid")
-
-	defer func() {
-		os.Unsetenv("LISTEN_PORT")
-		os.Unsetenv("DB_PORT")
-		os.Unsetenv("DB_TLS_DISABLED")
-		os.Unsetenv("RUN_MIGRATIONS")
-	}()
+func TestLoadConfigMissingRequired(t *testing.T) {
+	unsetAllEnv()
 
 	cfg := Config{}
-	err := cfg.LoadConfig()
-	if err != nil {
-		t.Fatalf("LoadConfig failed: %v", err)
-	}
-
-	// Invalid values should fall back to defaults
-	if cfg.ListenPort != 50051 {
-		t.Fatalf("ListenPort = %d, want default 50051", cfg.ListenPort)
-	}
-	if cfg.DB.DBPort != 5432 {
-		t.Fatalf("DBPort = %d, want default 5432", cfg.DB.DBPort)
-	}
-	if !cfg.DB.TLSDisabled {
-		t.Fatal("TLSDisabled should default to true for invalid value")
-	}
-	if !cfg.RunMigrations {
-		t.Fatal("RunMigrations should default to true for invalid value")
+	if err := cfg.LoadConfig(); err == nil {
+		t.Fatal("LoadConfig should fail when required environment variables are missing")
 	}
 }

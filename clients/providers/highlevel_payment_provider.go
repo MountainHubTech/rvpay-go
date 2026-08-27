@@ -179,6 +179,7 @@ func (c *HighLevelPaymentProviderClient) doJSON(ctx context.Context, method, pat
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Version", "v3")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

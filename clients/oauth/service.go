@@ -179,12 +179,11 @@ func (s *Service) BeginAuthorization(ctx context.Context, clientID, platformID u
 //     client/platform context.
 //   - When `state` is absent (HighLevel Marketplace OAuth does not return a
 //     state), the authorization code is exchanged first to obtain the GHL
-//     locationId. The locationId is then resolved to the integration via the
-//     deterministic mapping: first by `integration.external_account_id` (the
-//     GHL location identifier established during provisioning/activation), then
-//     by `payment_provider_configs.location_id`. The integration's
-//     client_id/platform_id are used to continue the existing
-//     ProcessCallback/integration flow.
+//     locationId. The existing HighLevel platform (slug "highlevel") is
+//     resolved, and the tenant client plus the client's integration to the
+//     platform are created in the database during this one-time installation
+//     (idempotent — reused if already present). The integration is mapped to
+//     the locationId via external_account_id and the callback continues.
 func (s *Service) HandleCallback(ctx context.Context, code, state string) (*CallbackResult, error) {
 	s.logger.Info().Msg("\n HandleCallback method initiated... \n")
 
@@ -242,37 +241,52 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 
 	s.logger.Info().Msgf("\n Location ID: %v \n", tokenResp.LocationID)
 
-	// Resolve the integration deterministically from the GHL locationId.
-	// First try the provisioning mapping: integration.external_account_id =
-	// GHL locationId. This is the authoritative mapping established when the
-	// integration is activated. If that is not set, fall back to the
-	// payment_provider_configs.location_id mapping (created during provider
-	// registration). If neither resolves, fail clearly rather than selecting
-	// an arbitrary integration or client.
-	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, tokenResp.LocationID)
+	// Only the HighLevel platform is expected to already exist. Resolve it by
+	// slug (never create or modify platform records). The installation creates
+	// the client and the client's integration to that platform in the database
+	// during this OAuth callback; neither is assumed to exist beforehand.
+	platform, err := s.platformsRepo.GetBySlug(ctx, "highlevel")
 	if err == repo.ErrNotFound {
-		// Fall back to the payment provider config mapping.
-		config, configErr := s.configRepo.GetByLocationID(ctx, tokenResp.LocationID)
-		if configErr == repo.ErrNotFound {
-			return nil, ErrIntegrationNotFound
+		return nil, ErrPlatformNotFound
+	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	// Derive a deterministic tenant client name from the GHL sub-account so a
+	// repeat callback reuses the same client. Create it ACTIVE when missing so
+	// the shared callback processing can complete the installation.
+	clientName := "highlevel-" + tokenResp.LocationID
+	client, err := s.clientsRepo.GetByName(ctx, clientName)
+	if err == repo.ErrNotFound {
+		client, err = s.clientsRepo.Create(ctx, clientName, sqlc.ClientStatusACTIVE)
+	}
+	if err == repo.ErrDuplicate {
+		// A concurrent install created the client; reuse it.
+		client, err = s.clientsRepo.GetByName(ctx, clientName)
+	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	// Create the client's integration to the platform during installation,
+	// mapped to the GHL locationId. Reuse it if a prior install already
+	// created it. Status CREATED lets the shared callback activate the
+	// integration and persist the OAuth token.
+	integration, err := s.integrationsRepo.GetByClientAndPlatform(ctx, client.ID, platform.ID)
+	if err == repo.ErrNotFound {
+		integration, err = s.integrationsRepo.Create(ctx, client.ID, platform.ID, tokenResp.LocationID, sqlc.IntegrationStatusCREATED)
+		if err == repo.ErrDuplicate {
+			integration, err = s.integrationsRepo.GetByClientAndPlatform(ctx, client.ID, platform.ID)
 		}
-		if configErr != nil {
-			return nil, translateError(configErr)
-		}
-		integration, err = s.integrationsRepo.GetByID(ctx, config.IntegrationID)
-		if err == repo.ErrNotFound {
-			return nil, ErrIntegrationNotFound
-		}
-		if err != nil {
-			return nil, translateError(err)
-		}
-	} else if err != nil {
+	}
+	if err != nil {
 		return nil, translateError(err)
 	}
 
 	// Continue with the already-exchanged token response. The authorization
 	// code was exchanged exactly once above; it must not be exchanged again by
-	// ProcessCallback.
+	// downstream processing.
 	return s.processCallbackWithToken(ctx, integration.ClientID, integration.PlatformID, provider, tokenResp)
 }
 
@@ -363,6 +377,7 @@ func (s *Service) ProcessCallback(ctx context.Context, clientID, platformID uuid
 // info, reuses (CREATED) or creates the integration, persists the OAuth token,
 // and triggers the HighLevel Custom Payment Provider registration lifecycle.
 func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platformID uuid.UUID, provider providers.Provider, tokenResp *providers.TokenResponse) (*CallbackResult, error) {
+	s.logger.Info().Msg("ProcessCallbackWithToken Initiated...")
 	// Re-validate the client for the stateless Marketplace flow, where the tenant
 	// may have been provisioned by the INSTALL webhook earlier. The state-based
 	// flow already validated the client before the exchange, so this is a
@@ -379,11 +394,15 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 		return nil, ErrClientInactive
 	}
 
-	providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
-	if err != nil {
-		s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth user info retrieval failed")
-		return nil, ErrUserInfoFailed
-	}
+	s.logger.Info().Msgf("\n Client that was created or already existed already: %v \n", client)
+
+	s.logger.Info().Msgf("\n Access Token for our client: %v \n", tokenResp.AccessToken)
+
+	// providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
+	// if err != nil {
+	// 	s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth user info retrieval failed")
+	// 	return nil, ErrUserInfoFailed
+	// }
 
 	// Determine the integration to use. If an integration already exists for
 	// this client/platform:
@@ -394,6 +413,18 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	existing, err := s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
 	if err == nil {
 		if existing.Status != sqlc.IntegrationStatusCREATED {
+			// // Temporarily create the provider association here.
+			// // Get rid of this if block after local testing is done.
+			// if provider.HasCapability(providers.CapabilityPaymentProvider) {
+			// 	regErr := s.RegisterProvider(ctx, existing.ID, tokenResp.LocationID, tokenResp.AccessToken)
+			// 	if regErr != nil {
+			// 		s.logger.Warn().Err(regErr).Str("integration_id", existing.ID.String()).Str("location_id", tokenResp.LocationID).Msg("HighLevel provider registration failed; integration remains installed")
+			// 		// result.ProviderRegistrationError = regErr
+			// 	} else {
+			// 		// result.ProviderRegistered = true
+			// 		s.logger.Info().Msg("Provider successfully registered")
+			// 	}
+			// }
 			return nil, ErrIntegrationAlreadyExists
 		}
 		// Reuse the pre-provisioned CREATED integration. Activate it. The
@@ -407,12 +438,13 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 		s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return nil, translateError(err)
-	} else {
-		integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, providerUserID, sqlc.IntegrationStatusACTIVE)
-		if err != nil {
-			return nil, translateError(err)
-		}
 	}
+	// else {
+	// 	integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, providerUserID, sqlc.IntegrationStatusACTIVE)
+	// 	if err != nil {
+	// 		return nil, translateError(err)
+	// 	}
+	// }
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
 	_, err = s.oauthRepo.Create(ctx, integration.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
@@ -422,14 +454,14 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	}
 
 	result := &CallbackResult{
-		IntegrationID:  integration.ID,
-		ClientID:       clientID,
-		PlatformID:     platformID,
-		AccessToken:    tokenResp.AccessToken,
-		RefreshToken:   tokenResp.RefreshToken,
-		ExpiresAt:      expiresAt,
-		Scope:          tokenResp.Scope,
-		ProviderUserID: providerUserID,
+		IntegrationID: integration.ID,
+		ClientID:      clientID,
+		PlatformID:    platformID,
+		AccessToken:   tokenResp.AccessToken,
+		RefreshToken:  tokenResp.RefreshToken,
+		ExpiresAt:     expiresAt,
+		Scope:         tokenResp.Scope,
+		// ProviderUserID: providerUserID,
 	}
 
 	// Trigger the HighLevel Custom Payment Provider registration lifecycle.
@@ -447,7 +479,9 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 		}
 	}
 
-	s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Str("provider_user_id", providerUserID).Bool("provider_registered", result.ProviderRegistered).Msg("OAuth callback processed successfully")
+	s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Bool("provider_registered", result.ProviderRegistered).Msg("OAuth callback processed successfully")
+
+	// .Str("provider_user_id", providerUserID)
 
 	return result, nil
 }
@@ -508,6 +542,12 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		if errors.Is(err, providers.ErrBadRequest) || errors.Is(err, providers.ErrUnprocessableEntity) {
 			s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association already exists; continuing with configuration")
 		} else {
+			s.logger.Error().
+				Err(err).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("HighLevel provider association failed")
+
 			return ErrProviderAssociationFailed
 		}
 	}

@@ -28,7 +28,6 @@ import (
 	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
-	"github.com/joho/godotenv"
 
 	// "github.com/joho/godotenv"
 	"github.com/rs/zerolog"
@@ -108,8 +107,6 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	highLevelPaymentProvider := providers.NewHighLevelPaymentProviderClient(cfg.HighLevel.APIBaseURL, nil)
 	highLevelProvider := providers.NewHighLevelProvider(cfg.HighLevel.ClientID, cfg.HighLevel.ClientSecret, cfg.HighLevel.RedirectURI, cfg.HighLevel.WebhookPublicKey, highLevelPaymentProvider, logger)
 	providerRegistry.Register(highLevelProvider)
-	fmt.Println(" \n ClientID: \n", cfg.HighLevel.ClientID)
-	fmt.Println(" \n ClientSecret: \n", cfg.HighLevel.ClientSecret)
 	logger.Info().Msg("providers registered successfully")
 
 	clientsService := service.NewClientsServiceImpl(clientRepo, logger)
@@ -161,19 +158,19 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// gRPC. The Transactions gRPC address comes from configuration
 	// (TRANSACTIONS_GRPC_ADDR); it is never hard-coded.
 
-	// Loads .env from the directory where you execute the command
-	// // This only exists for local testing and development
-	err = godotenv.Load(".env")
-	if err != nil {
-		return fmt.Errorf("No .env file found, relying on system env")
-	}
+	// // Loads .env from the directory where you execute the command
+	// // // This only exists for local testing and development
+	// err = godotenv.Load(".env")
+	// if err != nil {
+	// 	return fmt.Errorf("No .env file found, relying on system env")
+	// }
 
-	transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
-	if transactionsAddr == "" {
-		return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
-	}
+	// transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
+	// if transactionsAddr == "" {
+	// 	return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
+	// }
 
-	transactionsConn, err := grpc.NewClient(transactionsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	transactionsConn, err := grpc.NewClient(cfg.TransactionsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("connect to transactions service: %w", err)
 	}

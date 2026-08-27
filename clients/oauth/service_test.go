@@ -804,42 +804,63 @@ func TestHandleCallbackNoState_ConfigRepoNotConfigured(t *testing.T) {
 	}
 }
 
-func TestHandleCallbackNoState_LocationIDResolution(t *testing.T) {
+func TestHandleCallbackNoState_InstallationCreatesTenant(t *testing.T) {
 	t.Parallel()
 
-	// Mock HighLevel: token exchange returns a locationId, and payment
-	// provider endpoints succeed.
-	svc, integrationRepo, _, clientRepo, platformRepo, _, configRepo := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
+	// Only the HighLevel platform exists. A Marketplace install exchanges the
+	// code, obtains the locationId, resolves the existing HighLevel
+	// platform by slug, and CREATES the tenant client and its integration to
+	// the platform during installation.
+	svc, integrationRepo, tokenRepo, clientRepo, platformRepo, _, configRepo := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
 
-	clientID := uuid.New()
+	// Only the platform exists; no client or integration is pre-created.
 	platformID := uuid.New()
-	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
 	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
 
-	// Create an integration so the config can reference it.
-	integration, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
-	if err != nil {
-		t.Fatalf("create integration: %v", err)
+	if len(clientRepo.clients) != 0 {
+		t.Fatal("expected no pre-existing clients")
+	}
+	if len(integrationRepo.integrations) != 0 {
+		t.Fatal("expected no pre-exisisting integrations")
 	}
 
-	// Create a payment provider config keyed by the GHL locationId.
-	_, err = configRepo.Create(context.Background(), integration.ID, "RVPay", "RVPay payment provider", "https://example.com/logo.jpg", "loc-123", "https://api.example.com/payments/custom-provider/query", "https://checkout.example.com/payment/checkout", false, "test-api-key")
+	result, err := svc.HandleCallback(context.Background(), "test-code", "")
 	if err != nil {
-		t.Fatalf("create config: %v", err)
+		t.Fatalf("HandleCallback failed during installation: %v", err)
 	}
 
-	// Call HandleCallback with code and no state. The service exchanges the
-	// code, obtains the locationId, resolves it to the integration, and
-	// continues the ProcessCallback flow. Because the integration already
-	// exists, ProcessCallback returns ErrIntegrationAlreadyExists, which
-	// proves the locationId-based resolution reached ProcessCallback with the
-	// resolved clientID/platformID.
-	_, err = svc.HandleCallback(context.Background(), "test-code", "")
-	if status.Code(err) != codes.AlreadyExists {
-		t.Fatalf("status code = %s, want %s (integration already exists proves resolution reached ProcessCallback)", status.Code(err), codes.AlreadyExists)
+	if result.ClientID == uuid.Nil {
+		t.Fatal("expected a client to be created during installation")
+	}
+	if result.PlatformID != platformID {
+		t.Fatalf("PlatformID = %v, want %v (existing HighLevel platform)", result.PlatformID, platformID)
+	}
+
+	if len(clientRepo.clients) != 1 {
+		t.Fatalf("expected 1 client created, got %d", len(clientRepo.clients))
+	}
+	if len(integrationRepo.integrations) != 1 {
+		t.Fatalf("expected 1 integration created, got %d", len(integrationRepo.integrations))
+	}
+	// The integration must map to the GHL locationId.
+	for _, i := range integrationRepo.integrations {
+		if i.ExternalAccountID != "loc-123" {
+			t.Fatalf("integration external_account_id = %q, want loc-123", i.ExternalAccountID)
+		}
+		if i.Status != sqlc.IntegrationStatusACTIVE {
+			t.Fatalf("integration status = %s, want ACTIVE", i.Status)
+		}
+	}
+	// Token persisted for the created integration.
+	if len(tokenRepo.tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(tokenRepo.tokens))
+	}
+	// Provider config persisted for the created integration.
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("expected 1 provider config, got %d", len(configRepo.configs))
 	}
 }
 
@@ -855,7 +876,7 @@ func TestHandleCallbackNoState_ResolvesByExternalAccountID(t *testing.T) {
 
 	clientID := uuid.New()
 	platformID := uuid.New()
-	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, ClientName: "highlevel-loc-123", Status: sqlc.ClientStatusACTIVE}
 	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
 
 	// Pre-provision a CREATED integration with external_account_id = GHL
@@ -956,7 +977,7 @@ func TestHandleCallbackNoState_ExchangesCodeExactlyOnce(t *testing.T) {
 
 	clientID := uuid.New()
 	platformID := uuid.New()
-	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, ClientName: "highlevel-loc-123", Status: sqlc.ClientStatusACTIVE}
 	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
 	// The integration established by INSTALL maps to the GHL locationId.
 	preProvisioned, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusCREATED)
@@ -994,11 +1015,14 @@ func TestHandleCallbackNoState_ExchangesCodeExactlyOnce(t *testing.T) {
 	}
 }
 
-func TestHandleCallbackNoState_LocationIDNotFound(t *testing.T) {
+func TestHandleCallbackNoState_PlatformNotFound(t *testing.T) {
 	t.Parallel()
 
-	// Mock HighLevel: token exchange returns a locationId that has no matching
-	// payment provider config.
+	// Mock HighLevel: token exchange succeeds but the HighLevel platform row is
+	// absent (newRegistrationTestService seeds no platform). The installation
+	// requires the existing HighLevel platform by slug; without it the flow
+	// fails with ErrPlatformNotFound (NotFound) rather than provisioning a
+	// platform (platform creation is out of scope).
 	svc, _, _, _, _, _, _ := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true}`))

@@ -192,7 +192,7 @@ func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redir
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
-	p.logger.Info().Msgf("\n Response from token exhange: %v \n", tokenResp)
+	// p.logger.Info().Msgf("\n Response from token exhange: %v \n", tokenResp)
 
 	return &TokenResponse{
 		AccessToken:  tokenResp.AccessToken,
@@ -260,11 +260,14 @@ func (p *HighLevelProvider) RefreshToken(ctx context.Context, refreshToken strin
 }
 
 func (p *HighLevelProvider) GetUserInfo(ctx context.Context, accessToken string) (string, error) {
+	p.logger.Info().Msg("Get User Info Initiated...")
 	req, err := http.NewRequestWithContext(ctx, "GET", p.userInfoURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create user info request: %w", err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	p.logger.Info().Msg("\n Request about to be made... \n")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

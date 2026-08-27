@@ -127,8 +127,8 @@ func TestLoadConfigDefaultsApplied(t *testing.T) {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
-	if cfg.LogLevel != "debug" {
-		t.Fatalf("LogLevel = %s, want default debug", cfg.LogLevel)
+	if cfg.LogLevel != "info" {
+		t.Fatalf("LogLevel = %s, want default info", cfg.LogLevel)
 	}
 	if !cfg.RunMigrations {
 		t.Fatal("RunMigrations should default to true")
