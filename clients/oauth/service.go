@@ -191,7 +191,6 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		return nil, ErrMissingCode
 	}
 
-
 	if state != "" {
 		// Atomically consume the state. ConsumeOAuthState only succeeds when the
 		// state exists, is not already consumed, and has not expired. This both
@@ -394,7 +393,6 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	}
 
 	s.logger.Info().Msgf("\n Client that was created or already existed already: %v \n", client)
-
 
 	// providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
 	// if err != nil {

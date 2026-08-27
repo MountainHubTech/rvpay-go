@@ -53,7 +53,7 @@ func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey 
 		// connections are pooled and reused rather than recreated per request.
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		paymentProvider: paymentProvider,
-		logger: logger,
+		logger:          logger,
 	}
 }
 
