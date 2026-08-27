@@ -28,13 +28,37 @@ func NewOAuthHandler(service *oauth.Service, logger zerolog.Logger) *OAuthHandle
 // Route: GET /oauth/callback
 // Query parameters: code, state
 func (h *OAuthHandler) Callback(w http.ResponseWriter, r *http.Request) {
+	h.logger.Info().Msg("Callback method engaged...")
+
 	if r.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
+	h.logger.Info().Msg("Handler reached ")
+
 	code := r.URL.Query().Get("code")
-	state := r.URL.Query().Get("state")
+	// state := r.URL.Query().Get("state")
+
+	var state string
+
+	// Parsing the query parameters into a map (url.Values)
+	queryParams := r.URL.Query()
+
+	// Check if the "state" key exists in the map at all
+	if _, exists := queryParams["state"]; !exists {
+		// Scenario A: The parameter is completely missing from the URL
+		// Example: /callback?code=123
+		state = ""
+		h.logger.Info().Msg("State parameter doesn't exist, given empty string value.")
+	} else {
+		// Scenario B & C: Key exists, now fetch its value
+		// Example: /callback?code=123&state=
+		state = queryParams.Get("state")
+		if state == "" {
+			h.logger.Info().Msg("State parameter exists but has no value.")
+		}
+	}
 
 	result, err := h.service.HandleCallback(r.Context(), code, state)
 	if err != nil {
