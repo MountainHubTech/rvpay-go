@@ -320,3 +320,48 @@ secret and the pawaPay API key.
 - Token refresh is manual; no automatic scheduling is implemented.
 - Webhook deduplication is enforced via the `webhook_events` table.
 - No authentication or authorization is implemented at the transport layer.
+
+## Recent changes (unpushed local commits)
+
+Changes below apply only to the Clients service across the three most recent
+(unpushed) commits.
+
+### OAuth callback logging (`http/oauth_handler.go`)
+- Added structured `zerolog` logging to `GET /oauth/callback`.
+- The `state` query parameter is now parsed explicitly so a *missing* parameter is
+  distinguishable from a *present-but-empty* one (HighLevel Marketplace callbacks do not
+  return `state`).
+
+### Configuration (`config/model.go`)
+- `Config`, `DBConfig`, and `HighLevelConfig` converted to `ardanlabs/conf/v3` struct
+  tags: required variables fail config load when missing, secrets are masked, defaults are
+  declared (`LOG_LEVEL` default `info`, `RUN_MIGRATIONS` default `true`,
+  `DB_TLS_DISABLED` no default → `false`).
+- New binding `TRANSACTIONS_GRPC_ADDR` → `Config.TransactionsAddr` added.
+- `config/model_test.go` rewritten to cover defaults, environment overrides, and
+  missing-required-variable failures.
+
+### HighLevel provider (`providers/highlevel.go`)
+- `NewHighLevelProvider` now takes a `zerolog.Logger` argument.
+- `ExchangeCode` and `GetUserInfo` instrumented with logging; the raw token-exchange
+  response log was later commented out to avoid leaking tokens.
+
+### OAuth flow / installation (`oauth/service.go`)
+- The stateless Marketplace callback (no `state`) now provisions the tenant during
+  install: exchanges code once → obtains the GHL `locationId`, resolves the existing
+  HighLevel platform by slug (never creates it), idempotently creates the tenant client
+  `highlevel-<locationId>` (ACTIVE) and the client's integration with
+  `external_account_id = locationId` (status CREATED), then continues with the token.
+- New `processCallbackWithToken` convergence point makes both flows exchange the code
+  exactly once (double-exchange fixed), reuses/activates a CREATED integration, persists
+  the OAuth token, and best-effort registers the HighLevel payment provider. `GetUserInfo`
+  commented out. `oauth/service_test.go` updated accordingly.
+
+### Main wiring (`cmd/grpc-service/main.go`)
+- Transactions gRPC connection uses `cfg.TransactionsAddr` (typed config) instead of
+  `os.Getenv`. Active `godotenv.Load(".env")` and `fmt.Println` debug output of the GHL
+  client id/secret were removed (kept commented out).
+
+### GHL Custom Payment Provider (`providers/highlevel_payment_provider.go`)
+- Outbound GHL payment-provider calls now set `Version: v3`. Registration is being
+  worked on ("partially fixed").

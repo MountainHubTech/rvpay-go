@@ -301,3 +301,20 @@ The payout domain/proto has no dedicated phone-number field; the PawaPay SDK
 requires a recipient phone number. The payout `destination_reference` is mapped
 to `Recipient.AccountDetails.PhoneNumber`. Confirm that callers always populate
 `destination_reference` with a valid mobile-money phone number.
+## Recent changes (unpushed local commits)
+
+Changes made to the Transactions service in the most recent three (unpushed)
+commits. These are configuration/style-only; no PawaPay domain, SDK, deposit,
+payout, or gRPC behavior was changed.
+
+### Configuration (`config/model.go`)
+- `Config` and `DBConfig` were restyled to match `clients/config/model.go`
+  (field grouping, `DBConfig` comment, `LoadConfig` comment and formatting).
+- The `LOG_LEVEL` default changed from `debug` to `info`.
+- `RUN_MIGRATIONS` remains `true`. Environment variables are unchanged
+  (`LOG_LEVEL`, `LISTEN_PORT`, `MIGRATION_PATH`, `RUN_MIGRATIONS`,
+  `PAWAPAY_API_URL`, `PAWAPAY_API_KEY`, and the `DB_*` set).
+
+### Tests
+- `config/model_test.go` updated so the defaults test expects the new `info`
+  log level (`TestLoadConfigDefaultsApplied`).

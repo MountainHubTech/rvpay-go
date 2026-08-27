@@ -474,3 +474,80 @@ for the full variable list.
 
 See each service's `README.md` for its runtime and database details, and
 `protobuf/README.md` for the API contract and code-generation workflow.
+## Recent changes (unpushed local commits)
+
+The three most recent local commits (not yet pushed) focus on the
+HighLevel (GHL) Marketplace OAuth/install flow and on aligning config/tests
+conventions. Hashes (earliest to latest):
+
+- `1ff63ab` — Adding logs to OAuth callback
+- `a2dc1fc` — Fixing model.go and loggers
+- `cdbc2f6` — GHL Integration and Installation Fixed. Payment Provider partially fixed
+
+The summary below covers all changes across these three commits.
+
+### Clients service
+
+#### OAuth handler logging (`clients/http/oauth_handler.go`)
+- Added structured `zerolog` logging to `GET /oauth/callback` (`Callback method engaged`, `Handler reached`).
+- The `state` query parameter is now parsed explicitly so a *missing* parameter is
+  distinguishable from a *present-but-empty* one. HighLevel Marketplace callbacks do not
+  return `state`, so this branch is now logged and handled deliberately.
+
+#### Configuration (`clients/config/model.go`)
+- `Config`, `DBConfig`, and `HighLevelConfig` were converted to `ardanlabs/conf/v3`
+  struct tags: required variables now fail config load when missing, secrets are masked
+  (`mask`), and defaults are declared (e.g. `LOG_LEVEL` default `info`,
+  `RUN_MIGRATIONS` default `true`, `DB_TLS_DISABLED` no default → `false`).
+- New binding `TRANSACTIONS_GRPC_ADDR` → `Config.TransactionsAddr` was added so the
+  service can read the Transactions gRPC address from the typed config.
+
+#### HighLevel provider (`clients/providers/highlevel.go`)
+- `NewHighLevelProvider` now accepts a `zerolog.Logger` and stores it on the provider.
+- `ExchangeCode` and `GetUserInfo` were instrumented with logging. The raw token-exchange
+  response log was later commented out so access/refresh tokens are not written to logs.
+
+#### OAuth installation fix (`clients/oauth/service.go`)
+- The stateless (no `state`) Marketplace callback **now provisions the RVPay tenant
+  during install** instead of assuming it already exists:
+  1. Exchanges the authorization code exactly once → GHL `locationId`.
+  2. Resolves the existing HighLevel platform by slug `"highlevel"` (never creates it;
+     missing → `ErrPlatformNotFound`).
+  3. Idempotently creates the tenant client named `highlevel-<locationId>` (ACTIVE).
+  4. Idempotently creates the client's integration with `external_account_id = locationId`
+     and status `CREATED`.
+  5. Continues with the already-exchanged token.
+- A new `processCallbackWithToken(...)` is the single convergence point for both the
+  state-based and stateless flows, so the authorization code is never exchanged twice.
+  Existing double exchange is eliminated. It re-uses/activates a CREATED integration,
+  persists the OAuth token, and best-effort triggers the HighLevel Custom Payment
+  Provider registration. `GetUserInfo` is commented out in this flow.
+- Adds `ErrPlatformNotFound` and error logging for failed provider association.
+
+#### Main wiring (`clients/cmd/grpc-service/main.go`)
+- The Transactions gRPC connection now uses `cfg.TransactionsAddr` instead of a raw
+  `os.Getenv("TRANSACTIONS_GRPC_ADDR")`.
+- The active `godotenv.Load(".env")` and `fmt.Println` debug prints of the GHL client
+  id/secret were removed (left as comments for local-only use).
+
+#### GHL Custom Payment Provider (`clients/providers/highlevel_payment_provider.go`)
+- Outbound GHL provider calls now set the `Version: v3` HTTP header. Provider
+  registration is labeled as *partially fixed / work-in-progress*.
+
+#### Shared
+- `shared/database/database.go` gained a temporary `DBUrl` debug print in the PostgreSQL
+  URL builder (dev-only).
+
+### Transactions service
+
+- `transactions/config/model.go` was restyled to match `clients/config/model.go`
+  (struct grouping, `DBConfig` comment, `LoadConfig` error wording and formatting).
+- `LOG_LEVEL` default changed `debug` → `info`; `RUN_MIGRATIONS` remains `true`.
+  Environment variables are unchanged.
+- `transactions/config/model_test.go` updated so the defaults test expects the new
+  `info` log level.
+
+### Verification
+- `go build ./...`, `go vet ./...`, `go test ./... -count=1` — all pass for the affected
+  `clients/` and `transactions/` packages.
+- No migrations, protobuf contracts, `deposits/`, or `integrations/` files changed.
