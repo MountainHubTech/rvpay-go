@@ -18,16 +18,16 @@ import { cn } from "@/lib/utils"
 type NavItem = {
   label: string
   icon: LucideIcon
-  href?: string
+  href: string
 }
 
 const navItems: NavItem[] = [
   { label: "Dashboard", icon: LayoutDashboard, href: "/" },
   { label: "Sub-Accounts", icon: Users, href: "/sub-accounts" },
-  { label: "Transactions", icon: ArrowLeftRight },
+  { label: "Transactions", icon: ArrowLeftRight, href: "/transactions" },
   { label: "Payouts", icon: Wallet, href: "/payouts" },
-  { label: "Disputes & Errors", icon: AlertTriangle },
-  { label: "Settings", icon: Settings },
+  { label: "Disputes & Errors", icon: AlertTriangle, href: "/disputes" },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ]
 
 export function AppSidebar() {
@@ -42,7 +42,7 @@ export function AppSidebar() {
       <nav className="flex flex-1 flex-col gap-1 px-3">
         {navItems.map((item) => {
           const Icon = item.icon
-          const active = item.href ? pathname === item.href : false
+          const active = pathname === item.href
           const content = (
             <span
               className={cn(
@@ -57,15 +57,7 @@ export function AppSidebar() {
             </span>
           )
 
-          return item.href ? (
-            <Link key={item.label} href={item.href}>
-              {content}
-            </Link>
-          ) : (
-            <div key={item.label} className="cursor-not-allowed">
-              {content}
-            </div>
-          )
+          return <Link key={item.label} href={item.href}>{content}</Link>
         })}
       </nav>
 

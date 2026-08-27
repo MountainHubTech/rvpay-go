@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 
 import { Card } from "@/components/ui/card"
-import { statCards, type StatCard } from "@/lib/dashboard-data"
+import { type StatCard } from "@/lib/dashboard-data"
 
 const icons = {
   revenue: Banknote,
@@ -44,10 +44,10 @@ function StatCardItem({ card }: { card: StatCard }) {
   )
 }
 
-export function StatCards() {
+export function StatCards({ cards }: { cards: StatCard[] }) {
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {statCards.map((card) => (
+      {cards.map((card) => (
         <StatCardItem key={card.label} card={card} />
       ))}
     </div>
