@@ -687,7 +687,5 @@ Make payment </h1>
     </button>
   </div>
 </div>
-```
-
 );
 }
