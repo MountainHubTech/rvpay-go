@@ -31,7 +31,9 @@ func AccessLog(logger zerolog.Logger) func(http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 
 			// Completely skip logging for health check endpoints
-			if r.URL.Path == "/v1/public/transactions/healthcheck" || r.URL.Path == "/healthz" {
+			if r.URL.Path == "/v1/public/transactions/healthcheck" ||
+			r.URL.Path == "/v1/public/clients/healthcheck" ||
+			r.URL.Path == "/v1/public/admindashboard/healthcheck" {
 				return
 			}
 

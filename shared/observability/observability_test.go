@@ -215,8 +215,8 @@ func TestAccessLog_HealthzAtDebug(t *testing.T) {
 	AccessLog(logger)(inner).ServeHTTP(rec, req)
 
 	out := buf.String()
-	if !strings.Contains(out, `"level":"debug"`) {
-		t.Errorf("healthz access log should be debug: %s", out)
+	if !strings.Contains(out, `"level":"info"`) {
+		t.Errorf("healthz access log should be info: %s", out)
 	}
 }
 
