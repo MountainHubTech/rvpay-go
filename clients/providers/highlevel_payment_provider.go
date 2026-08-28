@@ -82,6 +82,51 @@ func (c *HighLevelPaymentProviderClient) CreateProviderAssociation(ctx context.C
 	return nil
 }
 
+// CreateProviderConfigs pushes the RVPay live/test processing keys
+// (apiKey + publishableKey) to HighLevel for the supplied location. Per the
+// HighLevel v3 contract, `locationId` is a required QUERY parameter and the
+// credentials are sent in the JSON body. This is what lets the location
+// transact through RVPay once the provider association exists.
+//
+// POST /payments/custom-provider/connect?locationId=<id>
+// Body: {live:{apiKey,publishableKey,liveMode}, test:{apiKey,publishableKey,liveMode}}
+func (c *HighLevelPaymentProviderClient) CreateProviderConfigs(ctx context.Context, accessToken, locationID string, creds ProviderCredentials) error {
+	if strings.TrimSpace(accessToken) == "" {
+		return ErrMissingAccessToken
+	}
+	if strings.TrimSpace(locationID) == "" {
+		return ErrMissingLocationID
+	}
+
+	// locationId is a required query parameter per the v3 contract. It is
+	// NOT part of the JSON body.
+	q := url.Values{}
+	q.Set("locationId", locationID)
+	path := "/payments/custom-provider/connect" + "?" + q.Encode()
+
+	// The live/test processing keys are sent in the JSON body. liveMode
+	// reflects the environment each key set belongs to.
+	body := map[string]interface{}{
+		"live": map[string]interface{}{
+			"apiKey":         creds.Live.APIKey,
+			"publishableKey": creds.Live.PublishableKey,
+			"liveMode":       true,
+		},
+		"test": map[string]interface{}{
+			"apiKey":         creds.Test.APIKey,
+			"publishableKey": creds.Test.PublishableKey,
+			"liveMode":       false,
+		},
+	}
+
+	var respBody map[string]interface{}
+	if err := c.doJSON(ctx, http.MethodPost, path, accessToken, body, &respBody); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // FetchProviderConfig fetches the provider configuration for a location.
 //
 // GET /payments/custom-provider/connect

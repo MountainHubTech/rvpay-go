@@ -87,8 +87,27 @@ type HighLevelConfig struct {
 	// for the payment provider configuration. It is configuration, never
 	// hard-coded.
 	PublicBaseURL string `conf:"env:PUBLIC_BASE_URL,required"`
-}
 
+	// LiveAPIKey is the RVPay live API key pushed to HighLevel as the
+	// provider config's live apiKey (HIGHLEVEL_LIVE_API_KEY). It is
+	// configuration, never hard-coded.
+	LiveAPIKey string `conf:"env:HIGHLEVEL_LIVE_API_KEY,mask"`
+
+	// LivePublishableKey is the RVPay live publishable key pushed to
+	// HighLevel (HIGHLEVEL_LIVE_PUBLISHABLE_KEY). It is configuration,
+	// never hard-coded.
+	LivePublishableKey string `conf:"env:HIGHLEVEL_LIVE_PUBLISHABLE_KEY"`
+
+	// TestAPIKey is the RVPay test API key pushed to HighLevel as the
+	// provider config's test apiKey (HIGHLEVEL_TEST_API_KEY). It is
+	// configuration, never hard-coded.
+	TestAPIKey string `conf:"env:HIGHLEVEL_TEST_API_KEY,mask"`
+
+	// TestPublishableKey is the RVPay test publishable key pushed to
+	// HighLevel (HIGHLEVEL_TEST_PUBLISHABLE_KEY). It is configuration,
+	// never hard-coded.
+	TestPublishableKey string `conf:"env:HIGHLEVEL_TEST_PUBLISHABLE_KEY"`
+}
 
 // LoadConfig reads configuration from file or environment variables.
 func (c *Config) LoadConfig() error {

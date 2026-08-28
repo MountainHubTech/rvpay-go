@@ -18,10 +18,9 @@ import "context"
 //   - FetchProviderConfig (GET /payments/custom-provider/connect) retrieves the
 //     existing provider configuration for a location (same provider metadata
 //     shape).
-//
-// The separate "connect" endpoint (POST /payments/custom-provider/connect)
-// stores live/test processing keys that RVPay does not currently configure, so
-// it is intentionally not exposed as a registration step.
+//   - CreateProviderConfigs (POST /payments/custom-provider/connect) pushes
+//     RVPay's live/test processing keys (apiKey + publishableKey) to HighLevel
+//     so the location can transact through RVPay.
 type PaymentProviderClient interface {
 	// CreateProviderAssociation registers the RVPay Custom Payment Provider for
 	// the supplied HighLevel location, sending the provider metadata.
@@ -29,6 +28,13 @@ type PaymentProviderClient interface {
 	// POST /payments/custom-provider/provider?locationId=<id>
 	// Body: {name, description, paymentsUrl, queryUrl, imageUrl, supportsSubscriptionSchedule}
 	CreateProviderAssociation(ctx context.Context, accessToken string, cfg ProviderConfig) error
+
+	// CreateProviderConfigs pushes the RVPay live/test processing keys
+	// (apiKey + publishableKey) to HighLevel for the supplied location.
+	//
+	// POST /payments/custom-provider/connect?locationId=<id>
+	// Body: {live:{apiKey,publishableKey,liveMode}, test:{apiKey,publishableKey,liveMode}}
+	CreateProviderConfigs(ctx context.Context, accessToken, locationID string, creds ProviderCredentials) error
 
 	// FetchProviderConfig fetches the existing provider configuration for a
 	// location, returning the real provider metadata registered with HighLevel.
@@ -61,4 +67,23 @@ type ProviderConfig struct {
 	// subscription scheduling. RVPay currently supports one-time payments
 	// only, so this is always false.
 	SupportsSubscriptionSchedule bool
+}
+
+// ProviderModeCredentials holds the RVPay processing keys pushed to HighLevel
+// for a single mode (live or test). All values come from environment
+// configuration; none are hard-coded.
+type ProviderModeCredentials struct {
+	// APIKey is the RVPay API key HighLevel uses to authenticate requests.
+	APIKey string
+	// PublishableKey is the RVPay publishable key used on the frontend.
+	PublishableKey string
+	// LiveMode indicates whether these keys are for the live environment.
+	LiveMode bool
+}
+
+// ProviderCredentials holds the live and test credentials pushed to HighLevel
+// via POST /payments/custom-provider/connect.
+type ProviderCredentials struct {
+	Live ProviderModeCredentials
+	Test ProviderModeCredentials
 }

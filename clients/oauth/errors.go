@@ -66,6 +66,9 @@ var (
 	// ErrAPIKeyGenerationFailed is returned when generating the provider API
 	// key fails.
 	ErrAPIKeyGenerationFailed = status.Error(codes.Internal, "provider API key generation failed")
+	// ErrProviderCredentialsNotConfigured is returned when no live/test
+	// provider credentials are configured for pushing to HighLevel.
+	ErrProviderCredentialsNotConfigured = status.Error(codes.FailedPrecondition, "provider credentials not configured")
 )
 
 // translateError converts repository errors to business errors.

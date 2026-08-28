@@ -28,6 +28,18 @@ type ProviderConfigSettings struct {
 	PaymentsURL string
 	// QueryURL is the backend query URL supplied to HighLevel.
 	QueryURL string
+	// LiveAPIKey is the RVPay live API key pushed to HighLevel as the
+	// provider config's live apiKey (HIGHLEVEL_LIVE_API_KEY).
+	LiveAPIKey string
+	// LivePublishableKey is the RVPay live publishable key pushed to
+	// HighLevel (HIGHLEVEL_LIVE_PUBLISHABLE_KEY).
+	LivePublishableKey string
+	// TestAPIKey is the RVPay test API key pushed to HighLevel as the
+	// provider config's test apiKey (HIGHLEVEL_TEST_API_KEY).
+	TestAPIKey string
+	// TestPublishableKey is the RVPay test publishable key pushed to
+	// HighLevel (HIGHLEVEL_TEST_PUBLISHABLE_KEY).
+	TestPublishableKey string
 }
 
 // Service manages OAuth flows for provider integrations.
@@ -588,6 +600,38 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association may already exist; confirming via fetch")
 	}
 
+	// Step 1b: Push the RVPay live/test processing keys to HighLevel
+	// (POST /payments/custom-provider/connect?locationId=<id>). This runs
+	// immediately after the provider association so the location can
+	// transact through RVPay as soon as it is registered. The keys come
+	// exclusively from environment configuration. The call is best-effort:
+	// a failure is logged and does not abort the registration or the
+	// installation, and it can be retried on the next registration.
+	if s.providerConfig.LiveAPIKey != "" || s.providerConfig.LivePublishableKey != "" ||
+		s.providerConfig.TestAPIKey != "" || s.providerConfig.TestPublishableKey != "" {
+		creds := providers.ProviderCredentials{
+			Live: providers.ProviderModeCredentials{
+				APIKey:         s.providerConfig.LiveAPIKey,
+				PublishableKey: s.providerConfig.LivePublishableKey,
+				LiveMode:       true,
+			},
+			Test: providers.ProviderModeCredentials{
+				APIKey:         s.providerConfig.TestAPIKey,
+				PublishableKey: s.providerConfig.TestPublishableKey,
+				LiveMode:       false,
+			},
+		}
+		if cfgErr := s.CreateProviderConfigs(ctx, paymentClient, accessToken, locationID, creds); cfgErr != nil {
+			s.logger.Warn().
+				Err(cfgErr).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("HighLevel provider config creation failed; association remains registered")
+		}
+	} else {
+		s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("no live/test provider keys configured; skipping provider config creation")
+	}
+
 	// Step 2: Fetch the existing provider configuration so the local record
 	// reflects genuine remote metadata rather than empty defaults. Fetch is
 	// best-effort: on a freshly created association the remote record may not
@@ -642,6 +686,30 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 	s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("HighLevel provider registration completed")
 
 	return nil
+}
+
+// CreateProviderConfigs pushes the RVPay live/test processing keys to
+// HighLevel for an installed location using the supplied payment provider
+// client. It validates that the access token and location ID are present and
+// that at least one credential value is configured; otherwise it returns a
+// typed error. It performs the outbound
+// POST /payments/custom-provider/connect?locationId=<id> call.
+func (s *Service) CreateProviderConfigs(ctx context.Context, paymentClient providers.PaymentProviderClient, accessToken, locationID string, creds providers.ProviderCredentials) error {
+	if paymentClient == nil {
+		return ErrPaymentProviderNotSupported
+	}
+	if accessToken == "" {
+		return ErrMissingAccessToken
+	}
+	if locationID == "" {
+		return ErrMissingLocationID
+	}
+	if creds.Live.APIKey == "" && creds.Live.PublishableKey == "" &&
+		creds.Test.APIKey == "" && creds.Test.PublishableKey == "" {
+		return ErrProviderCredentialsNotConfigured
+	}
+
+	return paymentClient.CreateProviderConfigs(ctx, accessToken, locationID, creds)
 }
 
 // RefreshAccessToken refreshes an OAuth access token for an integration.

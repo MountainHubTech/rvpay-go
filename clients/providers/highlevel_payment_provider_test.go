@@ -32,6 +32,95 @@ func newTestPaymentProviderServer(t *testing.T, handler http.HandlerFunc) (*http
 	return srv, &requests
 }
 
+func TestCreateProviderConfigs_Success(t *testing.T) {
+	t.Parallel()
+
+	var reqBody []byte
+	srv, requests := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("method = %s, want POST", r.Method)
+		}
+		if r.URL.Path != "/payments/custom-provider/connect" {
+			t.Errorf("path = %s, want /payments/custom-provider/connect", r.URL.Path)
+		}
+		if got := r.Header.Get("Version"); got != "v3" {
+			t.Errorf("Version header = %q, want v3", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
+			t.Errorf("Authorization = %q, want Bearer test-access-token", got)
+		}
+		if got := r.URL.Query().Get("locationId"); got != "loc-123" {
+			t.Errorf("query locationId = %q, want loc-123", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+		reqBody = body
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"_id":"6a917c1d57901cc41b0c3f1c","locationId":"loc-123"}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	creds := ProviderCredentials{
+		Live: ProviderModeCredentials{APIKey: "rvpay_live_001", PublishableKey: "rvpay_pk_live_001", LiveMode: true},
+		Test: ProviderModeCredentials{APIKey: "rvpay_test_001", PublishableKey: "rvpay_pk_test_001", LiveMode: false},
+	}
+	if err := client.CreateProviderConfigs(context.Background(), "test-access-token", "loc-123", creds); err != nil {
+		t.Fatalf("CreateProviderConfigs failed: %v", err)
+	}
+
+	if len(*requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(*requests))
+	}
+
+	var body map[string]map[string]interface{}
+	if err := json.Unmarshal(reqBody, &body); err != nil {
+		t.Fatalf("failed to parse request body: %v", err)
+	}
+	if body["live"]["apiKey"] != "rvpay_live_001" || body["live"]["publishableKey"] != "rvpay_pk_live_001" || body["live"]["liveMode"] != true {
+		t.Errorf("live credentials = %v, want apiKey rvpay_live_001, publishableKey rvpay_pk_live_001, liveMode true", body["live"])
+	}
+	if body["test"]["apiKey"] != "rvpay_test_001" || body["test"]["publishableKey"] != "rvpay_pk_test_001" || body["test"]["liveMode"] != false {
+		t.Errorf("test credentials = %v, want apiKey rvpay_test_001, publishableKey rvpay_pk_test_001, liveMode false", body["test"])
+	}
+}
+
+func TestCreateProviderConfigs_MissingToken(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.CreateProviderConfigs(context.Background(), "", "loc-123", ProviderCredentials{})
+	if !errors.Is(err, ErrMissingAccessToken) {
+		t.Fatalf("err = %v, want ErrMissingAccessToken", err)
+	}
+}
+
+func TestCreateProviderConfigs_MissingLocationID(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.CreateProviderConfigs(context.Background(), "test-access-token", "", ProviderCredentials{})
+	if !errors.Is(err, ErrMissingLocationID) {
+		t.Fatalf("err = %v, want ErrMissingLocationID", err)
+	}
+}
+
+func TestCreateProviderConfigs_Unauthorized(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"message":"Unauthorized"}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.CreateProviderConfigs(context.Background(), "test-access-token", "loc-123", ProviderCredentials{})
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("err = %v, want ErrUnauthorized", err)
+	}
+}
+
 func TestCreateProviderAssociation_Success(t *testing.T) {
 	t.Parallel()
 
