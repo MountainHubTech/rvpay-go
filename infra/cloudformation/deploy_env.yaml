@@ -201,7 +201,7 @@ Resources:
         HighLevelClientSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelClientSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
         HighLevelRedirectUri: !Sub "https://api.${DomainName}/oauth/callback"
-        HighLevelPaymentUrl: !Sub "https://api.${DomainName}/payments/custom-provider/webhook"
+        HighLevelPaymentUrl: !Sub "https://admindashboard.${DomainName}/payment"
         HighLevelQueryUrl: !Sub "https://api.${DomainName}/payments/custom-provider/query"
         PublicBaseUrl: !Sub "https://api.${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
