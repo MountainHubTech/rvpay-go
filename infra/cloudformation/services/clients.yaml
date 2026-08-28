@@ -30,6 +30,9 @@ Parameters:
   HighLevelClientSecretArn:
     Type: String
 
+  HighLevelProviderConfigsArn:
+    Type: String
+
   CustomResourcesServiceToken:
     Type: String
 
@@ -201,6 +204,18 @@ Resources:
             - Name: HIGHLEVEL_CLIENT_SECRET
               ValueFrom: !Sub "${HighLevelClientSecretArn}:client_secret::"
 
+            - Name: HIGHLEVEL_LIVE_API_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:live_api_key::"
+
+            - Name: HIGHLEVEL_LIVE_PUBLISHABLE_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:live_publishable_key::"
+
+            - Name: HIGHLEVEL_TEST_API_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_api_key::"
+
+            - Name: HIGHLEVEL_TEST_PUBLISHABLE_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_publishable_key::"
+
   AppDatabase:
     Type: Custom::PgDatabase
     Properties:
@@ -241,6 +256,7 @@ Resources:
                   - !Ref AppDatabaseSecret
                   - !Ref DbAdminSecretArn
                   - !Ref HighLevelClientSecretArn
+                  - !Ref HighLevelProviderConfigsArn
 
   TaskRole:
     Type: AWS::IAM::Role

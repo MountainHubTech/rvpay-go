@@ -199,6 +199,7 @@ Resources:
         Image: !Ref ClientsImage
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         HighLevelClientSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelClientSecretArn
+        HighLevelProviderConfigsArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelProviderConfigsArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
         HighLevelRedirectUri: !Sub "https://api.${DomainName}/oauth/callback"
         HighLevelPaymentUrl: !Sub "https://admindashboard.${DomainName}/payment"
