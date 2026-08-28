@@ -73,7 +73,7 @@ Parameters:
 
   HighLevelProviderImageUrl:
     Type: String
-    Default: ""
+    # Default: ""
 
   HighLevelApiBaseUrl:
     Type: String

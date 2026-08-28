@@ -125,6 +125,7 @@ export default function PaymentPage() {
         apiKey: null,
         chargeId: null,
         subscriptionId: null,
+        amount: null,
       };
     }
 
@@ -136,8 +137,20 @@ export default function PaymentPage() {
       apiKey: params.get("apiKey"),
       chargeId: params.get("chargeId"),
       subscriptionId: params.get("subscriptionId"),
+      amount: params.get("amount"),
     };
   }, []);
+
+  // HighLevel may supply the order amount on the paymentsUrl. When present,
+  // prefill (and lock) the amount so the checkout reflects the actual order.
+  useEffect(() => {
+    if (!paymentContext.amount) return;
+    const parsed = Number(paymentContext.amount);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      setAmount(parsed);
+      setEditingAmount(false);
+    }
+  }, [paymentContext.amount]);
 
   useEffect(() => {
     return () => {
@@ -164,8 +177,12 @@ export default function PaymentPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          type: paymentContext.type,
+          // The queryUrl verify contract is `type=verify`. HighLevel does not
+          // pass `type` on the paymentsUrl, so set the documented value here.
+          type: paymentContext.type ?? "verify",
           transactionId: paymentContext.transactionId,
+          // The provider API key is normally a server-side credential sent to
+          // queryUrl; only forward it when HighLevel actually supplied one.
           apiKey: paymentContext.apiKey,
           chargeId: paymentContext.chargeId,
           subscriptionId: paymentContext.subscriptionId,
@@ -192,7 +209,11 @@ export default function PaymentPage() {
       return;
     }
 
-    if (!paymentContext.transactionId || !paymentContext.apiKey) {
+    // HighLevel loads paymentsUrl with the transaction context. The provider
+    // API key is a server-side credential delivered to queryUrl, so only the
+    // transactionId is mandatory here; apiKey/chargeId are forwarded when
+    // present.
+    if (!paymentContext.transactionId) {
       setStatusMessage(
         "Invalid payment request. Missing payment transaction information."
       );

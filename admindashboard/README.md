@@ -58,3 +58,13 @@ The Dockerization sequence is complete for local production capability. The prod
 - **Environment:** the application uses **zero** environment variables; no `.env` is required at build or runtime.
 - **Workflow:** `make build`, `make run`, `make stop`, `make verify` cover the local Docker workflow. `make tag` / `make ecr-login` / `make ecr-push` are a thin AWS ECR push interface (require `AWS_REGION`, `AWS_ACCOUNT_ID`, `AWS_ECR_REPO`; no credentials are committed).
 - **AWS readiness:** the image can be built reproducibly, tagged, pushed to ECR, and run with runtime values, and it can sit behind a load balancer on port 3000. No AWS infrastructure is created here. Deployment steps and open architecture decisions are in `.project-next-steps.md`.
+
+## HighLevel paymentsUrl Checkout (app/payment/page.tsx)
+
+The `/payment` route is the checkout page HighLevel loads in an iframe as the registered Custom Payment Provider `paymentsUrl`:
+
+1. HighLevel opens the page with the transaction context on the URL (`transactionId`, and optionally `amount`, `chargeId`, `subscriptionId`, `apiKey`).
+2. The customer selects country, mobile-money provider, and phone number, then clicks Pay.
+3. The page verifies the request via `POST https://api.rvpay.xyz/payments/custom-provider/query` (`type: "verify"`, the Clients-service `queryUrl` contract) and polls that endpoint until success/failure.
+
+Recent fix: the page previously required BOTH `transactionId` AND `apiKey` URL params, so every real iframe load failed with "Invalid payment request. Missing payment transaction information." The guard now requires only `transactionId` (the provider `apiKey` is a server-side `queryUrl` credential, not a frontend one), the query body always sends the documented `type: "verify"`, and the order amount is prefilled (and locked) when HighLevel passes an `amount` query parameter. Amount prefill from backend order data is not possible without a new backend endpoint (query response carries only success/failed/message) — recorded as a known limitation, not changed here.
