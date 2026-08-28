@@ -70,6 +70,49 @@ type QueryResponse = {
   message?: string;
 };
 
+// HighLevel Custom Payment Provider "payment_initiate_props" event. HighLevel
+// posts this into the paymentsUrl iframe (after the iframe sends a "ready"
+// event) instead of putting the payment context on the URL.
+type PaymentInitiateProps = {
+  type: string;
+  publishableKey?: string;
+  amount?: number;
+  currency?: string;
+  mode?: string;
+  productDetails?: Array<Record<string, unknown>>;
+  contact?: {
+    id?: string;
+    name?: string;
+    email?: string;
+    contact?: string;
+    shippingAddress?: Record<string, unknown>;
+  };
+  orderId?: string;
+  transactionId?: string;
+  subscriptionId?: string;
+  locationId?: string;
+};
+
+// Unambiguous ISO currency → country mapping used to preselect the checkout
+// country. FCFA currencies (XOF/XAF) span multiple supported countries and are
+// deliberately not mapped.
+const CURRENCY_COUNTRY: Record<string, string> = {
+  KES: "KE",
+  GHS: "GH",
+  NGN: "NG",
+  TZS: "TZ",
+  UGX: "UG",
+  ZMW: "ZM",
+  RWF: "RW",
+  MZN: "MZ",
+  MWK: "MW",
+  SLE: "SL",
+  ETB: "ET",
+  CDF: "CD",
+  LSL: "LS",
+};
+
+
 function ProviderLogo({ provider }: { provider: Provider }) {
   if (provider.shape === "pill") {
     return (
@@ -116,6 +159,33 @@ export default function PaymentPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
+  const [initiateProps, setInitiateProps] =
+    useState<PaymentInitiateProps | null>(null);
+
+  // HighLevel iframe handshake: announce readiness so HighLevel sends the
+  // payment_initiate_props event, then capture it. URL params remain a
+  // fallback for direct/manual loads.
+  useEffect(() => {
+    function onMessage(event: MessageEvent) {
+      const data = event.data as PaymentInitiateProps | string | undefined;
+      if (!data || typeof data === "string") return;
+      if (data.type === "payment_initiate_props") {
+        setInitiateProps(data);
+      }
+    }
+
+    window.addEventListener("message", onMessage);
+    try {
+      // The HighLevel parent origin is not fixed (app.gohighlevel.com,
+      // services.leadconnectorhq.com, ...), so "*" is required by the
+      // handshake. Only the non-secret "ready" marker is posted.
+      window.parent?.postMessage({ type: "ready" }, "*");
+    } catch {
+      // Not framed or parent unavailable — URL-param fallback still applies.
+    }
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
 
   const paymentContext = useMemo(() => {
     if (typeof window === "undefined") {
@@ -141,16 +211,56 @@ export default function PaymentPage() {
     };
   }, []);
 
-  // HighLevel may supply the order amount on the paymentsUrl. When present,
-  // prefill (and lock) the amount so the checkout reflects the actual order.
+  // Effective payment context: the HighLevel payment_initiate_props event is
+  // the primary source; URL parameters remain a fallback.
+  const transactionId =
+    initiateProps?.transactionId ?? paymentContext.transactionId;
+  const subscriptionId =
+    initiateProps?.subscriptionId ?? paymentContext.subscriptionId;
+
+  // Order prefill from the HighLevel payment_initiate_props event: amount,
+  // currency → country preselection (only for unambiguous currencies), and
+  // the customer's phone number (dial code stripped). Falls back to the
+  // `amount` URL parameter when no event payload arrived.
   useEffect(() => {
-    if (!paymentContext.amount) return;
-    const parsed = Number(paymentContext.amount);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      setAmount(parsed);
+    const props = initiateProps;
+    if (!props) {
+      if (!paymentContext.amount) return;
+      const parsed = Number(paymentContext.amount);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        setAmount(parsed);
+        setEditingAmount(false);
+      }
+      return;
+    }
+
+    if (typeof props.amount === "number" && props.amount > 0) {
+      setAmount(props.amount);
       setEditingAmount(false);
     }
-  }, [paymentContext.amount]);
+
+    const isoCurrency = (props.currency ?? "").toUpperCase();
+    const mappedCountry = CURRENCY_COUNTRY[isoCurrency];
+    const targetCode = mappedCountry ?? countryCode;
+    const target = COUNTRIES.find((c) => c.code === targetCode);
+    if (target && targetCode !== countryCode) {
+      setCountryCode(targetCode);
+      setProviderId(target.providers[0]);
+      setCountryOpen(false);
+    }
+
+    const rawPhone = (props.contact?.contact ?? "").replace(/\D/g, "");
+    if (rawPhone && target) {
+      const dialDigits = target.dialCode.replace(/\D/g, "");
+      setPhone(
+        rawPhone.startsWith(dialDigits)
+          ? rawPhone.slice(dialDigits.length)
+          : rawPhone
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initiateProps, paymentContext.amount]);
+
 
   useEffect(() => {
     return () => {
@@ -180,12 +290,13 @@ export default function PaymentPage() {
           // The queryUrl verify contract is `type=verify`. HighLevel does not
           // pass `type` on the paymentsUrl, so set the documented value here.
           type: paymentContext.type ?? "verify",
-          transactionId: paymentContext.transactionId,
+          transactionId: transactionId,
+          orderId: initiateProps?.orderId,
           // The provider API key is normally a server-side credential sent to
           // queryUrl; only forward it when HighLevel actually supplied one.
           apiKey: paymentContext.apiKey,
           chargeId: paymentContext.chargeId,
-          subscriptionId: paymentContext.subscriptionId,
+          subscriptionId: subscriptionId,
         }),
       }
     );
@@ -209,11 +320,11 @@ export default function PaymentPage() {
       return;
     }
 
-    // HighLevel loads paymentsUrl with the transaction context. The provider
-    // API key is a server-side credential delivered to queryUrl, so only the
-    // transactionId is mandatory here; apiKey/chargeId are forwarded when
-    // present.
-    if (!paymentContext.transactionId) {
+    // HighLevel delivers the transaction context via the payment_initiate_props
+    // postMessage event (transactionId required); URL params are the fallback.
+    // The provider API key is a server-side credential delivered to queryUrl,
+    // so it is not required here; apiKey/chargeId are forwarded when present.
+    if (!transactionId) {
       setStatusMessage(
         "Invalid payment request. Missing payment transaction information."
       );

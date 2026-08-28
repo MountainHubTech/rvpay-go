@@ -68,3 +68,14 @@ The `/payment` route is the checkout page HighLevel loads in an iframe as the re
 3. The page verifies the request via `POST https://api.rvpay.xyz/payments/custom-provider/query` (`type: "verify"`, the Clients-service `queryUrl` contract) and polls that endpoint until success/failure.
 
 Recent fix: the page previously required BOTH `transactionId` AND `apiKey` URL params, so every real iframe load failed with "Invalid payment request. Missing payment transaction information." The guard now requires only `transactionId` (the provider `apiKey` is a server-side `queryUrl` credential, not a frontend one), the query body always sends the documented `type: "verify"`, and the order amount is prefilled (and locked) when HighLevel passes an `amount` query parameter. Amount prefill from backend order data is not possible without a new backend endpoint (query response carries only success/failed/message) — recorded as a known limitation, not changed here.
+
+### postMessage contract (GHL docs §8.2 — payment_initiate_props)
+
+Per HighLevel's documentation, the payment context is NOT on the URL: after the iframe posts a `ready` event to its parent, HighLevel sends a `payment_initiate_props` window message with `amount`, `currency`, `mode`, `productDetails`, `contact`, `orderId`, `transactionId`, `subscriptionId`, and `locationId`. The checkout page now implements this handshake:
+
+1. On mount it posts `{ type: "ready" }` to `window.parent` (the handshake trigger) and listens for `message` events.
+2. On `payment_initiate_props` it captures the payload and uses it as the primary transaction context (URL params remain a fallback for direct loads).
+3. Order prefill from the event: `amount` (locked), `currency` → country preselection (unambiguous ISO codes only), `contact.contact` → phone number with dial code stripped.
+4. On Pay it still verifies via `POST https://api.rvpay.xyz/payments/custom-provider/query` with the event's `transactionId`/`orderId`/`subscriptionId` and `type: "verify"`; the event payload itself is never sent anywhere.
+
+Note: no completion message is posted back to HighLevel yet — add it once the documented completion event (`payment_completed` / `payment_failed`) contract is confirmed.
