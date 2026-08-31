@@ -91,3 +91,10 @@ Following live-testing evidence that HighLevel never sends `payment_initiate_pro
 The UI (country, provider, phone, amount, terms) is unchanged; the backend remains the sole authority for payment state.
 
 **Known backend gap (out of scope):** `CreateDepositRequest` has no `ghl_transaction_id` field, so the initiated deposit is not yet correlated with the HighLevel transaction that `/v1/public/payments/verify` looks up — a small approved backend/proto change is required for full end-to-end correlation. Until then the page surfaces backend validation errors rather than fabricating context.
+
+### Surgical correction (2026-08-31): transactionId semantics + ungated initiation
+
+- `buyNowProductId` is **no longer treated as a transactionId**; the page reads only a genuine `transactionId` URL param (or the suspended `payment_initiate_props` event) and treats it as `null` when unavailable — never fabricated.
+- The hard `if (!transactionId)` gate was removed: Pay now always attempts the real initiation at `POST /v1/public/deposits` with the validated form values (terms, phone, positive amount, supported provider).
+- GHL verification polling runs **only** when a real `transactionId` exists; otherwise the page honestly reports "submitted — status tracking unavailable until correlation is configured." A backend-provided deposit `id` is retained/logged, but HTTP 200 is never shown as payment success.
+- All `[RVPay]` handshake diagnostics and the `custom_provider_ready` postMessage remain unchanged; backend/protobuf/Docker/config untouched.

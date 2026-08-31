@@ -238,9 +238,12 @@ const paymentContext = useMemo(() => {
 
   const params = new URLSearchParams(window.location.search);
 
+  // NOTE: buyNowProductId is NOT a transactionId and is deliberately not read
+  // here. If the URL carries a genuine HighLevel transactionId it is used;
+  // otherwise the transactionId is represented as unavailable (null).
   return {
     type: params.get("type"),
-    transactionId: params.get("buyNowProductId"),
+    transactionId: params.get("transactionId"),
     apiKey: params.get("apiKey"),
     chargeId: params.get("chargeId"),
     subscriptionId: params.get("subscriptionId"),
@@ -248,10 +251,10 @@ const paymentContext = useMemo(() => {
   };
 }, []);
 
-// AUTHORITATIVE payment identifier: the real HighLevel transactionId already
-// supplied by the existing payment flow via the payment URL. The suspended
-// payment_initiate_props event is a fallback only — it is never required for
-// payment to proceed, and no transaction ID is ever generated client-side.
+// The GHL transactionId, when a REAL one is available (URL param or the
+// suspended payment_initiate_props event). It is used ONLY for GHL-specific
+// status verification — never as a gate in front of payment initiation, and
+// never fabricated when unavailable.
 const transactionId =
   paymentContext.transactionId ?? initiateProps?.transactionId ?? null;
 const subscriptionId =
@@ -369,8 +372,9 @@ const chargeId = paymentContext.chargeId;
   // POST /v1/public/deposits (CreateDepositRequest contract). Only real values
   // from the existing flow are sent; client/customer/merchant identifiers are
   // forwarded when HighLevel/RVPay supplied them on the payment URL, and no
-  // identifiers are ever invented on the frontend.
-  async function initiatePayment(): Promise<void> {
+  // identifiers are ever invented on the frontend. Returns the legitimate
+  // deposit identifier from the backend response when one is provided.
+  async function initiatePayment(): Promise<string | null> {
     const provider = providerToApi(providerId);
     if (!provider) {
       throw new Error(
@@ -411,7 +415,31 @@ const chargeId = paymentContext.chargeId;
     });
 
     if (!response.ok) {
-      throw new Error("Unable to initiate the payment. Please try again.");
+      // Surface the backend's own error honestly when it provides one.
+      let detail: string | null = null;
+      try {
+        const text = await response.text();
+        if (text) {
+          detail = text;
+        }
+      } catch {
+        // ignore body read failures; fall back to the generic message
+      }
+      throw new Error(
+        detail ??
+          "Unable to initiate the payment. Please try again."
+      );
+    }
+
+    // Retain the legitimate deposit identifier if the backend returned one.
+    // HTTP 200 alone is NOT treated as payment success.
+    try {
+      const data = (await response.json()) as {
+        deposit?: { id?: string } | null;
+      };
+      return data?.deposit?.id ?? null;
+    } catch {
+      return null;
     }
   }
 
@@ -423,19 +451,17 @@ const chargeId = paymentContext.chargeId;
   }
 
   async function handlePay() {
+    // User-facing form validation: terms, phone, provider, and a positive
+    // amount. Payment initiation does NOT depend on a GHL transactionId —
+    // live testing shows the iframe URL does not carry one and HighLevel does
+    // not send payment_initiate_props, so blocking on it would permanently
+    // prevent the payment request from reaching the backend.
     if (!agreed || !phone || isSubmitting) {
       return;
     }
 
-    // The authoritative transactionId is the real HighLevel transaction ID from
-    // the payment URL (payment_initiate_props is suspended and is only a
-    // fallback). The provider API key is a server-side credential and is never
-    // required or exposed here. Without a real transaction ID the payment is
-    // refused — nothing is fabricated client-side.
-    if (!transactionId) {
-      setStatusMessage(
-        "Invalid payment request. Missing payment transaction information."
-      );
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setStatusMessage("Please enter a valid payment amount.");
       return;
     }
 
@@ -447,7 +473,21 @@ const chargeId = paymentContext.chargeId;
       // remains authoritative for payment state; the frontend only initiates
       // and displays it. isSubmitting prevents duplicate submissions while
       // one is processing.
-      await initiatePayment();
+      const depositId = await initiatePayment();
+      if (depositId) {
+        console.log("[RVPay] Deposit initiated:", depositId);
+      }
+
+      // GHL-specific verification only when a REAL GHL transactionId exists.
+      // Never fabricate one and never claim GHL verification occurred
+      // without it.
+      if (!transactionId) {
+        setStatusMessage(
+          "Payment request submitted. The deposit was accepted by RVPay; transaction status tracking is unavailable until the payment provider correlation is configured."
+        );
+        setIsSubmitting(false);
+        return;
+      }
 
       // Poll the existing status endpoint with the same transactionId until
       // success/failure. A single interval is used (stopPolling first).
