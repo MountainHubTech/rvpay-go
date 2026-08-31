@@ -172,7 +172,6 @@ useEffect(() => {
 
     console.log("GHL iframe message:", data);
 
-    // If GHL sends the target data type, update our state
     if (data.type === "payment_initiate_props") {
       setInitiateProps(data);
     }
@@ -180,7 +179,6 @@ useEffect(() => {
 
   window.addEventListener("message", onMessage);
 
-  // Handshake token for GoHighLevel custom providers
   window.parent?.postMessage(
     {
       type: "custom_provider_ready",
@@ -192,15 +190,15 @@ useEffect(() => {
   return () => window.removeEventListener("message", onMessage);
 }, []);
 
-// Wires up the old paymentContext pattern directly to the state received via postMessage
+// Maps the incoming iframe event payload directly to your paymentContext
 const paymentContext = useMemo(() => {
   return {
     type: initiateProps?.type ?? null,
     transactionId: initiateProps?.transactionId ?? null,
-    apiKey: initiateProps?.apiKey ?? null,
-    chargeId: initiateProps?.chargeId ?? null,
+    apiKey: initiateProps?.publishableKey ?? null, // Maps your publishableKey property to the old apiKey field
+    chargeId: null, // Note: Not natively present in PaymentInitiateProps; explicitly null
     subscriptionId: initiateProps?.subscriptionId ?? null,
-    amount: initiateProps?.amount ?? null,
+    amount: initiateProps?.amount ?? null, // Retains number type or null
   };
 }, [initiateProps]);
 
