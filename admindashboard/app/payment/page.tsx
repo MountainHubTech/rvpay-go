@@ -166,28 +166,56 @@ export default function PaymentPage() {
   // payment_initiate_props event, then capture it. URL params remain a
   // fallback for direct/manual loads.
 useEffect(() => {
-  function onMessage(event: MessageEvent) {
-    const data = event.data as PaymentInitiateProps | string | undefined;
-    if (!data || typeof data === "string") return;
+  console.log("========================================");
+  console.log("[RVPay] Payment iframe initialized");
+  console.log("[RVPay] window === window.parent:", window === window.parent);
+  console.log("[RVPay] window.parent:", window.parent);
+  console.log("[RVPay] current origin:", window.location.origin);
+  console.log("[RVPay] parent origin:", document.referrer);
 
-    console.log("GHL iframe message:", data);
+  function onMessage(event: MessageEvent) {
+    console.log("========================================");
+    console.log("[RVPay] MESSAGE RECEIVED");
+    console.log("[RVPay] event.origin:", event.origin);
+    console.log("[RVPay] event.source === window.parent:", event.source === window.parent);
+    console.log("[RVPay] event.data:", event.data);
+
+    const data = event.data;
+
+    if (!data || typeof data === "string") {
+      return;
+    }
 
     if (data.type === "payment_initiate_props") {
+      console.log("[RVPay] payment_initiate_props RECEIVED!");
+      console.log("[RVPay] transactionId:", data.transactionId);
+      console.log("[RVPay] orderId:", data.orderId);
+      console.log("[RVPay] amount:", data.amount);
+      console.log("[RVPay] currency:", data.currency);
+      console.log("[RVPay] locationId:", data.locationId);
+
       setInitiateProps(data);
     }
   }
 
   window.addEventListener("message", onMessage);
 
-  window.parent?.postMessage(
-    {
-      type: "custom_provider_ready",
-      loaded: true,
-    },
-    "*"
-  );
+  const readyMessage = {
+    type: "custom_provider_ready",
+    loaded: true,
+  };
 
-  return () => window.removeEventListener("message", onMessage);
+  console.log("[RVPay] Sending ready event:", readyMessage);
+  console.log("[RVPay] Sending to parent:", window.parent);
+
+  window.parent.postMessage(readyMessage, "*");
+
+  console.log("[RVPay] Ready event sent");
+
+  return () => {
+    console.log("[RVPay] Removing message listener");
+    window.removeEventListener("message", onMessage);
+  };
 }, []);
 
 // Maps the incoming iframe event payload directly to your paymentContext
