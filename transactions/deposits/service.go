@@ -49,6 +49,8 @@ func NewDepositService(
 func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.CreateDepositRequest) (*transactionsgrpc.CreateDepositResponse, error) {
 	s.logger.Info().Msg("Initializing InitiateDeposit...")
 
+	s.logger.Info().Msgf("Initate Deposit request body: %v", req)
+
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "deposit request is required")
 	}
