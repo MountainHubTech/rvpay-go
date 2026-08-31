@@ -240,7 +240,7 @@ const paymentContext = useMemo(() => {
 
   return {
     type: params.get("type"),
-    transactionId: params.get("transactionId"),
+    transactionId: params.get("buyNowProductId"),
     apiKey: params.get("apiKey"),
     chargeId: params.get("chargeId"),
     subscriptionId: params.get("subscriptionId"),
