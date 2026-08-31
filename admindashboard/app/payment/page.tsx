@@ -168,11 +168,11 @@ export default function PaymentPage() {
 useEffect(() => {
   function onMessage(event: MessageEvent) {
     const data = event.data as PaymentInitiateProps | string | undefined;
-
     if (!data || typeof data === "string") return;
 
     console.log("GHL iframe message:", data);
 
+    // If GHL sends the target data type, update our state
     if (data.type === "payment_initiate_props") {
       setInitiateProps(data);
     }
@@ -180,6 +180,7 @@ useEffect(() => {
 
   window.addEventListener("message", onMessage);
 
+  // Handshake token for GoHighLevel custom providers
   window.parent?.postMessage(
     {
       type: "custom_provider_ready",
@@ -190,6 +191,18 @@ useEffect(() => {
 
   return () => window.removeEventListener("message", onMessage);
 }, []);
+
+// Wires up the old paymentContext pattern directly to the state received via postMessage
+const paymentContext = useMemo(() => {
+  return {
+    type: initiateProps?.type ?? null,
+    transactionId: initiateProps?.transactionId ?? null,
+    apiKey: initiateProps?.apiKey ?? null,
+    chargeId: initiateProps?.chargeId ?? null,
+    subscriptionId: initiateProps?.subscriptionId ?? null,
+    amount: initiateProps?.amount ?? null,
+  };
+}, [initiateProps]);
 
   // Effective payment context: the HighLevel payment_initiate_props event is
   // the primary source; URL parameters remain a fallback.
