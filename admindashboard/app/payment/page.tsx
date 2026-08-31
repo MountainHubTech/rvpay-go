@@ -165,51 +165,31 @@ export default function PaymentPage() {
   // HighLevel iframe handshake: announce readiness so HighLevel sends the
   // payment_initiate_props event, then capture it. URL params remain a
   // fallback for direct/manual loads.
-  useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      const data = event.data as PaymentInitiateProps | string | undefined;
-      if (!data || typeof data === "string") return;
-      if (data.type === "payment_initiate_props") {
-        setInitiateProps(data);
-      }
+useEffect(() => {
+  function onMessage(event: MessageEvent) {
+    const data = event.data as PaymentInitiateProps | string | undefined;
+
+    if (!data || typeof data === "string") return;
+
+    console.log("GHL iframe message:", data);
+
+    if (data.type === "payment_initiate_props") {
+      setInitiateProps(data);
     }
+  }
 
-    window.addEventListener("message", onMessage);
-    try {
-      // The HighLevel parent origin is not fixed (app.gohighlevel.com,
-      // services.leadconnectorhq.com, ...), so "*" is required by the
-      // handshake. Only the non-secret "ready" marker is posted.
-      window.parent?.postMessage({ type: "ready" }, "*");
-    } catch {
-      // Not framed or parent unavailable — URL-param fallback still applies.
-    }
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
+  window.addEventListener("message", onMessage);
 
+  window.parent?.postMessage(
+    {
+      type: "custom_provider_ready",
+      loaded: true,
+    },
+    "*"
+  );
 
-  const paymentContext = useMemo(() => {
-    if (typeof window === "undefined") {
-      return {
-        type: null,
-        transactionId: null,
-        apiKey: null,
-        chargeId: null,
-        subscriptionId: null,
-        amount: null,
-      };
-    }
-
-    const params = new URLSearchParams(window.location.search);
-
-    return {
-      type: params.get("type"),
-      transactionId: params.get("transactionId"),
-      apiKey: params.get("apiKey"),
-      chargeId: params.get("chargeId"),
-      subscriptionId: params.get("subscriptionId"),
-      amount: params.get("amount"),
-    };
-  }, []);
+  return () => window.removeEventListener("message", onMessage);
+}, []);
 
   // Effective payment context: the HighLevel payment_initiate_props event is
   // the primary source; URL parameters remain a fallback.
