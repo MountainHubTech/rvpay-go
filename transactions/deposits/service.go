@@ -47,6 +47,29 @@ func NewDepositService(
 
 // InitiateDeposit initiates a customer deposit.
 func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.CreateDepositRequest) (*transactionsgrpc.CreateDepositResponse, error) {
+	s.logger.Info().Msg("Initializing InitiateDeposit...")
+
+	amount, err := validateAmount(req.GetAmount())
+	if err != nil {
+		return nil, err
+	}
+
+	currency := strings.ToUpper(strings.TrimSpace(req.GetAmount().GetCurrency()))
+	if currency == "" {
+		return nil, status.Error(codes.InvalidArgument, "currency is required")
+	}
+
+	phoneNumber := strings.TrimSpace(req.GetPayerPhoneNumber())
+	if phoneNumber == "" {
+		return nil, status.Error(codes.InvalidArgument, "payer_phone_number is required")
+	}
+
+	provider, err := grpcProviderToSqlc(req.GetProvider())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	/*
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "deposit request is required")
 	}
@@ -104,6 +127,7 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		}
 	}
 
+
 	// A newly initiated deposit begins in the INITIATED lifecycle state.
 	// An idempotency key is generated server-side for duplicate detection.
 	deposit, err := s.depositRepo.Create(ctx, clientID, customer.ID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
@@ -121,17 +145,20 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 
 	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID.String()).Msg("deposit initiated")
 
+	*/
+
+
+	tempDepositUUID := uuid.New()
+
 	// Initiate the deposit with PawaPay using the caller-supplied provider and
 	// payer phone number. The deposit was already persisted in the INITIATED
 	// lifecycle state; the PawaPay request is the external initiation step.
-	if err := s.initiatePawapayDeposit(ctx, deposit.ID, amount, currency, phoneNumber, provider); err != nil {
-		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not initiate deposit with pawapay")
+	if err := s.initiatePawapayDeposit(ctx, tempDepositUUID, amount, currency, phoneNumber, provider); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", tempDepositUUID.String()).Msg("could not initiate deposit with pawapay")
 		return nil, status.Error(codes.Internal, "could not initiate deposit with pawapay")
 	}
 
-	return &transactionsgrpc.CreateDepositResponse{
-		Deposit: depositToProto(deposit),
-	}, nil
+	return nil, nil
 }
 
 // initiatePawapayDeposit calls the PawaPay V2 Initiate Deposit operation.
