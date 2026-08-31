@@ -79,3 +79,15 @@ Per HighLevel's documentation, the payment context is NOT on the URL: after the 
 4. On Pay it still verifies via `POST https://api.rvpay.xyz/payments/custom-provider/query` with the event's `transactionId`/`orderId`/`subscriptionId` and `type: "verify"`; the event payload itself is never sent anywhere.
 
 Note: no completion message is posted back to HighLevel yet — add it once the documented completion event (`payment_completed` / `payment_failed`) contract is confirmed.
+
+### Agent 00-payment-page-agent — transactionId authority + real initiation (2026-08-31)
+
+Following live-testing evidence that HighLevel never sends `payment_initiate_props`, that handshake is **suspended** (listener and `[RVPay]` diagnostics retained, non-authoritative) and the payment flow now works without it:
+
+1. **transactionId** — the real HighLevel transaction ID is read from the payment URL query string (`?transactionId=...`); the suspended event is only a fallback. With no ID at all the page fails safely and never fabricates one.
+2. **Initiation** — Pay calls the existing Transactions-service endpoint `POST /v1/public/deposits` with the `CreateDepositRequest` payload: `amount {amount, currency}` (ISO-4217; `FCFA` → `XAF` per repo convention), `paymentType: "PAYMENT_TYPE_MMO"`, `payerPhoneNumber` (dial code + number), `provider` (`PROVIDER_MTN_MOMO` / `PROVIDER_ORANGE_MOMO` — unsupported providers are rejected up front rather than faked), and `clientId`/`customerId`/`merchantId` only when HighLevel supplied them on the URL.
+3. **Status** — polling uses the existing `GET /v1/public/payments/verify` (`ghlTransactionId` / `ghlChargeId` / `subscriptionId` → `{success, failed}`) with the same transaction ID; single interval, cleaned up on terminal state and unmount; duplicate submissions blocked while processing.
+
+The UI (country, provider, phone, amount, terms) is unchanged; the backend remains the sole authority for payment state.
+
+**Known backend gap (out of scope):** `CreateDepositRequest` has no `ghl_transaction_id` field, so the initiated deposit is not yet correlated with the HighLevel transaction that `/v1/public/payments/verify` looks up — a small approved backend/proto change is required for full end-to-end correlation. Until then the page surfaces backend validation errors rather than fabricating context.

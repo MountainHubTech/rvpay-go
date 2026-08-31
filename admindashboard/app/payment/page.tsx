@@ -218,24 +218,45 @@ useEffect(() => {
   };
 }, []);
 
-// Maps the incoming iframe event payload directly to your paymentContext
+// SUSPENDED: the HighLevel payment_initiate_props handshake is currently
+// NON-AUTHORITATIVE. Live testing (see the [RVPay] console diagnostics in the
+// effect above) proves HighLevel never sends payment_initiate_props after the
+// custom_provider_ready post, so nothing in the payment flow may depend on it.
+// The authoritative transactionId is read from the payment URL below. The
+// listener/diagnostics are retained for future reactivation only.
 const paymentContext = useMemo(() => {
-  return {
-    type: initiateProps?.type ?? null,
-    transactionId: initiateProps?.transactionId ?? null,
-    apiKey: initiateProps?.publishableKey ?? null, // Maps your publishableKey property to the old apiKey field
-    chargeId: null, // Note: Not natively present in PaymentInitiateProps; explicitly null
-    subscriptionId: initiateProps?.subscriptionId ?? null,
-    amount: initiateProps?.amount ?? null, // Retains number type or null
-  };
-}, [initiateProps]);
+  if (typeof window === "undefined") {
+    return {
+      type: null,
+      transactionId: null,
+      apiKey: null,
+      chargeId: null,
+      subscriptionId: null,
+      amount: null,
+    };
+  }
 
-  // Effective payment context: the HighLevel payment_initiate_props event is
-  // the primary source; URL parameters remain a fallback.
-  const transactionId =
-    initiateProps?.transactionId ?? paymentContext.transactionId;
-  const subscriptionId =
-    initiateProps?.subscriptionId ?? paymentContext.subscriptionId;
+  const params = new URLSearchParams(window.location.search);
+
+  return {
+    type: params.get("type"),
+    transactionId: params.get("transactionId"),
+    apiKey: params.get("apiKey"),
+    chargeId: params.get("chargeId"),
+    subscriptionId: params.get("subscriptionId"),
+    amount: params.get("amount"),
+  };
+}, []);
+
+// AUTHORITATIVE payment identifier: the real HighLevel transactionId already
+// supplied by the existing payment flow via the payment URL. The suspended
+// payment_initiate_props event is a fallback only — it is never required for
+// payment to proceed, and no transaction ID is ever generated client-side.
+const transactionId =
+  paymentContext.transactionId ?? initiateProps?.transactionId ?? null;
+const subscriptionId =
+  paymentContext.subscriptionId ?? initiateProps?.subscriptionId ?? null;
+const chargeId = paymentContext.chargeId;
 
   // Order prefill from the HighLevel payment_initiate_props event: amount,
   // currency → country preselection (only for unambiguous currencies), and
@@ -297,27 +318,23 @@ const paymentContext = useMemo(() => {
     setCountryOpen(false);
   }
 
+  // Existing Transactions-service verify endpoint (grpc-gateway):
+  // GET /v1/public/payments/verify (VerifyPayment contract: success/failed).
   async function queryPaymentStatus(): Promise<QueryResponse> {
+    const params = new URLSearchParams();
+    if (transactionId) {
+      params.set("ghlTransactionId", transactionId);
+    }
+    if (chargeId) {
+      params.set("ghlChargeId", chargeId);
+    }
+    if (subscriptionId) {
+      params.set("subscriptionId", subscriptionId);
+    }
+
     const response = await fetch(
-      "https://api.rvpay.xyz/payments/custom-provider/query",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          // The queryUrl verify contract is `type=verify`. HighLevel does not
-          // pass `type` on the paymentsUrl, so set the documented value here.
-          type: paymentContext.type ?? "verify",
-          transactionId: transactionId,
-          orderId: initiateProps?.orderId,
-          // The provider API key is normally a server-side credential sent to
-          // queryUrl; only forward it when HighLevel actually supplied one.
-          apiKey: paymentContext.apiKey,
-          chargeId: paymentContext.chargeId,
-          subscriptionId: subscriptionId,
-        }),
-      }
+      `https://api.rvpay.xyz/v1/public/payments/verify?${params.toString()}`,
+      { method: "GET" }
     );
 
     if (!response.ok) {
@@ -325,6 +342,77 @@ const paymentContext = useMemo(() => {
     }
 
     return response.json();
+  }
+
+  // Map the UI provider selection to the existing Transactions-service
+  // contract (commongrpc.Provider). The backend currently only supports MTN
+  // and Orange mobile money; unsupported selections are rejected up front
+  // instead of sending a fabricated provider value.
+  function providerToApi(id: string): string | null {
+    switch (id) {
+      case "mtn":
+        return "PROVIDER_MTN_MOMO";
+      case "orange":
+        return "PROVIDER_ORANGE_MOMO";
+      default:
+        return null;
+    }
+  }
+
+  // The backend Money contract requires an ISO-4217 code. The UI groups the
+  // CFA franc as "FCFA"; the repository's documented convention uses XAF.
+  function currencyToApi(currency: string): string {
+    return currency === "FCFA" ? "XAF" : currency.toUpperCase();
+  }
+
+  // Initiate the payment through the EXISTING Transactions-service endpoint:
+  // POST /v1/public/deposits (CreateDepositRequest contract). Only real values
+  // from the existing flow are sent; client/customer/merchant identifiers are
+  // forwarded when HighLevel/RVPay supplied them on the payment URL, and no
+  // identifiers are ever invented on the frontend.
+  async function initiatePayment(): Promise<void> {
+    const provider = providerToApi(providerId);
+    if (!provider) {
+      throw new Error(
+        "This mobile money provider is not supported yet. Please select MTN or Orange Money."
+      );
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const clientId = urlParams.get("clientId") ?? "";
+    const customerId = urlParams.get("customerId") ?? "";
+    const merchantId = urlParams.get("merchantId") ?? "";
+
+    const body: Record<string, unknown> = {
+      amount: {
+        amount: amount.toFixed(2),
+        currency: currencyToApi(country.currency),
+      },
+      paymentType: "PAYMENT_TYPE_MMO",
+      payerPhoneNumber: `${country.dialCode}${phone}`,
+      provider,
+    };
+    if (clientId) {
+      body.clientId = clientId;
+    }
+    if (customerId) {
+      body.customerId = customerId;
+    }
+    if (merchantId) {
+      body.merchantId = merchantId;
+    }
+
+    const response = await fetch("https://api.rvpay.xyz/v1/public/deposits", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to initiate the payment. Please try again.");
+    }
   }
 
   function stopPolling() {
@@ -339,10 +427,11 @@ const paymentContext = useMemo(() => {
       return;
     }
 
-    // HighLevel delivers the transaction context via the payment_initiate_props
-    // postMessage event (transactionId required); URL params are the fallback.
-    // The provider API key is a server-side credential delivered to queryUrl,
-    // so it is not required here; apiKey/chargeId are forwarded when present.
+    // The authoritative transactionId is the real HighLevel transaction ID from
+    // the payment URL (payment_initiate_props is suspended and is only a
+    // fallback). The provider API key is a server-side credential and is never
+    // required or exposed here. Without a real transaction ID the payment is
+    // refused — nothing is fabricated client-side.
     if (!transactionId) {
       setStatusMessage(
         "Invalid payment request. Missing payment transaction information."
@@ -351,46 +440,18 @@ const paymentContext = useMemo(() => {
     }
 
     setIsSubmitting(true);
-    setStatusMessage("Verifying payment request...");
+    setStatusMessage("Initiating payment...");
 
     try {
-      const initialStatus = await queryPaymentStatus();
+      // Initiate the payment through the existing RVPay backend. The backend
+      // remains authoritative for payment state; the frontend only initiates
+      // and displays it. isSubmitting prevents duplicate submissions while
+      // one is processing.
+      await initiatePayment();
 
-      if (initialStatus.failed) {
-        stopPolling();
-        setStatusMessage(
-          initialStatus.message ?? "This payment request has failed."
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      if (initialStatus.success === false) {
-        stopPolling();
-        setStatusMessage(
-          initialStatus.message ?? "This payment request is not available."
-        );
-        setIsSubmitting(false);
-        return;
-      }
-
-      setStatusMessage(
-        "Payment request verified. Processing your mobile money payment..."
-      );
-
-      /*
-       * The payment request itself must be created through the RVPay
-       * public Clients/Transactions service flow. This page receives the
-       * transaction context from the payment URL and verifies it through:
-       *
-       * POST https://api.rvpay.xyz/payments/custom-provider/query
-       *
-       * The query service correlates the external transaction with the
-       * RVPay deposit/transaction.
-       *
-       * Payment initiation should use the existing public payment/deposit
-       * endpoint exposed by the Transactions service in your backend flow.
-       */
+      // Poll the existing status endpoint with the same transactionId until
+      // success/failure. A single interval is used (stopPolling first).
+      setStatusMessage("Waiting for mobile money confirmation...");
 
       stopPolling();
 
@@ -408,7 +469,7 @@ const paymentContext = useMemo(() => {
           if (status.failed || status.success === false) {
             stopPolling();
             setStatusMessage(
-              status.message ?? "The payment could not be completed."
+              status.message ?? "Payment failed."
             );
             setIsSubmitting(false);
           }
