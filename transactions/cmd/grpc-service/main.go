@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -159,7 +160,12 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	defer cancel()
 
 	httpMux := http.NewServeMux()
-	httpMux.Handle("/", commonobservability.AccessLog(logger)(gatewayMux))
+	// CORS: the gateway serves browser clients (the RVPay payment checkout).
+	// Only origins on the configured allowlist receive CORS headers, and
+	// preflight OPTIONS requests are answered here so the grpc-gateway mux
+	// (which has no OPTIONS route) cannot terminate them with 404/405 and no
+	// CORS headers.
+	httpMux.Handle("/", corsMiddleware(parseAllowedOrigins(config.CORSAllowedOrigins), commonobservability.AccessLog(logger)(gatewayMux)))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -251,4 +257,49 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 
 func getPostgresConnectionURL(config model.DBConfig) string {
 	return commondatabase.PostgresURL(config.DBUser, config.DBPassword, int(config.DBPort), config.DBHost, config.DBName, config.TLSDisabled)
+}
+
+// parseAllowedOrigins splits the configured comma-separated CORS origin
+// allowlist, discarding empty entries.
+func parseAllowedOrigins(raw string) []string {
+	origins := []string{}
+	for _, origin := range strings.Split(raw, ",") {
+		origin = strings.TrimSpace(origin)
+		if origin != "" {
+			origins = append(origins, origin)
+		}
+	}
+	return origins
+}
+
+// corsMiddleware applies the configured CORS origin allowlist to the gateway.
+// Only allowlisted origins receive CORS headers (no wildcard). Browser
+// preflight OPTIONS requests are answered here — the grpc-gateway mux has no
+// OPTIONS route and would otherwise terminate the preflight with 404/405 and
+// no CORS headers, blocking legitimate cross-origin POSTs from the checkout.
+func corsMiddleware(allowedOrigins []string, next http.Handler) http.Handler {
+	allowed := make(map[string]struct{}, len(allowedOrigins))
+	for _, origin := range allowedOrigins {
+		allowed[origin] = struct{}{}
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if _, ok := allowed[origin]; ok {
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Add("Vary", "Origin")
+
+				// Preflight: answer before the gateway mux sees the request.
+				if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
+					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }

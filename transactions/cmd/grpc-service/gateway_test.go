@@ -64,7 +64,7 @@ func (f *fakeDepositService) GetDeposit(_ context.Context, req *transactionsgrpc
 // transactions/cmd/grpc-service/main.go: a grpc-gateway runtime.ServeMux with
 // the generated Register...HandlerServer functions, mounted behind the root
 // HTTP mux alongside /healthz.
-func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit *fakeDepositService) *httptest.Server {
+func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit *fakeDepositService, allowedOrigins ...string) *httptest.Server {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -79,7 +79,13 @@ func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit
 	}
 
 	httpMux := http.NewServeMux()
-	httpMux.Handle("/", gatewayMux)
+	// Mirror main.go: the gateway is mounted behind the CORS middleware. Test
+	// origins default to the production allowlist; tests may override them.
+	corsOrigins := allowedOrigins
+	if len(corsOrigins) == 0 {
+		corsOrigins = []string{"https://admindashboard.rvpay.xyz"}
+	}
+	httpMux.Handle("/", corsMiddleware(corsOrigins, gatewayMux))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -215,5 +221,117 @@ func TestGateway_Healthz(t *testing.T) {
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("healthz POST status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	}
+}
+
+// TestGateway_CORSPreflight_AllowedOrigin verifies that the browser preflight
+// for POST /v1/public/deposits from the admin dashboard origin is answered
+// with 204 and the required CORS headers instead of being terminated by the
+// grpc-gateway mux.
+func TestGateway_CORSPreflight_AllowedOrigin(t *testing.T) {
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+
+	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
+	if err != nil {
+		t.Fatalf("build preflight request: %v", err)
+	}
+	req.Header.Set("Origin", "https://admindashboard.rvpay.xyz")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+	req.Header.Set("Access-Control-Request-Headers", "content-type")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /v1/public/deposits: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("preflight status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "https://admindashboard.rvpay.xyz" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the request origin", got)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
+		t.Errorf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "Content-Type" {
+		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type")
+	}
+}
+
+// TestGateway_CORSPreflight_OriginNotAllowed verifies that non-allowlisted
+// origins never receive CORS headers (no wildcard behavior).
+func TestGateway_CORSPreflight_OriginNotAllowed(t *testing.T) {
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+
+	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
+	if err != nil {
+		t.Fatalf("build preflight request: %v", err)
+	}
+	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /v1/public/deposits: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want empty for non-allowlisted origin", got)
+	}
+}
+
+// TestGateway_CORS_AllowedOriginOnActualRequest verifies that actual (non-
+// preflight) requests from an allowlisted origin carry the CORS header so the
+// browser accepts the response.
+func TestGateway_CORS_AllowedOriginOnActualRequest(t *testing.T) {
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/deposits/dep_1", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("Origin", "https://admindashboard.rvpay.xyz")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /v1/public/deposits/dep_1: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "https://admindashboard.rvpay.xyz" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the request origin", got)
+	}
+}
+
+// TestGateway_CORS_OverriddenAllowlist verifies the middleware honors a
+// custom allowlist (HTTP_CORS_ALLOWED_ORIGINS configuration).
+func TestGateway_CORS_OverriddenAllowlist(t *testing.T) {
+	srv := newTransactionsGateway(
+		t,
+		&fakeMerchantService{},
+		&fakeDepositService{},
+		"https://dashboard.example",
+	)
+
+	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
+	if err != nil {
+		t.Fatalf("build preflight request: %v", err)
+	}
+	req.Header.Set("Origin", "https://dashboard.example")
+	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("OPTIONS /v1/public/deposits: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("preflight status = %d, want %d", resp.StatusCode, http.StatusNoContent)
+	}
+	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "https://dashboard.example" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "https://dashboard.example")
 	}
 }
