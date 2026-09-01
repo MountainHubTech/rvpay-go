@@ -204,7 +204,7 @@ Resources:
         HighLevelRedirectUri: !Sub "https://api.${DomainName}/oauth/callback"
         HighLevelPaymentUrl: !Sub "https://admindashboard.${DomainName}/payment"
         HighLevelQueryUrl: !Sub "https://api.${DomainName}/payments/custom-provider/query"
-        HighLevelProviderImageUrl: !Sub "s3://rvpay-temp-image-bucket-12345/rvpay_logomark-main-blue.png"
+        HighLevelProviderImageUrl: !Sub "https://rvpay-temp-image-bucket-12345.s3.us-east-1.amazonaws.com/rvpay_logomark-main-blue.png"
         PublicBaseUrl: !Sub "https://api.${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
