@@ -46,6 +46,15 @@ type PaymentProviderClient interface {
 	//
 	// DELETE /payments/custom-provider/connect?locationId=<id>
 	DisconnectProvider(ctx context.Context, accessToken, locationID string) error
+
+	// UpdateProviderCapabilities enables the RVPay Custom Payment Provider
+	// capabilities for the supplied HighLevel location. Per the HighLevel v3
+	// contract, locationId is sent in the JSON body and RVPay does not
+	// support subscription schedules.
+	//
+	// PUT /payments/custom-provider/capabilities
+	// Body: {locationId, supportsSubscriptionSchedules:false}
+	UpdateProviderCapabilities(ctx context.Context, accessToken, locationID string) error
 }
 
 // ProviderConfig is the provider configuration sent to HighLevel. It is built

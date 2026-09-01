@@ -296,6 +296,91 @@ func TestCreateProviderAssociation_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestUpdateProviderCapabilities_Success(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			t.Errorf("method = %s, want PUT", r.Method)
+		}
+		if r.URL.Path != "/payments/custom-provider/capabilities" {
+			t.Errorf("path = %s, want /payments/custom-provider/capabilities", r.URL.Path)
+		}
+		if got := r.Header.Get("Version"); got != "v3" {
+			t.Errorf("Version header = %q, want v3", got)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
+			t.Errorf("Authorization = %q, want Bearer test-access-token", got)
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		var payload map[string]interface{}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Errorf("parse body: %v", err)
+		}
+		if got, ok := payload["locationId"]; !ok || got != "loc-123" {
+			t.Errorf("locationId = %v, want loc-123", got)
+		}
+		if got, ok := payload["supportsSubscriptionSchedules"]; !ok || got != false {
+			t.Errorf("supportsSubscriptionSchedules = %v, want false", got)
+		}
+		if _, ok := payload["companyId"]; ok {
+			t.Error("companyId must not be sent")
+		}
+
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	if err := client.UpdateProviderCapabilities(context.Background(), "test-access-token", "loc-123"); err != nil {
+		t.Fatalf("UpdateProviderCapabilities failed: %v", err)
+	}
+
+	if len(*requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(*requests))
+	}
+}
+
+func TestUpdateProviderCapabilities_MissingAccessToken(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	if err := client.UpdateProviderCapabilities(context.Background(), "", "loc-123"); !errors.Is(err, ErrMissingAccessToken) {
+		t.Fatalf("error = %v, want ErrMissingAccessToken", err)
+	}
+}
+
+func TestUpdateProviderCapabilities_MissingLocationID(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	if err := client.UpdateProviderCapabilities(context.Background(), "test-access-token", ""); !errors.Is(err, ErrMissingLocationID) {
+		t.Fatalf("error = %v, want ErrMissingLocationID", err)
+	}
+}
+
+func TestUpdateProviderCapabilities_UnprocessableEntity(t *testing.T) {
+	t.Parallel()
+
+	srv, requests := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"capabilities not supported"}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.UpdateProviderCapabilities(context.Background(), "test-access-token", "loc-123")
+	if !errors.Is(err, ErrUnprocessableEntity) {
+		t.Fatalf("error = %v, want ErrUnprocessableEntity", err)
+	}
+	if len(*requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(*requests))
+	}
+}
+
 func TestFetchProviderConfig_Success(t *testing.T) {
 	t.Parallel()
 

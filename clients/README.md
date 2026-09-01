@@ -364,4 +364,21 @@ Changes below apply only to the Clients service across the three most recent
 
 ### GHL Custom Payment Provider (`providers/highlevel_payment_provider.go`)
 - Outbound GHL payment-provider calls now set `Version: v3`. Registration is being
-  worked on ("partially fixed").
+  worked on ("partially fixed").
+## HighLevel v3 Custom Provider capability configuration
+
+During provider registration the Clients service now first enables the
+RVPay Custom Payment Provider capabilities for the installed location:
+
+```
+PUT /payments/custom-provider/capabilities   (Version: v3, Bearer OAuth token)
+Body: {"locationId":"<locationId>","supportsSubscriptionSchedules":false}
+```
+
+`locationId` is taken from the already-resolved OAuth token response; no
+`companyId` is sent and subscription schedules are not supported (one-time
+payments only). The call is best-effort and runs before the existing provider
+registration sequence (`POST /payments/custom-provider/provider` ->
+`GET /payments/custom-provider/connect` verification ->
+`POST /payments/custom-provider/connect` with live/test keys); a failure is
+logged and retried on the next registration without blocking the install.

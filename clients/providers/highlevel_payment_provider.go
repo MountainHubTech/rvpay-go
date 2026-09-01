@@ -127,6 +127,41 @@ func (c *HighLevelPaymentProviderClient) CreateProviderConfigs(ctx context.Conte
 	return nil
 }
 
+// UpdateProviderCapabilities enables the RVPay Custom Payment Provider
+// capabilities for the supplied HighLevel location. Per the HighLevel v3
+// contract, `locationId` is sent in the JSON body (NOT as a query parameter)
+// and `supportsSubscriptionSchedules` is false because RVPay supports
+// one-time payments only. No companyId is sent. This is what lets the
+// location use RVPay as its Custom Payment Provider once registered.
+//
+// PUT /payments/custom-provider/capabilities
+// Body: {locationId, supportsSubscriptionSchedules:false}
+func (c *HighLevelPaymentProviderClient) UpdateProviderCapabilities(ctx context.Context, accessToken, locationID string) error {
+	if strings.TrimSpace(accessToken) == "" {
+		return ErrMissingAccessToken
+	}
+	if strings.TrimSpace(locationID) == "" {
+		return ErrMissingLocationID
+	}
+
+	path := "/payments/custom-provider/capabilities"
+
+	// locationId is a required JSON body field per the v3 capabilities
+	// contract. supportsSubscriptionSchedules is false: RVPay supports
+	// one-time payments only. companyId is not sent.
+	body := map[string]interface{}{
+		"locationId":                    locationID,
+		"supportsSubscriptionSchedules": false,
+	}
+
+	var respBody map[string]interface{}
+	if err := c.doJSON(ctx, http.MethodPut, path, accessToken, body, &respBody); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // FetchProviderConfig fetches the provider configuration for a location.
 //
 // GET /payments/custom-provider/connect

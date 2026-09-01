@@ -147,7 +147,7 @@ type sequencingResponder func(method, path string, w http.ResponseWriter)
 func sequencingHandler(respond sequencingResponder) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/payments/custom-provider/provider", "/payments/custom-provider/connect":
+		case "/payments/custom-provider/provider", "/payments/custom-provider/connect", "/payments/custom-provider/capabilities":
 			respond(r.Method, r.URL.Path, w)
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -313,6 +313,59 @@ func TestRegisterProvider_TraceOnlyConfigRetriesThenConfirms(t *testing.T) {
 		t.Fatalf("credential POST /connect count = %d, want 1", got)
 	}
 	assertCredentialsPostAfterGet(t, rec)
+}
+
+// TestRegisterProvider_CapabilitiesBeforeProviderRegistration verifies that
+// the capabilities update (PUT /payments/custom-provider/capabilities) runs
+// first in the registration flow, using the already-resolved locationId,
+// before the existing provider → GET /connect → POST /connect sequence.
+func TestRegisterProvider_CapabilitiesBeforeProviderRegistration(t *testing.T) {
+	t.Parallel()
+
+	rec := newRequestRecorder()
+	svc, integrationID, configRepo := newSequencingTestService(t, sequencingHandler(func(method, path string, w http.ResponseWriter) {
+		switch {
+		case path == "/payments/custom-provider/capabilities" && method == http.MethodPut:
+			rec.record("capabilities")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"success":true}`))
+		case path == "/payments/custom-provider/provider" && method == http.MethodPost:
+			rec.record("provider")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"_id":"prov-1"}`))
+		case path == "/payments/custom-provider/connect" && method == http.MethodGet:
+			rec.record("get-connect")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"RVPay","description":"RVPay payment provider","paymentsUrl":"https://checkout.example.com/payment/checkout","queryUrl":"https://api.example.com/payments/custom-provider/query","locationId":"loc-123"}`))
+		case path == "/payments/custom-provider/connect" && method == http.MethodPost:
+			rec.record("post-connect")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"_id":"prov-1"}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	if err := svc.RegisterProvider(context.Background(), integrationID, "loc-123", "test-access-token"); err != nil {
+		t.Fatalf("RegisterProvider failed: %v", err)
+	}
+
+	// The capabilities update precedes provider registration.
+	if len(rec.order) < 2 || rec.order[0] != "capabilities" || rec.order[1] != "provider" {
+		t.Fatalf("request order = %v, want capabilities before provider", rec.order)
+	}
+	if got := rec.count("capabilities"); got != 1 {
+		t.Fatalf("capabilities PUT count = %d, want 1", got)
+	}
+	// The existing sequence is preserved after the capabilities update.
+	assertCredentialsPostAfterGet(t, rec)
+	if got := rec.count("post-connect"); got != 1 {
+		t.Fatalf("credential POST /connect count = %d, want 1", got)
+	}
+	// Local persistence is unaffected.
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("expected 1 local provider config, got %d", len(configRepo.configs))
+	}
 }
 
 // TestRegisterProvider_BaseConfigNeverReadySkipsCredentials verifies that a

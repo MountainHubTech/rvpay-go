@@ -525,11 +525,15 @@ var (
 // for an installed location and persists the local provider configuration.
 // It:
 //
-//  1. Registers the provider association
+//  1. Enables the Custom Payment Provider capabilities for the location
+//     (PUT /payments/custom-provider/capabilities) with the locationId in the
+//     body and supportsSubscriptionSchedules=false. Best-effort: a failure is
+//     logged and does not abort registration.
+//  2. Registers the provider association
 //     (POST /payments/custom-provider/provider?locationId=<id>) with the
 //     provider metadata in the body. This is what makes RVPay appear and work
 //     on HighLevel's Payments > Integrations page.
-//  2. Confirms the base configuration exists
+//  3. Confirms the base configuration exists
 //     (GET /payments/custom-provider/connect?locationId=<id>) with a small
 //     bounded verification retry for eventual consistency. The credential
 //     POST is never sent until the base configuration has been confirmed;
@@ -603,7 +607,22 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		SupportsSubscriptionSchedule: false, // RVPay supports one-time payments only.
 	}
 
-	// Step 1: Register the provider association. This is the correct v3 step
+	// Step 1: Enable the Custom Payment Provider capabilities for the
+	// location (PUT /payments/custom-provider/capabilities) using the
+	// already-resolved locationId. This must run before the provider
+	// association so HighLevel knows the provider's supported capabilities.
+	// The call is best-effort: a failure is logged and does not abort the
+	// registration or the installation, and it can be retried on the next
+	// registration.
+	if capErr := paymentClient.UpdateProviderCapabilities(ctx, accessToken, locationID); capErr != nil {
+		s.logger.Warn().
+			Err(capErr).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("HighLevel provider capabilities update failed; continuing provider registration")
+	}
+
+	// Step 2: Register the provider association. This is the correct v3 step
 	// for metadata registration: locationId is a required query parameter and
 	// the metadata is sent in the body. We do not treat every 400/422 as
 	// "already exists"; we confirm via the fetch in Step 2 and only treat it as
@@ -622,7 +641,7 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association may already exist; confirming via fetch")
 	}
 
-	// Step 2: Confirm the base configuration exists before pushing any
+	// Step 3: Confirm the base configuration exists before pushing any
 	// credentials. Per the HighLevel v3 contract, the credential POST to
 	// /payments/custom-provider/connect fails with HTTP 422 ("Base config for
 	// integration is not created yet") if the base configuration has not been
@@ -685,7 +704,7 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		}
 	}
 
-	// Step 2b: Push the RVPay live/test processing keys to HighLevel
+	// Step 3b: Push the RVPay live/test processing keys to HighLevel
 	// (POST /payments/custom-provider/connect?locationId=<id>) — but ONLY
 	// after the base configuration has been confirmed to exist via the GET
 	// above. The keys come exclusively from environment configuration. The
@@ -722,7 +741,7 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("no live/test provider keys configured; skipping provider config creation")
 	}
 
-	// Step 3: Persist the local provider configuration, reusing an existing API
+	// Step 4: Persist the local provider configuration, reusing an existing API
 	// key when a valid local config already exists. The provider API key is a
 	// generated random value used to authenticate HighLevel query requests; it
 	// is distinct from the OAuth access token and the pawaPay API key. It is
