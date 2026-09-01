@@ -312,6 +312,9 @@ func TestFetchProviderConfig_Success(t *testing.T) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-access-token" {
 			t.Errorf("Authorization = %q, want Bearer test-access-token", got)
 		}
+		if got := r.Header.Get("Version"); got != "v3" {
+			t.Errorf("Version header = %q, want v3", got)
+		}
 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{

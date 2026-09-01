@@ -512,6 +512,15 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	return result, nil
 }
 
+// baseConfigVerifyAttempts and baseConfigVerifyDelay bound the
+// eventual-consistency verification retry around the GET
+// /payments/custom-provider/connect only. They are package-level variables so
+// tests can shorten the retry without changing behavior.
+var (
+	baseConfigVerifyAttempts = 5
+	baseConfigVerifyDelay    = 500 * time.Millisecond
+)
+
 // RegisterProvider registers RVPay as the HighLevel Custom Payment Provider
 // for an installed location and persists the local provider configuration.
 // It:
@@ -520,11 +529,17 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 //     (POST /payments/custom-provider/provider?locationId=<id>) with the
 //     provider metadata in the body. This is what makes RVPay appear and work
 //     on HighLevel's Payments > Integrations page.
-//  2. Fetches the real provider configuration
-//     (GET /payments/custom-provider/connect?locationId=<id>) to persist
-//     genuine remote metadata instead of empty/default values.
-//  3. Persists the local provider configuration, reusing an existing API key
-//     when a valid local config already exists.
+//  2. Confirms the base configuration exists
+//     (GET /payments/custom-provider/connect?locationId=<id>) with a small
+//     bounded verification retry for eventual consistency. The credential
+//     POST is never sent until the base configuration has been confirmed;
+//     otherwise HighLevel answers 422 "Base config ... not created yet".
+//  3. Pushes the live/test processing keys
+//     (POST /payments/custom-provider/connect?locationId=<id>) only after
+//     the base configuration is confirmed to exist.
+//  4. Persists the local provider configuration, reusing an existing API key
+//     when a valid local config already exists. Remote metadata fetched in
+//     step 2 is preferred over configured defaults.
 //
 // The operation is idempotent: if the provider is already associated, the
 // existing configuration is fetched and persisted instead of creating a
@@ -533,6 +548,13 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 // idempotent. Registration failures return a typed error; the integration
 // remains installed and the operation can be retried safely.
 func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID, locationID, accessToken string) error {
+	s.logger.Info().Msg("RegisterProvider initiated...")
+
+	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
+
+	s.logger.Info().Str("access_token", accessToken).Msg("access token for client")
+
+	s.logger.Info().Msg("Checking provider configuration repository...")
 	if s.configRepo == nil {
 		return ErrProviderConfigRepoNotConfigured
 	}
@@ -600,14 +622,68 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association may already exist; confirming via fetch")
 	}
 
-	// Step 1b: Push the RVPay live/test processing keys to HighLevel
-	// (POST /payments/custom-provider/connect?locationId=<id>). This runs
-	// immediately after the provider association so the location can
-	// transact through RVPay as soon as it is registered. The keys come
-	// exclusively from environment configuration. The call is best-effort:
-	// a failure is logged and does not abort the registration or the
-	// installation, and it can be retried on the next registration.
-	if s.providerConfig.LiveAPIKey != "" || s.providerConfig.LivePublishableKey != "" ||
+	// Step 2: Confirm the base configuration exists before pushing any
+	// credentials. Per the HighLevel v3 contract, the credential POST to
+	// /payments/custom-provider/connect fails with HTTP 422 ("Base config for
+	// integration is not created yet") if the base configuration has not been
+	// created by the provider association yet. HighLevel may create it
+	// asynchronously, so the GET below is retried a small, bounded number of
+	// times. Credentials are NEVER sent until the GET confirms the base
+	// configuration exists.
+	baseConfigConfirmed := false
+	for attempt := 1; attempt <= baseConfigVerifyAttempts; attempt++ {
+		existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
+		if fetchErr == nil {
+			if existing.Name != "" || existing.QueryURL != "" || existing.PaymentsURL != "" {
+				if existing.LocationID == "" {
+					existing.LocationID = locationID
+				}
+				metadata = *existing
+			}
+			baseConfigConfirmed = true
+			break
+		}
+		// An unauthorized/expired token must not be retried or treated as
+		// "not ready yet": the credential POST is skipped and the error is
+		// logged. Any other error (including HighLevel 400/422 for a base
+		// configuration that does not exist yet) is retried on the GET only.
+		if errors.Is(fetchErr, providers.ErrUnauthorized) {
+			s.logger.Warn().
+				Err(fetchErr).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("base config verification unauthorized; skipping provider config creation")
+			break
+		}
+		s.logger.Warn().
+			Err(fetchErr).
+			Int("attempt", attempt).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("base configuration not confirmed yet; retrying verification fetch")
+		if attempt < baseConfigVerifyAttempts {
+			select {
+			case <-ctx.Done():
+				s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("base config verification cancelled; skipping provider config creation")
+				return ctx.Err()
+			case <-time.After(baseConfigVerifyDelay):
+			}
+		}
+	}
+
+	// Step 2b: Push the RVPay live/test processing keys to HighLevel
+	// (POST /payments/custom-provider/connect?locationId=<id>) — but ONLY
+	// after the base configuration has been confirmed to exist via the GET
+	// above. The keys come exclusively from environment configuration. The
+	// call is best-effort: a failure is logged and does not abort the
+	// registration or the installation, and it can be retried on the next
+	// registration.
+	if !baseConfigConfirmed {
+		s.logger.Warn().
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("base configuration could not be confirmed; skipping provider config creation")
+	} else if s.providerConfig.LiveAPIKey != "" || s.providerConfig.LivePublishableKey != "" ||
 		s.providerConfig.TestAPIKey != "" || s.providerConfig.TestPublishableKey != "" {
 		creds := providers.ProviderCredentials{
 			Live: providers.ProviderModeCredentials{
@@ -630,22 +706,6 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		}
 	} else {
 		s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("no live/test provider keys configured; skipping provider config creation")
-	}
-
-	// Step 2: Fetch the existing provider configuration so the local record
-	// reflects genuine remote metadata rather than empty defaults. Fetch is
-	// best-effort: on a freshly created association the remote record may not
-	// be retrievable yet, so a fetch failure is non-fatal and we keep the
-	// configured (non-empty) metadata.
-	if existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID); fetchErr == nil {
-		if existing.Name != "" || existing.QueryURL != "" || existing.PaymentsURL != "" {
-			if existing.LocationID == "" {
-				existing.LocationID = locationID
-			}
-			metadata = *existing
-		}
-	} else {
-		s.logger.Warn().Err(fetchErr).Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("failed to fetch provider configuration; using configured metadata")
 	}
 
 	// Step 3: Persist the local provider configuration, reusing an existing API
@@ -695,6 +755,16 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 // typed error. It performs the outbound
 // POST /payments/custom-provider/connect?locationId=<id> call.
 func (s *Service) CreateProviderConfigs(ctx context.Context, paymentClient providers.PaymentProviderClient, accessToken, locationID string, creds providers.ProviderCredentials) error {
+	s.logger.Info().Msg("CreateProviderConfigs initiated...")
+
+	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
+
+	s.logger.Info().Str("access_token", accessToken).Msg("access token for client")
+
+	s.logger.Info().Msgf("Payment Client: %v", paymentClient)
+
+	s.logger.Info().Msgf("Provider Credentials: %v", creds)
+
 	if paymentClient == nil {
 		return ErrPaymentProviderNotSupported
 	}
