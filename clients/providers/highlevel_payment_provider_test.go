@@ -296,6 +296,47 @@ func TestCreateProviderAssociation_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestCreateProviderAssociation_ErrorCarriesDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	// The HighLevel error must remain a typed sentinel with an unchanged
+	// message, while additionally carrying the HTTP status, the sanitized
+	// body, and the HighLevel traceId for diagnostic logging. Credentials
+	// (including the access token) must never appear in any of them.
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"provider already exists","traceId":"trace-diag-123"}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.CreateProviderAssociation(context.Background(), "test-access-token", ProviderConfig{LocationID: "loc-123"})
+
+	if !errors.Is(err, ErrUnprocessableEntity) {
+		t.Fatalf("error = %v, want ErrUnprocessableEntity", err)
+	}
+	var apiErr *HighLevelAPIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("error %v does not carry HighLevelAPIError diagnostics", err)
+	}
+	if apiErr.StatusCode != http.StatusUnprocessableEntity {
+		t.Errorf("StatusCode = %d, want 422", apiErr.StatusCode)
+	}
+	if apiErr.TraceID != "trace-diag-123" {
+		t.Errorf("TraceID = %q, want trace-diag-123", apiErr.TraceID)
+	}
+	if !strings.Contains(apiErr.Body, "provider already exists") {
+		t.Errorf("Body = %q, want the HighLevel response body", apiErr.Body)
+	}
+	if strings.Contains(apiErr.Body, "test-access-token") {
+		t.Error("Body must never contain the access token")
+	}
+	// The original error message must be unchanged.
+	want := "highlevel: unprocessable entity: {\"message\":\"provider already exists\",\"traceId\":\"trace-diag-123\"}"
+	if err.Error() != want {
+		t.Errorf("Error() = %q, want %q", err.Error(), want)
+	}
+}
+
 func TestUpdateProviderCapabilities_Success(t *testing.T) {
 	t.Parallel()
 

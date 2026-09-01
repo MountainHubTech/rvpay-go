@@ -273,14 +273,61 @@ func (c *HighLevelPaymentProviderClient) doJSON(ctx context.Context, method, pat
 		}
 		return nil
 	case resp.StatusCode == http.StatusBadRequest:
-		return fmt.Errorf("%w: %s", ErrBadRequest, sanitizeErrorBody(respData))
+		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrBadRequest, sanitizeErrorBody(respData)))
 	case resp.StatusCode == http.StatusUnauthorized:
-		return fmt.Errorf("%w: %s", ErrUnauthorized, sanitizeErrorBody(respData))
+		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnauthorized, sanitizeErrorBody(respData)))
 	case resp.StatusCode == http.StatusUnprocessableEntity:
-		return fmt.Errorf("%w: %s", ErrUnprocessableEntity, sanitizeErrorBody(respData))
+		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnprocessableEntity, sanitizeErrorBody(respData)))
 	default:
-		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, sanitizeErrorBody(respData))
+		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, sanitizeErrorBody(respData)))
 	}
+}
+
+// HighLevelAPIError carries diagnostic details of a non-2xx HighLevel
+// response (HTTP status, the sanitized response body, and the HighLevel
+// traceId when present) alongside the original typed error. It does NOT
+// change the error message or sentinel classification: Error and Unwrap
+// delegate to the wrapped error so errors.Is/As behavior and the existing
+// message format are preserved. The body is already sanitized
+// (credential-redacted) and never contains the access token.
+type HighLevelAPIError struct {
+	// StatusCode is the HTTP status returned by HighLevel.
+	StatusCode int
+	// Body is the sanitized (credential-redacted) HighLevel response body.
+	Body string
+	// TraceID is the HighLevel traceId from the response body, if present.
+	TraceID string
+	err     error
+}
+
+// Error returns the original error message unchanged.
+func (e *HighLevelAPIError) Error() string { return e.err.Error() }
+
+// Unwrap exposes the original typed error so errors.Is/As classification
+// (e.g. providers.ErrBadRequest) keeps working.
+func (e *HighLevelAPIError) Unwrap() error { return e.err }
+
+// wrapHighLevelAPIError attaches diagnostic response details to err without
+// altering its message or sentinel classification.
+func wrapHighLevelAPIError(statusCode int, body []byte, err error) error {
+	return &HighLevelAPIError{
+		StatusCode: statusCode,
+		Body:       sanitizeErrorBody(body),
+		TraceID:    traceIDFromBody(body),
+		err:        err,
+	}
+}
+
+// traceIDFromBody extracts the HighLevel traceId from a response body, if
+// present. It never returns credential material — only the traceId field.
+func traceIDFromBody(body []byte) string {
+	var raw struct {
+		TraceID string `json:"traceId"`
+	}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return ""
+	}
+	return raw.TraceID
 }
 
 // credentialFields are JSON field names whose values must be redacted from

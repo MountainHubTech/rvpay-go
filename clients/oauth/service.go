@@ -629,8 +629,20 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 	// idempotent when a real provider configuration is returned.
 	err = paymentClient.CreateProviderAssociation(ctx, accessToken, metadata)
 	if err != nil {
+		// Diagnostic detail from the actual HighLevel response (HTTP status,
+		// sanitized response body, HighLevel traceId when present). The body
+		// is credential-redacted and never contains the access token.
+		logCtx := s.logger.With()
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			logCtx = logCtx.
+				Int("highlevel_status", apiErr.StatusCode).
+				Str("highlevel_body", apiErr.Body).
+				Str("highlevel_trace_id", apiErr.TraceID)
+		}
+		logEvent := logCtx.Logger()
 		if !errors.Is(err, providers.ErrBadRequest) && !errors.Is(err, providers.ErrUnprocessableEntity) {
-			s.logger.Error().
+			logEvent.
 				Err(err).
 				Str("integration_id", integrationID.String()).
 				Str("location_id", locationID).
@@ -638,7 +650,11 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 
 			return ErrProviderAssociationFailed
 		}
-		s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association may already exist; confirming via fetch")
+		logEvent.
+			Err(err).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("provider association may already exist; confirming via fetch")
 	}
 
 	// Step 3: Confirm the base configuration exists before pushing any
