@@ -47,6 +47,13 @@ type PaymentProviderClient interface {
 	// DELETE /payments/custom-provider/connect?locationId=<id>
 	DisconnectProvider(ctx context.Context, accessToken, locationID string) error
 
+	// CreateProviderConfigsWithDiagnostics performs the same credential push
+	// as CreateProviderConfigs and additionally returns diagnostic details
+	// of the actual HighLevel HTTP response (status, sanitized body, traceId)
+	// for logging. The returned diagnostics never contain credentials or the
+	// access token. Error semantics are identical to CreateProviderConfigs.
+	CreateProviderConfigsWithDiagnostics(ctx context.Context, accessToken, locationID string, creds ProviderCredentials) (*HighLevelCallDiagnostics, error)
+
 	// UpdateProviderCapabilities enables the RVPay Custom Payment Provider
 	// capabilities for the supplied HighLevel location. Per the HighLevel v3
 	// contract, locationId is sent in the JSON body and RVPay does not
@@ -55,6 +62,19 @@ type PaymentProviderClient interface {
 	// PUT /payments/custom-provider/capabilities
 	// Body: {locationId, supportsSubscriptionSchedules:false}
 	UpdateProviderCapabilities(ctx context.Context, accessToken, locationID string) error
+}
+
+// HighLevelCallDiagnostics captures diagnostic details of a completed
+// HighLevel HTTP response for logging. The Body is always sanitized
+// (credential-redacted); diagnostics never contain credentials or the OAuth
+// access token.
+type HighLevelCallDiagnostics struct {
+	// StatusCode is the HTTP status returned by HighLevel.
+	StatusCode int
+	// Body is the sanitized (credential-redacted) HighLevel response body.
+	Body string
+	// TraceID is the HighLevel traceId from the response body, if present.
+	TraceID string
 }
 
 // ProviderConfig is the provider configuration sent to HighLevel. It is built

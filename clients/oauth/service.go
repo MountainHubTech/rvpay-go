@@ -828,7 +828,75 @@ func (s *Service) CreateProviderConfigs(ctx context.Context, paymentClient provi
 		return ErrProviderCredentialsNotConfigured
 	}
 
-	return paymentClient.CreateProviderConfigs(ctx, accessToken, locationID, creds)
+	// Diagnostic POST: the same POST /payments/custom-provider/connect with
+	// the same body, but capturing the actual HighLevel HTTP response
+	// (status, sanitized body, traceId) for logging. The diagnostics never
+	// contain credentials or the access token. Error semantics are unchanged.
+	diag, err := paymentClient.CreateProviderConfigsWithDiagnostics(ctx, accessToken, locationID, creds)
+	logCtx := s.logger.With()
+	if diag == nil {
+		// On error paths the diagnostics come from the wrapped HighLevel
+		// API error (status, sanitized body, traceId).
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			diag = &providers.HighLevelCallDiagnostics{
+				StatusCode: apiErr.StatusCode,
+				Body:       apiErr.Body,
+				TraceID:    apiErr.TraceID,
+			}
+		}
+	}
+	if diag != nil {
+		logCtx = logCtx.
+			Int("highlevel_post_status", diag.StatusCode).
+			Str("highlevel_post_body", diag.Body).
+			Str("highlevel_post_trace_id", diag.TraceID)
+	}
+	postLog := logCtx.Logger()
+
+	if err != nil {
+		postLog.
+			Warn().
+			Err(err).
+			Str("location_id", locationID).
+			Msg("HighLevel payment config POST diagnostics")
+		return err
+	}
+
+	postLog.Info().Str("location_id", locationID).Msg("HighLevel payment config POST succeeded; verifying via fetch")
+
+	// Immediately verify with the existing fetch (GET
+	// /payments/custom-provider/connect?locationId=<id>). Diagnostic-only:
+	// the result is logged and does not change the POST outcome.
+	fetched, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
+	if fetchErr != nil {
+		fetchLog := s.logger.With()
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(fetchErr, &apiErr) {
+			fetchLog = fetchLog.
+				Int("highlevel_get_status", apiErr.StatusCode).
+				Str("highlevel_get_body", apiErr.Body).
+				Str("highlevel_get_trace_id", apiErr.TraceID)
+		}
+		fetchLogger := fetchLog.Logger()
+		fetchLogger.
+			Warn().
+			Err(fetchErr).
+			Str("location_id", locationID).
+			Msg("HighLevel payment config verification fetch failed (diagnostic)")
+		return err
+	}
+
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("fetched_name", fetched.Name).
+		Str("fetched_query_url", fetched.QueryURL).
+		Str("fetched_payments_url", fetched.PaymentsURL).
+		Str("fetched_image_url", fetched.ImageURL).
+		Bool("fetched_supports_subscription_schedule", fetched.SupportsSubscriptionSchedule).
+		Msg("HighLevel payment config verification fetch returned configuration (diagnostic)")
+
+	return err
 }
 
 // RefreshAccessToken refreshes an OAuth access token for an integration.

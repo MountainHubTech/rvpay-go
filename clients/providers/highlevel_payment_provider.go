@@ -91,11 +91,23 @@ func (c *HighLevelPaymentProviderClient) CreateProviderAssociation(ctx context.C
 // POST /payments/custom-provider/connect?locationId=<id>
 // Body: {live:{apiKey,publishableKey,liveMode}, test:{apiKey,publishableKey,liveMode}}
 func (c *HighLevelPaymentProviderClient) CreateProviderConfigs(ctx context.Context, accessToken, locationID string, creds ProviderCredentials) error {
+	// Identical behavior to the diagnostics variant; the diagnostics are
+	// simply discarded here so the existing contract is unchanged.
+	_, err := c.CreateProviderConfigsWithDiagnostics(ctx, accessToken, locationID, creds)
+	return err
+}
+
+// CreateProviderConfigsWithDiagnostics performs the same credential push as
+// CreateProviderConfigs and additionally returns diagnostic details of the
+// actual HighLevel HTTP response (HTTP status, sanitized response body,
+// HighLevel traceId when present). The diagnostics never contain credentials
+// or the access token; error semantics are identical.
+func (c *HighLevelPaymentProviderClient) CreateProviderConfigsWithDiagnostics(ctx context.Context, accessToken, locationID string, creds ProviderCredentials) (*HighLevelCallDiagnostics, error) {
 	if strings.TrimSpace(accessToken) == "" {
-		return ErrMissingAccessToken
+		return nil, ErrMissingAccessToken
 	}
 	if strings.TrimSpace(locationID) == "" {
-		return ErrMissingLocationID
+		return nil, ErrMissingLocationID
 	}
 
 	// locationId is a required query parameter per the v3 contract. It is
@@ -120,11 +132,7 @@ func (c *HighLevelPaymentProviderClient) CreateProviderConfigs(ctx context.Conte
 	}
 
 	var respBody map[string]interface{}
-	if err := c.doJSON(ctx, http.MethodPost, path, accessToken, body, &respBody); err != nil {
-		return err
-	}
-
-	return nil
+	return c.doJSONDiag(ctx, http.MethodPost, path, accessToken, body, &respBody)
 }
 
 // UpdateProviderCapabilities enables the RVPay Custom Payment Provider
@@ -231,18 +239,28 @@ func (c *HighLevelPaymentProviderClient) DisconnectProvider(ctx context.Context,
 // handles 2xx, 400, 401, and 422 responses and returns typed/domain errors.
 // The access token is never logged or included in returned errors.
 func (c *HighLevelPaymentProviderClient) doJSON(ctx context.Context, method, path, accessToken string, body, out interface{}) error {
+	_, err := c.doJSONDiag(ctx, method, path, accessToken, body, out)
+	return err
+}
+
+// doJSONDiag performs the same authenticated JSON request as doJSON and
+// additionally returns diagnostic details of the actual HighLevel HTTP
+// response (HTTP status, sanitized response body, HighLevel traceId when
+// present) for both success and error outcomes. The diagnostics never
+// contain credentials or the access token; error behavior is identical.
+func (c *HighLevelPaymentProviderClient) doJSONDiag(ctx context.Context, method, path, accessToken string, body, out interface{}) (*HighLevelCallDiagnostics, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("marshal request body: %w", err)
+			return nil, fmt.Errorf("marshal request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(data)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, bodyReader)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+accessToken)
@@ -253,33 +271,37 @@ func (c *HighLevelPaymentProviderClient) doJSON(ctx context.Context, method, pat
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("request cancelled: %w", ctx.Err())
+			return nil, fmt.Errorf("request cancelled: %w", ctx.Err())
 		}
-		return fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return fmt.Errorf("read response body: %w", err)
+		return nil, fmt.Errorf("read response body: %w", err)
 	}
 
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		if out != nil && len(respData) > 0 {
 			if err := json.Unmarshal(respData, out); err != nil {
-				return fmt.Errorf("parse response body: %w", err)
+				return nil, fmt.Errorf("parse response body: %w", err)
 			}
 		}
-		return nil
+		return &HighLevelCallDiagnostics{
+			StatusCode: resp.StatusCode,
+			Body:       sanitizeErrorBody(respData),
+			TraceID:    traceIDFromBody(respData),
+		}, nil
 	case resp.StatusCode == http.StatusBadRequest:
-		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrBadRequest, sanitizeErrorBody(respData)))
+		return nil, wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrBadRequest, sanitizeErrorBody(respData)))
 	case resp.StatusCode == http.StatusUnauthorized:
-		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnauthorized, sanitizeErrorBody(respData)))
+		return nil, wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnauthorized, sanitizeErrorBody(respData)))
 	case resp.StatusCode == http.StatusUnprocessableEntity:
-		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnprocessableEntity, sanitizeErrorBody(respData)))
+		return nil, wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("%w: %s", ErrUnprocessableEntity, sanitizeErrorBody(respData)))
 	default:
-		return wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, sanitizeErrorBody(respData)))
+		return nil, wrapHighLevelAPIError(resp.StatusCode, respData, fmt.Errorf("unexpected status %d: %s", resp.StatusCode, sanitizeErrorBody(respData)))
 	}
 }
 

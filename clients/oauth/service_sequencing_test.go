@@ -1,10 +1,13 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -60,6 +63,19 @@ func (rec *requestRecorder) lastIndex(key string) int {
 		}
 	}
 	return last
+}
+
+// firstIndex returns the index of the first occurrence of key in the recorded
+// order, or -1 when the key was never recorded.
+func (rec *requestRecorder) firstIndex(key string) int {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	for i, k := range rec.order {
+		if k == key {
+			return i
+		}
+	}
+	return -1
 }
 
 // newSequencingTestService builds an OAuth service wired to in-memory mocks
@@ -131,10 +147,11 @@ func newSequencingTestService(t *testing.T, paymentHandler http.HandlerFunc) (*S
 }
 
 // assertCredentialsPostAfterGet verifies that the credential POST /connect
-// occurred after the last confirming GET /connect.
+// occurred only after a confirming GET /connect (the diagnostic verification
+// GET that follows a successful credential POST is not counted against this).
 func assertCredentialsPostAfterGet(t *testing.T, rec *requestRecorder) {
 	t.Helper()
-	if lastPost := rec.lastIndex("post-connect"); lastPost < rec.lastIndex("get-connect") {
+	if firstPost := rec.firstIndex("post-connect"); firstPost <= rec.firstIndex("get-connect") {
 		t.Fatalf("credential POST /connect occurred before the confirming GET /connect: %v", rec.order)
 	}
 }
@@ -254,8 +271,8 @@ func TestRegisterProvider_BaseConfigEventuallyReady(t *testing.T) {
 		t.Fatalf("RegisterProvider failed: %v", err)
 	}
 
-	if got := rec.count("get-connect"); got != 3 {
-		t.Fatalf("GET /connect attempts = %d, want 3", got)
+	if got := rec.count("get-connect"); got != 4 {
+		t.Fatalf("GET /connect attempts = %d, want 4 (verify attempts + diagnostic GET after the credential POST)", got)
 	}
 	if got := rec.count("post-connect"); got != 1 {
 		t.Fatalf("credential POST /connect count = %d, want 1 (only after confirmation)", got)
@@ -305,8 +322,8 @@ func TestRegisterProvider_TraceOnlyConfigRetriesThenConfirms(t *testing.T) {
 	}
 
 	// The trace-only GETs were retried until real metadata arrived.
-	if got := rec.count("get-connect"); got != 3 {
-		t.Fatalf("GET /connect attempts = %d, want 3", got)
+	if got := rec.count("get-connect"); got != 4 {
+		t.Fatalf("GET /connect attempts = %d, want 4 (verify attempts + diagnostic GET after the credential POST)", got)
 	}
 	// The credential POST was not made until the confirming GET.
 	if got := rec.count("post-connect"); got != 1 {
@@ -366,6 +383,170 @@ func TestRegisterProvider_CapabilitiesBeforeProviderRegistration(t *testing.T) {
 	if len(configRepo.configs) != 1 {
 		t.Fatalf("expected 1 local provider config, got %d", len(configRepo.configs))
 	}
+}
+
+// TestCreateProviderConfigs_DiagnosticsObservesPostThenFetch proves the
+// diagnostic instrumentation around the payment-config push:
+//
+//  1. the POST response is observed (status + traceId + body logged),
+//  2. a GET /connect verification immediately follows a successful POST,
+//  3. the diagnostic log entries never expose credentials or access tokens.
+func TestCreateProviderConfigs_DiagnosticsObservesPostThenFetch(t *testing.T) {
+	t.Parallel()
+
+	var logBuf bytes.Buffer
+	deepLogger := zerolog.New(&logBuf)
+
+	var mu sync.Mutex
+	var order []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch {
+		case r.URL.Path == "/payments/custom-provider/connect" && r.Method == http.MethodPost:
+			order = append(order, "post-connect")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"_id":"prov-1","locationId":"loc-123","traceId":"trace-post-42"}`))
+		case r.URL.Path == "/payments/custom-provider/connect" && r.Method == http.MethodGet:
+			order = append(order, "get-connect")
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"RVPay","description":"RVPay payment provider","paymentsUrl":"https://checkout.example.com/payment/checkout","queryUrl":"https://api.example.com/payments/custom-provider/query","locationId":"loc-123","traceId":"trace-get-7"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	paymentClient := providers.NewHighLevelPaymentProviderClient(srv.URL, nil)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProviderWithURLs(
+		"test-client", "test-secret", "https://example.com/callback", "",
+		srv.URL+"/oauth/authorize", srv.URL+"/oauth/token", srv.URL+"/v1/users/me",
+		paymentClient,
+	))
+
+	svc := NewService(
+		newMockIntegrationRepo(), newMockOAuthTokenRepo(), newMockClientRepo(),
+		newMockPlatformRepo(), newMockOAuthStateRepo(), newMockPaymentProviderConfigRepo(),
+		registry, "https://example.com/callback", ProviderConfigSettings{}, deepLogger,
+	)
+
+	creds := providers.ProviderCredentials{
+		Live: providers.ProviderModeCredentials{APIKey: "live-api-key", PublishableKey: "live-publishable-key", LiveMode: true},
+		Test: providers.ProviderModeCredentials{APIKey: "test-api-key", PublishableKey: "test-publishable-key", LiveMode: false},
+	}
+	if err := svc.CreateProviderConfigs(context.Background(), paymentClient, "test-access-token", "loc-123", creds); err != nil {
+		t.Fatalf("CreateProviderConfigs failed: %v", err)
+	}
+
+	// 2. The verification GET immediately follows the successful POST.
+	mu.Lock()
+	if len(order) != 2 || order[0] != "post-connect" || order[1] != "get-connect" {
+		mu.Unlock()
+		t.Fatalf("request order = %v, want post-connect then get-connect", order)
+	}
+	mu.Unlock()
+
+	logs := logBuf.String()
+
+	// 1. The POST response was observed (status + traceId + body).
+	for _, want := range []string{
+		`"highlevel_post_status":200`,
+		`"highlevel_post_trace_id":"trace-post-42"`,
+		`"highlevel_post_body"`,
+		"HighLevel payment config POST succeeded; verifying via fetch",
+		"fetched_name\":\"RVPay\"",
+		"HighLevel payment config verification fetch returned configuration (diagnostic)",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("diagnostic logs missing %q", want)
+		}
+	}
+
+	// 3. The diagnostic log entries never expose credentials or the token.
+	// Only entries produced by the diagnostic instrumentation are checked;
+	// pre-existing log statements are out of scope for this task.
+	assertDiagnosticLinesRedacted(t, logs)
+}
+
+// assertDiagnosticLinesRedacted verifies that diagnostic instrumentation log
+// lines never contain credentials or the access token.
+func assertDiagnosticLinesRedacted(t *testing.T, logs string) {
+	t.Helper()
+
+	secrets := []string{"live-api-key", "live-publishable-key", "test-api-key", "test-publishable-key", "test-access-token"}
+	for _, line := range strings.Split(logs, "\n") {
+		if !strings.Contains(line, "diagnostic") &&
+			!strings.Contains(line, "highlevel_post") &&
+			!strings.Contains(line, "highlevel_get") &&
+			!strings.Contains(line, "verifying via fetch") {
+			continue
+		}
+		for _, secret := range secrets {
+			if strings.Contains(line, secret) {
+				t.Errorf("diagnostic log line leaked secret %q: %s", secret, line)
+			}
+		}
+	}
+}
+
+// TestCreateProviderConfigs_DiagnosticsOnPostError proves the POST diagnostics
+// are observed on a HighLevel error and the error semantics are unchanged.
+func TestCreateProviderConfigs_DiagnosticsOnPostError(t *testing.T) {
+	t.Parallel()
+
+	var logBuf bytes.Buffer
+	deepLogger := zerolog.New(&logBuf)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"message":"Base config for integration is not created yet.","traceId":"trace-err-9"}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	paymentClient := providers.NewHighLevelPaymentProviderClient(srv.URL, nil)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProviderWithURLs(
+		"test-client", "test-secret", "https://example.com/callback", "",
+		srv.URL+"/oauth/authorize", srv.URL+"/oauth/token", srv.URL+"/v1/users/me",
+		paymentClient,
+	))
+
+	svc := NewService(
+		newMockIntegrationRepo(), newMockOAuthTokenRepo(), newMockClientRepo(),
+		newMockPlatformRepo(), newMockOAuthStateRepo(), newMockPaymentProviderConfigRepo(),
+		registry, "https://example.com/callback", ProviderConfigSettings{}, deepLogger,
+	)
+
+	creds := providers.ProviderCredentials{
+		Live: providers.ProviderModeCredentials{APIKey: "live-api-key", LiveMode: true},
+	}
+	err := svc.CreateProviderConfigs(context.Background(), paymentClient, "test-access-token", "loc-123", creds)
+	if !errors.Is(err, providers.ErrUnprocessableEntity) {
+		t.Fatalf("error = %v, want providers.ErrUnprocessableEntity (unchanged semantics)", err)
+	}
+
+	logs := logBuf.String()
+	for _, want := range []string{
+		`"highlevel_post_status":422`,
+		`"highlevel_post_trace_id":"trace-err-9"`,
+		"Base config for integration is not created yet.",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("diagnostic logs missing %q", want)
+		}
+	}
+	// No verification GET may run after a failed POST.
+	if strings.Contains(logs, "verifying via fetch") {
+		t.Error("verification GET must not run after a failed POST")
+	}
+	// Diagnostic lines never contain credentials or the token.
+	assertDiagnosticLinesRedacted(t, logs)
 }
 
 // TestRegisterProvider_BaseConfigNeverReadySkipsCredentials verifies that a
