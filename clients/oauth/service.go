@@ -634,39 +634,53 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 	for attempt := 1; attempt <= baseConfigVerifyAttempts; attempt++ {
 		existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
 		if fetchErr == nil {
-			if existing.Name != "" || existing.QueryURL != "" || existing.PaymentsURL != "" {
+			// HTTP success alone is NOT proof that the base configuration
+			// exists: HighLevel can answer 200 with a trace-only body
+			// ({"traceId":"..."}) while the base provider configuration has
+			// not been materialized yet. The base config is only considered
+			// confirmed when the GET returns meaningful provider metadata.
+			if existing.Name != "" && existing.QueryURL != "" && existing.PaymentsURL != "" {
 				if existing.LocationID == "" {
 					existing.LocationID = locationID
 				}
 				metadata = *existing
+				baseConfigConfirmed = true
+				break
 			}
-			baseConfigConfirmed = true
-			break
-		}
-		// An unauthorized/expired token must not be retried or treated as
-		// "not ready yet": the credential POST is skipped and the error is
-		// logged. Any other error (including HighLevel 400/422 for a base
-		// configuration that does not exist yet) is retried on the GET only.
-		if errors.Is(fetchErr, providers.ErrUnauthorized) {
+			// Success but empty/trace-only configuration: treat as "base
+			// config not materialized yet", do NOT confirm and do NOT send
+			// credentials; fall through to the bounded GET retry.
 			s.logger.Warn().
-				Err(fetchErr).
+				Int("attempt", attempt).
 				Str("integration_id", integrationID.String()).
 				Str("location_id", locationID).
-				Msg("base config verification unauthorized; skipping provider config creation")
-			break
-		}
-		s.logger.Warn().
-			Err(fetchErr).
-			Int("attempt", attempt).
-			Str("integration_id", integrationID.String()).
-			Str("location_id", locationID).
-			Msg("base configuration not confirmed yet; retrying verification fetch")
-		if attempt < baseConfigVerifyAttempts {
-			select {
-			case <-ctx.Done():
-				s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("base config verification cancelled; skipping provider config creation")
-				return ctx.Err()
-			case <-time.After(baseConfigVerifyDelay):
+				Msg("base config verification returned empty configuration; retrying verification fetch")
+		} else {
+			// An unauthorized/expired token must not be retried or treated as
+			// "not ready yet": the credential POST is skipped and the error is
+			// logged. Any other error (including HighLevel 400/422 for a base
+			// configuration that does not exist yet) is retried on the GET only.
+			if errors.Is(fetchErr, providers.ErrUnauthorized) {
+				s.logger.Warn().
+					Err(fetchErr).
+					Str("integration_id", integrationID.String()).
+					Str("location_id", locationID).
+					Msg("base config verification unauthorized; skipping provider config creation")
+				break
+			}
+			s.logger.Warn().
+				Err(fetchErr).
+				Int("attempt", attempt).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("base configuration not confirmed yet; retrying verification fetch")
+			if attempt < baseConfigVerifyAttempts {
+				select {
+				case <-ctx.Done():
+					s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("base config verification cancelled; skipping provider config creation")
+					return ctx.Err()
+				case <-time.After(baseConfigVerifyDelay):
+				}
 			}
 		}
 	}

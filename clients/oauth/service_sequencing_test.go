@@ -240,7 +240,7 @@ func TestRegisterProvider_BaseConfigEventuallyReady(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"name":"RVPay","locationId":"loc-123"}`))
+			_, _ = w.Write([]byte(`{"name":"RVPay","description":"RVPay payment provider","paymentsUrl":"https://checkout.example.com/payment/checkout","queryUrl":"https://api.example.com/payments/custom-provider/query","locationId":"loc-123"}`))
 		case path == "/payments/custom-provider/connect" && method == http.MethodPost:
 			rec.record("post-connect")
 			w.WriteHeader(http.StatusOK)
@@ -259,6 +259,58 @@ func TestRegisterProvider_BaseConfigEventuallyReady(t *testing.T) {
 	}
 	if got := rec.count("post-connect"); got != 1 {
 		t.Fatalf("credential POST /connect count = %d, want 1 (only after confirmation)", got)
+	}
+	assertCredentialsPostAfterGet(t, rec)
+}
+
+// TestRegisterProvider_TraceOnlyConfigRetriesThenConfirms verifies that an
+// HTTP-success GET /connect that returns only a trace body ({"traceId":"..."})
+// is NOT treated as proof that the base configuration exists: verification
+// retries the GET and the credential POST happens only after a later GET
+// returns real provider metadata.
+func TestRegisterProvider_TraceOnlyConfigRetriesThenConfirms(t *testing.T) {
+	t.Parallel()
+
+	rec := newRequestRecorder()
+	getAttempts := 0
+	svc, integrationID, _ := newSequencingTestService(t, sequencingHandler(func(method, path string, w http.ResponseWriter) {
+		switch {
+		case path == "/payments/custom-provider/provider" && method == http.MethodPost:
+			rec.record("provider")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"_id":"prov-1"}`))
+		case path == "/payments/custom-provider/connect" && method == http.MethodGet:
+			rec.record("get-connect")
+			getAttempts++
+			if getAttempts < 3 {
+				// HTTP 200 but the base configuration has not materialized
+				// yet: HighLevel answers with a trace-only body.
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"traceId":"trace-abc"}`))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"name":"RVPay","description":"RVPay payment provider","paymentsUrl":"https://checkout.example.com/payment/checkout","queryUrl":"https://api.example.com/payments/custom-provider/query","locationId":"loc-123"}`))
+		case path == "/payments/custom-provider/connect" && method == http.MethodPost:
+			rec.record("post-connect")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"_id":"prov-1"}`))
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	if err := svc.RegisterProvider(context.Background(), integrationID, "loc-123", "test-access-token"); err != nil {
+		t.Fatalf("RegisterProvider failed: %v", err)
+	}
+
+	// The trace-only GETs were retried until real metadata arrived.
+	if got := rec.count("get-connect"); got != 3 {
+		t.Fatalf("GET /connect attempts = %d, want 3", got)
+	}
+	// The credential POST was not made until the confirming GET.
+	if got := rec.count("post-connect"); got != 1 {
+		t.Fatalf("credential POST /connect count = %d, want 1", got)
 	}
 	assertCredentialsPostAfterGet(t, rec)
 }
@@ -364,7 +416,7 @@ func TestRegisterProvider_ExistingAssociationStillConfirmsBaseConfig(t *testing.
 		case path == "/payments/custom-provider/connect" && method == http.MethodGet:
 			rec.record("get-connect")
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"name":"RVPay","locationId":"loc-123"}`))
+			_, _ = w.Write([]byte(`{"name":"RVPay","description":"RVPay payment provider","paymentsUrl":"https://checkout.example.com/payment/checkout","queryUrl":"https://api.example.com/payments/custom-provider/query","locationId":"loc-123"}`))
 		case path == "/payments/custom-provider/connect" && method == http.MethodPost:
 			rec.record("post-connect")
 			w.WriteHeader(http.StatusOK)
