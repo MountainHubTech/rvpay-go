@@ -48,14 +48,14 @@ Parameters:
     Type: String
     Default: "clients"
 
-  HighLevelRedirectUri:
-    Type: String
+  # HighLevelRedirectUri:
+  #   Type: String
 
-  HighLevelPaymentUrl:
-    Type: String
+  # HighLevelPaymentUrl:
+  #   Type: String
 
-  HighLevelQueryUrl:
-    Type: String
+  # HighLevelQueryUrl:
+  #   Type: String
 
   PublicBaseUrl:
     Type: String
@@ -71,9 +71,9 @@ Parameters:
     Type: String
     Default: "RVPay payment provider"
 
-  HighLevelProviderImageUrl:
-    Type: String
-    # Default: ""
+  # HighLevelProviderImageUrl:
+  #   Type: String
+  #   # Default: ""
 
   HighLevelApiBaseUrl:
     Type: String
