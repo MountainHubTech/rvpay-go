@@ -148,7 +148,7 @@ func (mr *MockQuerierMockRecorder) GetCustomerByID(ctx, id any) *gomock.Call {
 }
 
 // GetDepositByExternalReference mocks base method.
-func (m *MockQuerier) GetDepositByExternalReference(ctx context.Context, externalReference string) (sqlc.Deposit, error) {
+func (m *MockQuerier) GetDepositByExternalReference(ctx context.Context, externalReference *string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDepositByExternalReference", ctx, externalReference)
 	ret0, _ := ret[0].(sqlc.Deposit)
@@ -163,7 +163,7 @@ func (mr *MockQuerierMockRecorder) GetDepositByExternalReference(ctx, externalRe
 }
 
 // GetDepositByGHLChargeID mocks base method.
-func (m *MockQuerier) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID string) (sqlc.Deposit, error) {
+func (m *MockQuerier) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID *string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDepositByGHLChargeID", ctx, ghlChargeID)
 	ret0, _ := ret[0].(sqlc.Deposit)
@@ -178,7 +178,7 @@ func (mr *MockQuerierMockRecorder) GetDepositByGHLChargeID(ctx, ghlChargeID any)
 }
 
 // GetDepositByGHLTransactionID mocks base method.
-func (m *MockQuerier) GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID string) (sqlc.Deposit, error) {
+func (m *MockQuerier) GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID *string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetDepositByGHLTransactionID", ctx, ghlTransactionID)
 	ret0, _ := ret[0].(sqlc.Deposit)
@@ -253,7 +253,7 @@ func (mr *MockQuerierMockRecorder) GetMerchantBySlug(ctx, slug any) *gomock.Call
 }
 
 // GetPayoutByExternalReference mocks base method.
-func (m *MockQuerier) GetPayoutByExternalReference(ctx context.Context, externalReference string) (sqlc.Payout, error) {
+func (m *MockQuerier) GetPayoutByExternalReference(ctx context.Context, externalReference *string) (sqlc.Payout, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetPayoutByExternalReference", ctx, externalReference)
 	ret0, _ := ret[0].(sqlc.Payout)
@@ -343,7 +343,7 @@ func (mr *MockQuerierMockRecorder) ListDepositsByClient(ctx, clientName any) *go
 }
 
 // ListDepositsByCustomer mocks base method.
-func (m *MockQuerier) ListDepositsByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error) {
+func (m *MockQuerier) ListDepositsByCustomer(ctx context.Context, customerID *string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDepositsByCustomer", ctx, customerID)
 	ret0, _ := ret[0].([]sqlc.Deposit)
@@ -358,7 +358,7 @@ func (mr *MockQuerierMockRecorder) ListDepositsByCustomer(ctx, customerID any) *
 }
 
 // ListDepositsByMerchant mocks base method.
-func (m *MockQuerier) ListDepositsByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error) {
+func (m *MockQuerier) ListDepositsByMerchant(ctx context.Context, merchantID *string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDepositsByMerchant", ctx, merchantID)
 	ret0, _ := ret[0].([]sqlc.Deposit)

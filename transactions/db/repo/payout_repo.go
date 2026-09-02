@@ -38,7 +38,7 @@ func (r *payoutRepo) Create(ctx context.Context, clientID, merchantID uuid.UUID,
 		Amount:               amount,
 		Currency:             currency,
 		Provider:             provider,
-		DestinationReference: destinationReference,
+		DestinationReference: textRef(destinationReference),
 		Status:               status,
 		IdempotencyKey:       idempotencyKey,
 	})
@@ -57,7 +57,7 @@ func (r *payoutRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Payout, er
 }
 
 func (r *payoutRepo) GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Payout, error) {
-	payout, err := r.q.GetPayoutByExternalReference(ctx, externalReference)
+	payout, err := r.q.GetPayoutByExternalReference(ctx, textRef(externalReference))
 	if err != nil {
 		return sqlc.Payout{}, wrapNotFound(err)
 	}
@@ -122,7 +122,7 @@ func (r *payoutRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.P
 	payout, err := r.q.UpdatePayoutStatusAndFailedAt(ctx, sqlc.UpdatePayoutStatusAndFailedAtParams{
 		ID:            id,
 		Status:        status,
-		FailureReason: failureReason,
+		FailureReason: textRef(failureReason),
 	})
 	if err != nil {
 		return sqlc.Payout{}, wrapNotFound(err)

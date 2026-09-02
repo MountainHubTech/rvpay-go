@@ -8,6 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+// textPtr returns a pointer to s for nullable-text columns, mapping the empty
+// string to SQL NULL (an absent external identifier is NULL, not "").
+func textPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// textRef returns a pointer to s preserving the exact value ("" stays "").
+func textRef(s string) *string {
+	return &s
+}
+
 // DepositRepo provides persistence operations for deposits.
 //
 // The deposit identifier fields carry external string identifiers for the
@@ -43,8 +57,8 @@ func NewDepositRepo(q sqlc.Querier) DepositRepo {
 func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
 	deposit, err := r.q.CreateDeposit(ctx, sqlc.CreateDepositParams{
 		ClientName:       clientName,
-		CustomerID:       customerID,
-		MerchantID:       merchantID,
+		CustomerID:       textPtr(customerID),
+		MerchantID:       textPtr(merchantID),
 		Amount:           amount,
 		Currency:         currency,
 		PaymentType:      paymentType,
@@ -68,7 +82,7 @@ func (r *depositRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Deposit, 
 }
 
 func (r *depositRepo) GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Deposit, error) {
-	deposit, err := r.q.GetDepositByExternalReference(ctx, externalReference)
+	deposit, err := r.q.GetDepositByExternalReference(ctx, textRef(externalReference))
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)
 	}
@@ -76,7 +90,7 @@ func (r *depositRepo) GetByExternalReference(ctx context.Context, externalRefere
 }
 
 func (r *depositRepo) GetByGHLTransactionID(ctx context.Context, ghlTransactionID string) (sqlc.Deposit, error) {
-	deposit, err := r.q.GetDepositByGHLTransactionID(ctx, ghlTransactionID)
+	deposit, err := r.q.GetDepositByGHLTransactionID(ctx, textRef(ghlTransactionID))
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)
 	}
@@ -84,7 +98,7 @@ func (r *depositRepo) GetByGHLTransactionID(ctx context.Context, ghlTransactionI
 }
 
 func (r *depositRepo) GetByGHLChargeID(ctx context.Context, ghlChargeID string) (sqlc.Deposit, error) {
-	deposit, err := r.q.GetDepositByGHLChargeID(ctx, ghlChargeID)
+	deposit, err := r.q.GetDepositByGHLChargeID(ctx, textRef(ghlChargeID))
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)
 	}
@@ -108,7 +122,7 @@ func (r *depositRepo) ListByClient(ctx context.Context, clientName string) ([]sq
 }
 
 func (r *depositRepo) ListByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error) {
-	deposits, err := r.q.ListDepositsByCustomer(ctx, customerID)
+	deposits, err := r.q.ListDepositsByCustomer(ctx, textPtr(customerID))
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -116,7 +130,7 @@ func (r *depositRepo) ListByCustomer(ctx context.Context, customerID string) ([]
 }
 
 func (r *depositRepo) ListByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error) {
-	deposits, err := r.q.ListDepositsByMerchant(ctx, merchantID)
+	deposits, err := r.q.ListDepositsByMerchant(ctx, textPtr(merchantID))
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -157,7 +171,7 @@ func (r *depositRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.
 	deposit, err := r.q.UpdateDepositStatusAndFailedAt(ctx, sqlc.UpdateDepositStatusAndFailedAtParams{
 		ID:            id,
 		Status:        status,
-		FailureReason: failureReason,
+		FailureReason: textRef(failureReason),
 	})
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)
@@ -168,8 +182,8 @@ func (r *depositRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.
 func (r *depositRepo) UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error) {
 	deposit, err := r.q.UpdateDepositGHLReference(ctx, sqlc.UpdateDepositGHLReferenceParams{
 		ID:               id,
-		GhlTransactionID: ghlTransactionID,
-		GhlChargeID:      ghlChargeID,
+		GhlTransactionID: textRef(ghlTransactionID),
+		GhlChargeID:      textRef(ghlChargeID),
 	})
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)

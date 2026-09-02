@@ -9,19 +9,30 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
+// textValue dereferences a nullable text value for the protobuf response.
+// SQL NULL has no wire representation, so it maps to the empty string here;
+// the NULL vs "" distinction is preserved in persistence and is not
+// fabricated at the database layer.
+func textValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
 // depositToProto maps a persisted deposit to its protobuf representation.
 func depositToProto(deposit sqlc.Deposit) *transactionsgrpc.Deposit {
 	proto := &transactionsgrpc.Deposit{
 		Id:                deposit.ID.String(),
 		ClientName:        deposit.ClientName,
-		CustomerId:        deposit.CustomerID,
-		MerchantId:        deposit.MerchantID,
+		CustomerId:        textValue(deposit.CustomerID),
+		MerchantId:        textValue(deposit.MerchantID),
 		Amount:            &commongrpc.Money{},
 		PaymentType:       sqlcPaymentTypeToGrpc(deposit.PaymentType),
 		PayerPhoneNumber:  deposit.PayerPhoneNumber,
 		Provider:          sqlcPaymentProviderToGrpc(deposit.Provider),
 		Status:            sqlcDepositStatusToGrpc(deposit.Status),
-		ExternalReference: deposit.ExternalReference,
+		ExternalReference: textValue(deposit.ExternalReference),
 		InitiatedAt:       timestamppb.New(deposit.InitiatedAt),
 		CreatedAt:         timestamppb.New(deposit.CreatedAt),
 		UpdatedAt:         timestamppb.New(deposit.UpdatedAt),
@@ -40,7 +51,7 @@ func depositToProto(deposit sqlc.Deposit) *transactionsgrpc.Deposit {
 	if deposit.FailedAt.Valid {
 		proto.FailedAt = timestamppb.New(deposit.FailedAt.Time)
 	}
-	proto.FailureReason = deposit.FailureReason
+	proto.FailureReason = textValue(deposit.FailureReason)
 
 	return proto
 }

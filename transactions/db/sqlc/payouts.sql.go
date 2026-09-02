@@ -33,7 +33,7 @@ type CreatePayoutParams struct {
 	Amount               pgtype.Numeric  `json:"amount"`
 	Currency             string          `json:"currency"`
 	Provider             PaymentProvider `json:"provider"`
-	DestinationReference string          `json:"destination_reference"`
+	DestinationReference *string         `json:"destination_reference"`
 	Status               PayoutStatus    `json:"status"`
 	IdempotencyKey       uuid.UUID       `json:"idempotency_key"`
 }
@@ -75,7 +75,7 @@ const getPayoutByExternalReference = `-- name: GetPayoutByExternalReference :one
 SELECT id, client_id, merchant_id, amount, currency, provider, destination_reference, status, external_reference, idempotency_key, requested_at, completed_at, failed_at, failure_reason, created_at, updated_at FROM payouts WHERE external_reference = $1
 `
 
-func (q *Queries) GetPayoutByExternalReference(ctx context.Context, externalReference string) (Payout, error) {
+func (q *Queries) GetPayoutByExternalReference(ctx context.Context, externalReference *string) (Payout, error) {
 	row := q.db.QueryRow(ctx, getPayoutByExternalReference, externalReference)
 	var i Payout
 	err := row.Scan(
@@ -372,7 +372,7 @@ RETURNING id, client_id, merchant_id, amount, currency, provider, destination_re
 type UpdatePayoutStatusAndFailedAtParams struct {
 	ID            uuid.UUID    `json:"id"`
 	Status        PayoutStatus `json:"status"`
-	FailureReason string       `json:"failure_reason"`
+	FailureReason *string      `json:"failure_reason"`
 }
 
 func (q *Queries) UpdatePayoutStatusAndFailedAt(ctx context.Context, arg UpdatePayoutStatusAndFailedAtParams) (Payout, error) {

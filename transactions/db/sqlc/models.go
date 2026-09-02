@@ -284,24 +284,24 @@ type Customer struct {
 type Deposit struct {
 	ID                uuid.UUID          `json:"id"`
 	ClientName        string             `json:"client_name"`
-	CustomerID        string             `json:"customer_id"`
-	MerchantID        string             `json:"merchant_id"`
+	CustomerID        *string            `json:"customer_id"`
+	MerchantID        *string            `json:"merchant_id"`
 	Amount            pgtype.Numeric     `json:"amount"`
 	Currency          string             `json:"currency"`
 	PaymentType       PaymentType        `json:"payment_type"`
 	PayerPhoneNumber  string             `json:"payer_phone_number"`
 	Provider          PaymentProvider    `json:"provider"`
 	Status            DepositStatus      `json:"status"`
-	ExternalReference string             `json:"external_reference"`
+	ExternalReference *string            `json:"external_reference"`
 	IdempotencyKey    uuid.UUID          `json:"idempotency_key"`
 	InitiatedAt       time.Time          `json:"initiated_at"`
 	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
 	FailedAt          pgtype.Timestamptz `json:"failed_at"`
-	FailureReason     string             `json:"failure_reason"`
+	FailureReason     *string            `json:"failure_reason"`
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at"`
-	GhlTransactionID  string             `json:"ghl_transaction_id"`
-	GhlChargeID       string             `json:"ghl_charge_id"`
+	GhlTransactionID  *string            `json:"ghl_transaction_id"`
+	GhlChargeID       *string            `json:"ghl_charge_id"`
 }
 
 type Merchant struct {
@@ -320,14 +320,14 @@ type Payout struct {
 	Amount               pgtype.Numeric     `json:"amount"`
 	Currency             string             `json:"currency"`
 	Provider             PaymentProvider    `json:"provider"`
-	DestinationReference string             `json:"destination_reference"`
+	DestinationReference *string            `json:"destination_reference"`
 	Status               PayoutStatus       `json:"status"`
-	ExternalReference    string             `json:"external_reference"`
+	ExternalReference    *string            `json:"external_reference"`
 	IdempotencyKey       uuid.UUID          `json:"idempotency_key"`
 	RequestedAt          time.Time          `json:"requested_at"`
 	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
 	FailedAt             pgtype.Timestamptz `json:"failed_at"`
-	FailureReason        string             `json:"failure_reason"`
+	FailureReason        *string            `json:"failure_reason"`
 	CreatedAt            time.Time          `json:"created_at"`
 	UpdatedAt            time.Time          `json:"updated_at"`
 }

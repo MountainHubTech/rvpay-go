@@ -31,8 +31,8 @@ RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_t
 
 type CreateDepositParams struct {
 	ClientName       string          `json:"client_name"`
-	CustomerID       string          `json:"customer_id"`
-	MerchantID       string          `json:"merchant_id"`
+	CustomerID       *string         `json:"customer_id"`
+	MerchantID       *string         `json:"merchant_id"`
 	Amount           pgtype.Numeric  `json:"amount"`
 	Currency         string          `json:"currency"`
 	PaymentType      PaymentType     `json:"payment_type"`
@@ -85,7 +85,7 @@ const getDepositByExternalReference = `-- name: GetDepositByExternalReference :o
 SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE external_reference = $1
 `
 
-func (q *Queries) GetDepositByExternalReference(ctx context.Context, externalReference string) (Deposit, error) {
+func (q *Queries) GetDepositByExternalReference(ctx context.Context, externalReference *string) (Deposit, error) {
 	row := q.db.QueryRow(ctx, getDepositByExternalReference, externalReference)
 	var i Deposit
 	err := row.Scan(
@@ -117,7 +117,7 @@ const getDepositByGHLChargeID = `-- name: GetDepositByGHLChargeID :one
 SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_charge_id = $1
 `
 
-func (q *Queries) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID string) (Deposit, error) {
+func (q *Queries) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID *string) (Deposit, error) {
 	row := q.db.QueryRow(ctx, getDepositByGHLChargeID, ghlChargeID)
 	var i Deposit
 	err := row.Scan(
@@ -149,7 +149,7 @@ const getDepositByGHLTransactionID = `-- name: GetDepositByGHLTransactionID :one
 SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_transaction_id = $1
 `
 
-func (q *Queries) GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID string) (Deposit, error) {
+func (q *Queries) GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID *string) (Deposit, error) {
 	row := q.db.QueryRow(ctx, getDepositByGHLTransactionID, ghlTransactionID)
 	var i Deposit
 	err := row.Scan(
@@ -294,7 +294,7 @@ WHERE customer_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID string) ([]Deposit, error) {
+func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID *string) ([]Deposit, error) {
 	rows, err := q.db.Query(ctx, listDepositsByCustomer, customerID)
 	if err != nil {
 		return nil, err
@@ -341,7 +341,7 @@ WHERE merchant_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID string) ([]Deposit, error) {
+func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID *string) ([]Deposit, error) {
 	rows, err := q.db.Query(ctx, listDepositsByMerchant, merchantID)
 	if err != nil {
 		return nil, err
@@ -440,8 +440,8 @@ RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_t
 
 type UpdateDepositGHLReferenceParams struct {
 	ID               uuid.UUID `json:"id"`
-	GhlTransactionID string    `json:"ghl_transaction_id"`
-	GhlChargeID      string    `json:"ghl_charge_id"`
+	GhlTransactionID *string   `json:"ghl_transaction_id"`
+	GhlChargeID      *string   `json:"ghl_charge_id"`
 }
 
 func (q *Queries) UpdateDepositGHLReference(ctx context.Context, arg UpdateDepositGHLReferenceParams) (Deposit, error) {
@@ -568,7 +568,7 @@ RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_t
 type UpdateDepositStatusAndFailedAtParams struct {
 	ID            uuid.UUID     `json:"id"`
 	Status        DepositStatus `json:"status"`
-	FailureReason string        `json:"failure_reason"`
+	FailureReason *string       `json:"failure_reason"`
 }
 
 func (q *Queries) UpdateDepositStatusAndFailedAt(ctx context.Context, arg UpdateDepositStatusAndFailedAtParams) (Deposit, error) {
