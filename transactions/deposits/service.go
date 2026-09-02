@@ -164,6 +164,13 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 		return err
 	}
 
+	s.logger.Info().Msgf("PawaPay deposit request: deposit_id=%s, amount=%f, currency=%s, phone_number=%s, provider=%s", depositID.String(), amountValue.Float64, currency, phoneNumber, pawapayProvider)
+	
+	// Trims the '+' only if it is at the beginning
+	cleanNumber := strings.TrimPrefix(phoneNumber, "+")
+	
+	fmt.Println(cleanNumber) // Output: 237654131027
+
 	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
 	req := &pawapaydeposits.InitiateDepositRequest{
 		DepositID: depositID.String(),
@@ -172,7 +179,7 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 		Payer: pawapaydeposits.Payer{
 			Type: "MMO",
 			AccountDetails: pawapaydeposits.AccountDetails{
-				PhoneNumber: phoneNumber,
+				PhoneNumber: cleanNumber,
 				Provider:    pawapayProvider,
 			},
 		},
