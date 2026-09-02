@@ -463,9 +463,18 @@ const chargeId = paymentContext.chargeId;
     }
 
     const body: Record<string, unknown> = {
+      // HighLevel identifier mapping (corrected):
+      //   clientName        = "highlevel-<locationId>"
+      //   customerId        = payment_initiate_props.contact.id
+      //   merchantId        = the payer phone number (temporary/current
+      //                       requirement — NOT the HighLevel transactionId)
+      //   ghlTransactionId  = the genuine HighLevel transactionId, persisted
+      //                       in deposits.ghl_transaction_id and used by the
+      //                       verify endpoint for correlation
       clientName: `highlevel-${initiateProps.locationId}`,
       customerId: initiateProps.contact.id,
-      merchantId: transactionId,
+      merchantId: `${country.dialCode}${phone}`,
+      ghlTransactionId: transactionId,
       amount: {
         amount: amount.toFixed(2),
         currency: currencyToApi(country.currency),

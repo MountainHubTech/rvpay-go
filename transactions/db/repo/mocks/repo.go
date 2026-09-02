@@ -327,18 +327,18 @@ func (m *MockDepositRepo) EXPECT() *MockDepositRepoMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockDepositRepo) Create(ctx context.Context, clientName, customerID, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
+func (m *MockDepositRepo) Create(ctx context.Context, clientName, customerID, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
+	ret := m.ctrl.Call(m, "Create", ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey, ghlTransactionID)
 	ret0, _ := ret[0].(sqlc.Deposit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockDepositRepoMockRecorder) Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey any) *gomock.Call {
+func (mr *MockDepositRepoMockRecorder) Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey, ghlTransactionID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDepositRepo)(nil).Create), ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDepositRepo)(nil).Create), ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey, ghlTransactionID)
 }
 
 // GetByExternalReference mocks base method.

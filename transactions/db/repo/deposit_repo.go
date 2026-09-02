@@ -29,7 +29,7 @@ func textRef(s string) *string {
 // the external customer identifier, and merchantID is the external merchant
 // identifier. They are NOT RVPay UUIDs.
 type DepositRepo interface {
-	Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error)
+	Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error)
 	GetByID(ctx context.Context, id uuid.UUID) (sqlc.Deposit, error)
 	GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Deposit, error)
 	GetByGHLTransactionID(ctx context.Context, ghlTransactionID string) (sqlc.Deposit, error)
@@ -54,7 +54,7 @@ func NewDepositRepo(q sqlc.Querier) DepositRepo {
 	return &depositRepo{q: q}
 }
 
-func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
+func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error) {
 	deposit, err := r.q.CreateDeposit(ctx, sqlc.CreateDepositParams{
 		ClientName:       clientName,
 		CustomerID:       textPtr(customerID),
@@ -66,6 +66,7 @@ func (r *depositRepo) Create(ctx context.Context, clientName string, customerID 
 		Provider:         provider,
 		Status:           status,
 		IdempotencyKey:   idempotencyKey,
+		GhlTransactionID: textPtr(ghlTransactionID),
 	})
 	if err != nil {
 		return sqlc.Deposit{}, wrapError(err)

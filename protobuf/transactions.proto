@@ -258,6 +258,10 @@ message CreateDepositRequest {
   string payer_phone_number = 6;
   // provider identifies the payment provider.
   commongrpc.Provider provider = 7;
+  // ghl_transaction_id is the GoHighLevel transaction identifier, persisted
+  // in deposits.ghl_transaction_id and used by the verify endpoint for
+  // correlation. Optional.
+  string ghl_transaction_id = 8;
 }
 
 // CreateDepositResponse returns the created deposit.

@@ -1319,9 +1319,13 @@ type CreateDepositRequest struct {
 	// payer_phone_number is the payer's phone number.
 	PayerPhoneNumber string `protobuf:"bytes,6,opt,name=payer_phone_number,json=payerPhoneNumber,proto3" json:"payer_phone_number,omitempty"`
 	// provider identifies the payment provider.
-	Provider      commongrpc.Provider `protobuf:"varint,7,opt,name=provider,proto3,enum=commongrpc.Provider" json:"provider,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Provider commongrpc.Provider `protobuf:"varint,7,opt,name=provider,proto3,enum=commongrpc.Provider" json:"provider,omitempty"`
+	// ghl_transaction_id is the GoHighLevel transaction identifier, persisted
+	// in deposits.ghl_transaction_id and used by the verify endpoint for
+	// correlation. Optional.
+	GhlTransactionId string `protobuf:"bytes,8,opt,name=ghl_transaction_id,json=ghlTransactionId,proto3" json:"ghl_transaction_id,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
 }
 
 func (x *CreateDepositRequest) Reset() {
@@ -1401,6 +1405,13 @@ func (x *CreateDepositRequest) GetProvider() commongrpc.Provider {
 		return x.Provider
 	}
 	return commongrpc.Provider(0)
+}
+
+func (x *CreateDepositRequest) GetGhlTransactionId() string {
+	if x != nil {
+		return x.GhlTransactionId
+	}
+	return ""
 }
 
 // CreateDepositResponse returns the created deposit.
@@ -2264,7 +2275,7 @@ const file_transactions_proto_rawDesc = "" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\"M\n" +
 	"\x13GetCustomerResponse\x126\n" +
-	"\bcustomer\x18\x01 \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\"\xc0\x02\n" +
+	"\bcustomer\x18\x01 \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\"\xee\x02\n" +
 	"\x14CreateDepositRequest\x12\x1f\n" +
 	"\vclient_name\x18\x01 \x01(\tR\n" +
 	"clientName\x12\x1f\n" +
@@ -2275,7 +2286,8 @@ const file_transactions_proto_rawDesc = "" +
 	"\x06amount\x18\x04 \x01(\v2\x11.commongrpc.MoneyR\x06amount\x12:\n" +
 	"\fpayment_type\x18\x05 \x01(\x0e2\x17.commongrpc.PaymentTypeR\vpaymentType\x12,\n" +
 	"\x12payer_phone_number\x18\x06 \x01(\tR\x10payerPhoneNumber\x120\n" +
-	"\bprovider\x18\a \x01(\x0e2\x14.commongrpc.ProviderR\bprovider\"L\n" +
+	"\bprovider\x18\a \x01(\x0e2\x14.commongrpc.ProviderR\bprovider\x12,\n" +
+	"\x12ghl_transaction_id\x18\b \x01(\tR\x10ghlTransactionId\"L\n" +
 	"\x15CreateDepositResponse\x123\n" +
 	"\adeposit\x18\x01 \x01(\v2\x19.transactionsgrpc.DepositR\adeposit\"2\n" +
 	"\x11GetDepositRequest\x12\x1d\n" +

@@ -23,9 +23,10 @@ INSERT INTO deposits (
     payer_phone_number,
     provider,
     status,
-    idempotency_key
+    idempotency_key,
+    ghl_transaction_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
@@ -40,6 +41,7 @@ type CreateDepositParams struct {
 	Provider         PaymentProvider `json:"provider"`
 	Status           DepositStatus   `json:"status"`
 	IdempotencyKey   uuid.UUID       `json:"idempotency_key"`
+	GhlTransactionID *string         `json:"ghl_transaction_id"`
 }
 
 func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error) {
@@ -54,6 +56,7 @@ func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (D
 		arg.Provider,
 		arg.Status,
 		arg.IdempotencyKey,
+		arg.GhlTransactionID,
 	)
 	var i Deposit
 	err := row.Scan(

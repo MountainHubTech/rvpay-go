@@ -61,7 +61,8 @@ func validCreateRequest() *transactionsgrpc.CreateDepositRequest {
 	return &transactionsgrpc.CreateDepositRequest{
 		ClientName:       "highlevel-abc123",
 		CustomerId:       "ghl-contact-123",
-		MerchantId:       "ghl-transaction-456",
+		MerchantId:       "+237654131027", // payer phone number (temporary mapping)
+		GhlTransactionId: "6a981bf9111e4879c418ffee",
 		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
 		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
 		PayerPhoneNumber: "+237600000000",
@@ -154,8 +155,14 @@ func TestInitiateDepositExternalIdentifiersPersisted(t *testing.T) {
 			if arg.CustomerID == nil || *arg.CustomerID != "ghl-contact-123" {
 				t.Errorf("customer_id = %v, want exact external value", arg.CustomerID)
 			}
-			if arg.MerchantID == nil || *arg.MerchantID != "ghl-transaction-456" {
-				t.Errorf("merchant_id = %v, want exact external value", arg.MerchantID)
+			if arg.MerchantID == nil || *arg.MerchantID != "+237654131027" {
+				t.Errorf("merchant_id = %v, want the payer phone number", arg.MerchantID)
+			}
+			if arg.GhlTransactionID == nil || *arg.GhlTransactionID != "6a981bf9111e4879c418ffee" {
+				t.Errorf("ghl_transaction_id = %v, want the HighLevel transactionId", arg.GhlTransactionID)
+			}
+			if arg.MerchantID != nil && arg.GhlTransactionID != nil && *arg.MerchantID == *arg.GhlTransactionID {
+				t.Error("merchant_id must not carry the HighLevel transactionId")
 			}
 			return sqlc.Deposit{}, errors.New("db down")
 		})

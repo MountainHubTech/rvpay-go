@@ -64,7 +64,13 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 	// (contact.id and transactionId respectively). They are optional and
 	// must NOT be parsed as UUIDs.
 	customerID := strings.TrimSpace(req.GetCustomerId())
+	// merchant_id temporarily carries the payer phone number per the current
+	// HighLevel mapping requirement; it is NOT the HighLevel transaction ID.
 	merchantID := strings.TrimSpace(req.GetMerchantId())
+	// The HighLevel transaction ID is persisted in deposits.ghl_transaction_id
+	// and is what the verify endpoint resolves deposits by. It must NOT be
+	// stored in merchant_id.
+	ghlTransactionID := strings.TrimSpace(req.GetGhlTransactionId())
 
 	amount, err := validateAmount(req.GetAmount())
 	if err != nil {
@@ -109,7 +115,7 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		}
 	}()
 
-	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
+	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New(), ghlTransactionID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):
