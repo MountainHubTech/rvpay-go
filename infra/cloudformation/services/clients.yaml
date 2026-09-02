@@ -196,16 +196,16 @@ Resources:
               ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_publishable_key::"
    
             - Name: HIGHLEVEL_REDIRECT_URL
-              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_redirect_url::}"
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_redirect_url::"
             
             - Name: HIGHLEVEL_PAYMENT_URL
-              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_payment_url::}"
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_payment_url::"
             
             - Name: HIGHLEVEL_QUERY_URL
-              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_query_url::}"
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_query_url::"
             
             - Name: HIGHLEVEL_PROVIDER_IMAGE_URL
-              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_provider_image_url::}"
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_provider_image_url::"
 
   AppDatabase:
     Type: Custom::PgDatabase
