@@ -50,7 +50,7 @@ func (f *fakeDepositService) GetDeposit(_ context.Context, req *transactionsgrpc
 	return &transactionsgrpc.GetDepositResponse{
 		Deposit: &transactionsgrpc.Deposit{
 			Id:          req.GetDepositId(),
-			ClientId:    "cli_1",
+			ClientName:  "highlevel-abc123",
 			MerchantId:  "mch_1",
 			Amount:      &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
 			Status:      transactionsgrpc.DepositStatus_DEPOSIT_STATUS_COMPLETED,

@@ -9,16 +9,21 @@ import (
 )
 
 // DepositRepo provides persistence operations for deposits.
+//
+// The deposit identifier fields carry external string identifiers for the
+// HighLevel payment flow: clientName is the RVPay client name, customerID is
+// the external customer identifier, and merchantID is the external merchant
+// identifier. They are NOT RVPay UUIDs.
 type DepositRepo interface {
-	Create(ctx context.Context, clientID, customerID, merchantID uuid.UUID, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error)
+	Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error)
 	GetByID(ctx context.Context, id uuid.UUID) (sqlc.Deposit, error)
 	GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Deposit, error)
 	GetByGHLTransactionID(ctx context.Context, ghlTransactionID string) (sqlc.Deposit, error)
 	GetByGHLChargeID(ctx context.Context, ghlChargeID string) (sqlc.Deposit, error)
 	GetByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (sqlc.Deposit, error)
-	ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Deposit, error)
-	ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.Deposit, error)
-	ListByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Deposit, error)
+	ListByClient(ctx context.Context, clientName string) ([]sqlc.Deposit, error)
+	ListByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error)
+	ListByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error)
 	ListByStatus(ctx context.Context, status sqlc.DepositStatus) ([]sqlc.Deposit, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
@@ -35,9 +40,9 @@ func NewDepositRepo(q sqlc.Querier) DepositRepo {
 	return &depositRepo{q: q}
 }
 
-func (r *depositRepo) Create(ctx context.Context, clientID, customerID, merchantID uuid.UUID, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
+func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
 	deposit, err := r.q.CreateDeposit(ctx, sqlc.CreateDepositParams{
-		ClientID:         clientID,
+		ClientName:       clientName,
 		CustomerID:       customerID,
 		MerchantID:       merchantID,
 		Amount:           amount,
@@ -94,15 +99,15 @@ func (r *depositRepo) GetByIdempotencyKey(ctx context.Context, idempotencyKey uu
 	return deposit, nil
 }
 
-func (r *depositRepo) ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Deposit, error) {
-	deposits, err := r.q.ListDepositsByClient(ctx, clientID)
+func (r *depositRepo) ListByClient(ctx context.Context, clientName string) ([]sqlc.Deposit, error) {
+	deposits, err := r.q.ListDepositsByClient(ctx, clientName)
 	if err != nil {
 		return nil, wrapError(err)
 	}
 	return deposits, nil
 }
 
-func (r *depositRepo) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.Deposit, error) {
+func (r *depositRepo) ListByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error) {
 	deposits, err := r.q.ListDepositsByCustomer(ctx, customerID)
 	if err != nil {
 		return nil, wrapError(err)
@@ -110,7 +115,7 @@ func (r *depositRepo) ListByCustomer(ctx context.Context, customerID uuid.UUID) 
 	return deposits, nil
 }
 
-func (r *depositRepo) ListByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Deposit, error) {
+func (r *depositRepo) ListByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error) {
 	deposits, err := r.q.ListDepositsByMerchant(ctx, merchantID)
 	if err != nil {
 		return nil, wrapError(err)

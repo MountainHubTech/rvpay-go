@@ -327,18 +327,18 @@ func (m *MockDepositRepo) EXPECT() *MockDepositRepoMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockDepositRepo) Create(ctx context.Context, clientID, customerID, merchantID uuid.UUID, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
+func (m *MockDepositRepo) Create(ctx context.Context, clientName, customerID, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, clientID, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
+	ret := m.ctrl.Call(m, "Create", ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
 	ret0, _ := ret[0].(sqlc.Deposit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockDepositRepoMockRecorder) Create(ctx, clientID, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey any) *gomock.Call {
+func (mr *MockDepositRepoMockRecorder) Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDepositRepo)(nil).Create), ctx, clientID, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockDepositRepo)(nil).Create), ctx, clientName, customerID, merchantID, amount, currency, paymentType, payerPhoneNumber, provider, status, idempotencyKey)
 }
 
 // GetByExternalReference mocks base method.
@@ -417,22 +417,22 @@ func (mr *MockDepositRepoMockRecorder) GetByIdempotencyKey(ctx, idempotencyKey a
 }
 
 // ListByClient mocks base method.
-func (m *MockDepositRepo) ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockDepositRepo) ListByClient(ctx context.Context, clientName string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByClient", ctx, clientID)
+	ret := m.ctrl.Call(m, "ListByClient", ctx, clientName)
 	ret0, _ := ret[0].([]sqlc.Deposit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListByClient indicates an expected call of ListByClient.
-func (mr *MockDepositRepoMockRecorder) ListByClient(ctx, clientID any) *gomock.Call {
+func (mr *MockDepositRepoMockRecorder) ListByClient(ctx, clientName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByClient", reflect.TypeOf((*MockDepositRepo)(nil).ListByClient), ctx, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByClient", reflect.TypeOf((*MockDepositRepo)(nil).ListByClient), ctx, clientName)
 }
 
 // ListByCustomer mocks base method.
-func (m *MockDepositRepo) ListByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockDepositRepo) ListByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListByCustomer", ctx, customerID)
 	ret0, _ := ret[0].([]sqlc.Deposit)
@@ -447,7 +447,7 @@ func (mr *MockDepositRepoMockRecorder) ListByCustomer(ctx, customerID any) *gomo
 }
 
 // ListByMerchant mocks base method.
-func (m *MockDepositRepo) ListByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockDepositRepo) ListByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListByMerchant", ctx, merchantID)
 	ret0, _ := ret[0].([]sqlc.Deposit)

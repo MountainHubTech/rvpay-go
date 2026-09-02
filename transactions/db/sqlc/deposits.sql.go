@@ -14,7 +14,7 @@ import (
 
 const createDeposit = `-- name: CreateDeposit :one
 INSERT INTO deposits (
-    client_id,
+    client_name,
     customer_id,
     merchant_id,
     amount,
@@ -26,13 +26,13 @@ INSERT INTO deposits (
     idempotency_key
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
 type CreateDepositParams struct {
-	ClientID         uuid.UUID       `json:"client_id"`
-	CustomerID       uuid.UUID       `json:"customer_id"`
-	MerchantID       uuid.UUID       `json:"merchant_id"`
+	ClientName       string          `json:"client_name"`
+	CustomerID       string          `json:"customer_id"`
+	MerchantID       string          `json:"merchant_id"`
 	Amount           pgtype.Numeric  `json:"amount"`
 	Currency         string          `json:"currency"`
 	PaymentType      PaymentType     `json:"payment_type"`
@@ -44,7 +44,7 @@ type CreateDepositParams struct {
 
 func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error) {
 	row := q.db.QueryRow(ctx, createDeposit,
-		arg.ClientID,
+		arg.ClientName,
 		arg.CustomerID,
 		arg.MerchantID,
 		arg.Amount,
@@ -58,7 +58,7 @@ func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (D
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -82,7 +82,7 @@ func (q *Queries) CreateDeposit(ctx context.Context, arg CreateDepositParams) (D
 }
 
 const getDepositByExternalReference = `-- name: GetDepositByExternalReference :one
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE external_reference = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE external_reference = $1
 `
 
 func (q *Queries) GetDepositByExternalReference(ctx context.Context, externalReference string) (Deposit, error) {
@@ -90,7 +90,7 @@ func (q *Queries) GetDepositByExternalReference(ctx context.Context, externalRef
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -114,7 +114,7 @@ func (q *Queries) GetDepositByExternalReference(ctx context.Context, externalRef
 }
 
 const getDepositByGHLChargeID = `-- name: GetDepositByGHLChargeID :one
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_charge_id = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_charge_id = $1
 `
 
 func (q *Queries) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID string) (Deposit, error) {
@@ -122,7 +122,7 @@ func (q *Queries) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID strin
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -146,7 +146,7 @@ func (q *Queries) GetDepositByGHLChargeID(ctx context.Context, ghlChargeID strin
 }
 
 const getDepositByGHLTransactionID = `-- name: GetDepositByGHLTransactionID :one
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_transaction_id = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE ghl_transaction_id = $1
 `
 
 func (q *Queries) GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID string) (Deposit, error) {
@@ -154,7 +154,7 @@ func (q *Queries) GetDepositByGHLTransactionID(ctx context.Context, ghlTransacti
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -178,7 +178,7 @@ func (q *Queries) GetDepositByGHLTransactionID(ctx context.Context, ghlTransacti
 }
 
 const getDepositByID = `-- name: GetDepositByID :one
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE id = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE id = $1
 `
 
 func (q *Queries) GetDepositByID(ctx context.Context, id uuid.UUID) (Deposit, error) {
@@ -186,7 +186,7 @@ func (q *Queries) GetDepositByID(ctx context.Context, id uuid.UUID) (Deposit, er
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -210,7 +210,7 @@ func (q *Queries) GetDepositByID(ctx context.Context, id uuid.UUID) (Deposit, er
 }
 
 const getDepositByIdempotencyKey = `-- name: GetDepositByIdempotencyKey :one
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE idempotency_key = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits WHERE idempotency_key = $1
 `
 
 func (q *Queries) GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Deposit, error) {
@@ -218,7 +218,7 @@ func (q *Queries) GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -242,13 +242,13 @@ func (q *Queries) GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey
 }
 
 const listDepositsByClient = `-- name: ListDepositsByClient :many
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
-WHERE client_id = $1
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
+WHERE client_name = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDepositsByClient(ctx context.Context, clientID uuid.UUID) ([]Deposit, error) {
-	rows, err := q.db.Query(ctx, listDepositsByClient, clientID)
+func (q *Queries) ListDepositsByClient(ctx context.Context, clientName string) ([]Deposit, error) {
+	rows, err := q.db.Query(ctx, listDepositsByClient, clientName)
 	if err != nil {
 		return nil, err
 	}
@@ -258,7 +258,7 @@ func (q *Queries) ListDepositsByClient(ctx context.Context, clientID uuid.UUID) 
 		var i Deposit
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.CustomerID,
 			&i.MerchantID,
 			&i.Amount,
@@ -289,12 +289,12 @@ func (q *Queries) ListDepositsByClient(ctx context.Context, clientID uuid.UUID) 
 }
 
 const listDepositsByCustomer = `-- name: ListDepositsByCustomer :many
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
 WHERE customer_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID uuid.UUID) ([]Deposit, error) {
+func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID string) ([]Deposit, error) {
 	rows, err := q.db.Query(ctx, listDepositsByCustomer, customerID)
 	if err != nil {
 		return nil, err
@@ -305,7 +305,7 @@ func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID uuid.UU
 		var i Deposit
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.CustomerID,
 			&i.MerchantID,
 			&i.Amount,
@@ -336,12 +336,12 @@ func (q *Queries) ListDepositsByCustomer(ctx context.Context, customerID uuid.UU
 }
 
 const listDepositsByMerchant = `-- name: ListDepositsByMerchant :many
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
 WHERE merchant_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Deposit, error) {
+func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID string) ([]Deposit, error) {
 	rows, err := q.db.Query(ctx, listDepositsByMerchant, merchantID)
 	if err != nil {
 		return nil, err
@@ -352,7 +352,7 @@ func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID uuid.UU
 		var i Deposit
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.CustomerID,
 			&i.MerchantID,
 			&i.Amount,
@@ -383,7 +383,7 @@ func (q *Queries) ListDepositsByMerchant(ctx context.Context, merchantID uuid.UU
 }
 
 const listDepositsByStatus = `-- name: ListDepositsByStatus :many
-SELECT id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id FROM deposits
 WHERE status = $1
 ORDER BY created_at DESC
 `
@@ -399,7 +399,7 @@ func (q *Queries) ListDepositsByStatus(ctx context.Context, status DepositStatus
 		var i Deposit
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.CustomerID,
 			&i.MerchantID,
 			&i.Amount,
@@ -435,7 +435,7 @@ SET ghl_transaction_id = $2,
     ghl_charge_id = $3,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
 type UpdateDepositGHLReferenceParams struct {
@@ -449,7 +449,7 @@ func (q *Queries) UpdateDepositGHLReference(ctx context.Context, arg UpdateDepos
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -477,7 +477,7 @@ UPDATE deposits
 SET status = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
 type UpdateDepositStatusParams struct {
@@ -490,7 +490,7 @@ func (q *Queries) UpdateDepositStatus(ctx context.Context, arg UpdateDepositStat
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -519,7 +519,7 @@ SET status = $2,
     completed_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
 type UpdateDepositStatusAndCompletedAtParams struct {
@@ -532,7 +532,7 @@ func (q *Queries) UpdateDepositStatusAndCompletedAt(ctx context.Context, arg Upd
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,
@@ -562,7 +562,7 @@ SET status = $2,
     failure_reason = $3,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_id, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+RETURNING id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 `
 
 type UpdateDepositStatusAndFailedAtParams struct {
@@ -576,7 +576,7 @@ func (q *Queries) UpdateDepositStatusAndFailedAt(ctx context.Context, arg Update
 	var i Deposit
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.CustomerID,
 		&i.MerchantID,
 		&i.Amount,

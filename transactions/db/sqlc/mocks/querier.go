@@ -328,22 +328,22 @@ func (mr *MockQuerierMockRecorder) ListCustomersByMerchant(ctx, merchantID any) 
 }
 
 // ListDepositsByClient mocks base method.
-func (m *MockQuerier) ListDepositsByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockQuerier) ListDepositsByClient(ctx context.Context, clientName string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListDepositsByClient", ctx, clientID)
+	ret := m.ctrl.Call(m, "ListDepositsByClient", ctx, clientName)
 	ret0, _ := ret[0].([]sqlc.Deposit)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListDepositsByClient indicates an expected call of ListDepositsByClient.
-func (mr *MockQuerierMockRecorder) ListDepositsByClient(ctx, clientID any) *gomock.Call {
+func (mr *MockQuerierMockRecorder) ListDepositsByClient(ctx, clientName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDepositsByClient", reflect.TypeOf((*MockQuerier)(nil).ListDepositsByClient), ctx, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDepositsByClient", reflect.TypeOf((*MockQuerier)(nil).ListDepositsByClient), ctx, clientName)
 }
 
 // ListDepositsByCustomer mocks base method.
-func (m *MockQuerier) ListDepositsByCustomer(ctx context.Context, customerID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockQuerier) ListDepositsByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDepositsByCustomer", ctx, customerID)
 	ret0, _ := ret[0].([]sqlc.Deposit)
@@ -358,7 +358,7 @@ func (mr *MockQuerierMockRecorder) ListDepositsByCustomer(ctx, customerID any) *
 }
 
 // ListDepositsByMerchant mocks base method.
-func (m *MockQuerier) ListDepositsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Deposit, error) {
+func (m *MockQuerier) ListDepositsByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ListDepositsByMerchant", ctx, merchantID)
 	ret0, _ := ret[0].([]sqlc.Deposit)

@@ -104,8 +104,8 @@ message Customer {
 message Deposit {
   // id is the stable public identifier of the deposit.
   string id = 1;
-  // client_id references the RVPay client record.
-  string client_id = 2;
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 2;
   // customer_id references the paying customer.
   string customer_id = 3;
   // merchant_id references the processing merchant.
@@ -236,13 +236,19 @@ message GetCustomerResponse {
   Customer customer = 1;
 }
 
-// CreateDepositRequest initiates a deposit.
+// CreateDepositRequest initiates a deposit. For the HighLevel payment flow the
+// identifier fields carry external HighLevel string identifiers, NOT RVPay
+// UUIDs: client_name is the RVPay client name derived from the HighLevel
+// location (e.g. "highlevel-<locationId>"), customer_id is the HighLevel
+// contact id, and merchant_id currently carries the HighLevel transactionId.
 message CreateDepositRequest {
-  // client_id references the RVPay client record.
-  string client_id = 1;
-  // customer_id references the paying customer.
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 1;
+  // customer_id is the external customer identifier (HighLevel contact id).
+  // Optional.
   string customer_id = 2;
-  // merchant_id references the processing merchant.
+  // merchant_id is the external merchant identifier (currently the HighLevel
+  // transactionId). Optional.
   string merchant_id = 3;
   // amount is the deposit amount and currency.
   commongrpc.Money amount = 4;

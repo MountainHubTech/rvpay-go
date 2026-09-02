@@ -1,6 +1,6 @@
 -- name: CreateDeposit :one
 INSERT INTO deposits (
-    client_id,
+    client_name,
     customer_id,
     merchant_id,
     amount,
@@ -31,7 +31,7 @@ SELECT * FROM deposits WHERE idempotency_key = $1;
 
 -- name: ListDepositsByClient :many
 SELECT * FROM deposits
-WHERE client_id = $1
+WHERE client_name = $1
 ORDER BY created_at DESC;
 
 -- name: ListDepositsByCustomer :many

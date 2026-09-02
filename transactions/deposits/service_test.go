@@ -30,10 +30,8 @@ func TestInitiateDepositValidation(t *testing.T) {
 		code codes.Code
 	}{
 		{name: "missing request", code: codes.InvalidArgument},
-		{name: "invalid client id", req: &transactionsgrpc.CreateDepositRequest{ClientId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "invalid customer id", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "invalid merchant id", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: uuid.New().String(), MerchantId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "missing amount", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: uuid.New().String(), MerchantId: uuid.New().String()}, code: codes.InvalidArgument},
+		{name: "missing client name", req: &transactionsgrpc.CreateDepositRequest{}, code: codes.InvalidArgument},
+		{name: "blank client name", req: &transactionsgrpc.CreateDepositRequest{ClientName: "   "}, code: codes.InvalidArgument},
 	}
 
 	for _, tt := range tests {
@@ -44,14 +42,42 @@ func TestInitiateDepositValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			depositRepo := mocks.NewMockDepositRepo(ctrl)
-			customerRepo := mocks.NewMockCustomerRepo(ctrl)
-			service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+			service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
 			_, err := service.InitiateDeposit(context.Background(), tt.req)
 			if got := status.Code(err); got != tt.code {
 				t.Fatalf("status code = %s, want %s", got, tt.code)
 			}
 		})
+	}
+}
+
+// TestInitiateDepositExternalIdentifiersPersisted verifies that valid
+// HighLevel-style external identifiers (NOT UUIDs) pass validation and that
+// the exact values are forwarded unchanged to persistence.
+func TestInitiateDepositExternalIdentifiersPersisted(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	depositRepo := mocks.NewMockDepositRepo(ctrl)
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
+
+	depositRepo.EXPECT().Create(gomock.Any(), "highlevel-abc123", "ghl-contact-123", "ghl-transaction-456", gomock.Any(), "XAF", sqlc.PaymentTypeMMO, "+237600000000", sqlc.PaymentProviderMTNMOMO, sqlc.DepositStatusINITIATED, gomock.Any()).
+		Return(sqlc.Deposit{}, errors.New("db down"))
+
+	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
+		ClientName:       "highlevel-abc123",
+		CustomerId:       "ghl-contact-123",
+		MerchantId:       "ghl-transaction-456",
+		Amount:           &commongrpc.Money{Amount: "100.00", Currency: "XAF"},
+		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
+		PayerPhoneNumber: "+237600000000",
+		Provider:         commongrpc.Provider_PROVIDER_MTN_MOMO,
+	})
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
 	}
 }
 
@@ -62,13 +88,12 @@ func TestInitiateDepositZeroAmount(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:   uuid.New().String(),
-		CustomerId: uuid.New().String(),
-		MerchantId: uuid.New().String(),
+		ClientName: "highlevel-abc123",
+		CustomerId: "ghl-contact-123",
+		MerchantId: "ghl-transaction-456",
 		Amount: &commongrpc.Money{
 			Amount:   "0",
 			Currency: "XAF",
@@ -79,30 +104,29 @@ func TestInitiateDepositZeroAmount(t *testing.T) {
 	}
 }
 
-func TestInitiateDepositCustomerNotFound(t *testing.T) {
+func TestInitiateDepositDuplicate(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
-	customerRepo.EXPECT().GetByClientAndMerchantAndPhone(gomock.Any(), gomock.Any(), gomock.Any(), "+237600000000").
-		Return(sqlc.Customer{}, repo.ErrNotFound)
+	depositRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "XAF", sqlc.PaymentTypeMMO, "+237600000000", sqlc.PaymentProviderMTNMOMO, sqlc.DepositStatusINITIATED, gomock.Any()).
+		Return(sqlc.Deposit{}, repo.ErrDuplicate)
 
 	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:         uuid.New().String(),
-		CustomerId:       uuid.New().String(),
-		MerchantId:       uuid.New().String(),
+		ClientName:       "highlevel-abc123",
+		CustomerId:       "ghl-contact-123",
+		MerchantId:       "ghl-transaction-456",
 		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
 		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
 		PayerPhoneNumber: "+237600000000",
 		Provider:         commongrpc.Provider_PROVIDER_MTN_MOMO,
 	})
-	if got := status.Code(err); got != codes.NotFound {
-		t.Fatalf("status code = %s, want %s", got, codes.NotFound)
+	if got := status.Code(err); got != codes.AlreadyExists {
+		t.Fatalf("status code = %s, want %s", got, codes.AlreadyExists)
 	}
 }
 
@@ -122,24 +146,20 @@ func TestInitiateDepositSuccess(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
+	service := NewDepositService(depositRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
 
 	var amount pgtype.Numeric
 	if err := amount.Scan("1000.00"); err != nil {
 		t.Fatalf("failed to scan amount: %v", err)
 	}
 
-	customerRepo.EXPECT().GetByClientAndMerchantAndPhone(gomock.Any(), gomock.Any(), gomock.Any(), "+237600000000").
-		Return(sqlc.Customer{ID: uuid.New()}, nil)
-
 	depositRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "XAF", sqlc.PaymentTypeMMO, "+237600000000", sqlc.PaymentProviderMTNMOMO, sqlc.DepositStatusINITIATED, gomock.Any()).
 		Return(sqlc.Deposit{ID: uuid.New()}, nil)
 
 	resp, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:         uuid.New().String(),
-		CustomerId:       uuid.New().String(),
-		MerchantId:       uuid.New().String(),
+		ClientName:       "highlevel-abc123",
+		CustomerId:       "ghl-contact-123",
+		MerchantId:       "ghl-transaction-456",
 		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
 		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
 		PayerPhoneNumber: "+237600000000",
@@ -166,19 +186,15 @@ func TestInitiateDepositProviderError(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
-
-	customerRepo.EXPECT().GetByClientAndMerchantAndPhone(gomock.Any(), gomock.Any(), gomock.Any(), "+237600000000").
-		Return(sqlc.Customer{ID: uuid.New()}, nil)
+	service := NewDepositService(depositRepo, zerolog.Nop(), *pawapay_client.NewClient(srv.URL, "test-key"))
 
 	depositRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "XAF", sqlc.PaymentTypeMMO, "+237600000000", sqlc.PaymentProviderMTNMOMO, sqlc.DepositStatusINITIATED, gomock.Any()).
 		Return(sqlc.Deposit{ID: uuid.New()}, nil)
 
 	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:         uuid.New().String(),
-		CustomerId:       uuid.New().String(),
-		MerchantId:       uuid.New().String(),
+		ClientName:       "highlevel-abc123",
+		CustomerId:       "ghl-contact-123",
+		MerchantId:       "ghl-transaction-456",
 		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
 		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
 		PayerPhoneNumber: "+237600000000",
@@ -196,8 +212,7 @@ func TestGetDeposit(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	depositID := uuid.New()
 	depositRepo.EXPECT().GetByID(gomock.Any(), depositID).
@@ -221,8 +236,7 @@ func TestGetDepositNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	depositRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Deposit{}, repo.ErrNotFound)
@@ -242,8 +256,7 @@ func TestGetDepositRepositoryError(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop(), pawapay_client.Client{})
+	service := NewDepositService(depositRepo, zerolog.Nop(), pawapay_client.Client{})
 
 	depositRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Deposit{}, errors.New("database down"))

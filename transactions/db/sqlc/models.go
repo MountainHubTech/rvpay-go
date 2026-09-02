@@ -283,9 +283,9 @@ type Customer struct {
 
 type Deposit struct {
 	ID                uuid.UUID          `json:"id"`
-	ClientID          uuid.UUID          `json:"client_id"`
-	CustomerID        uuid.UUID          `json:"customer_id"`
-	MerchantID        uuid.UUID          `json:"merchant_id"`
+	ClientName        string             `json:"client_name"`
+	CustomerID        string             `json:"customer_id"`
+	MerchantID        string             `json:"merchant_id"`
 	Amount            pgtype.Numeric     `json:"amount"`
 	Currency          string             `json:"currency"`
 	PaymentType       PaymentType        `json:"payment_type"`

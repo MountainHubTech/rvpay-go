@@ -23,7 +23,6 @@ import (
 // Impl implements the DepositService gRPC server.
 type Impl struct {
 	depositRepo   repo.DepositRepo
-	customerRepo  repo.CustomerRepo
 	logger        zerolog.Logger
 	pawapayClient pawapay_client.Client
 
@@ -33,13 +32,11 @@ type Impl struct {
 // NewDepositService creates a new deposit service.
 func NewDepositService(
 	depositRepo repo.DepositRepo,
-	customerRepo repo.CustomerRepo,
 	logger zerolog.Logger,
 	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
 		depositRepo:   depositRepo,
-		customerRepo:  customerRepo,
 		logger:        logger,
 		pawapayClient: pawapayClient,
 	}
@@ -55,20 +52,16 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		return nil, status.Error(codes.InvalidArgument, "deposit request is required")
 	}
 
-	clientID, err := uuid.Parse(req.GetClientId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "client_id must be a valid UUID")
+	clientName := strings.TrimSpace(req.GetClientName())
+	if clientName == "" {
+		return nil, status.Error(codes.InvalidArgument, "client_name is required")
 	}
 
-	customerID, err := uuid.Parse(req.GetCustomerId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "customer_id must be a valid UUID")
-	}
-
-	merchantID, err := uuid.Parse(req.GetMerchantId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "merchant_id must be a valid UUID")
-	}
+	// customer_id and merchant_id are external HighLevel identifiers
+	// (contact.id and transactionId respectively). They are optional and
+	// must NOT be parsed as UUIDs.
+	customerID := strings.TrimSpace(req.GetCustomerId())
+	merchantID := strings.TrimSpace(req.GetMerchantId())
 
 	amount, err := validateAmount(req.GetAmount())
 	if err != nil {
@@ -95,35 +88,24 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Validate that the customer belongs to the client/merchant context
-	// before associating the deposit. This preserves the tenant boundary.
-	customer, err := s.customerRepo.GetByClientAndMerchantAndPhone(ctx, clientID, merchantID, phoneNumber)
-	if err != nil {
-		switch {
-		case errors.Is(err, repo.ErrNotFound):
-			return nil, status.Error(codes.NotFound, "customer not found for the given client, merchant, and phone number")
-		default:
-			s.logger.Error().Err(err).Str("customer_id", customerID.String()).Msg("could not validate customer for deposit")
-			return nil, status.Error(codes.Internal, "could not validate customer for deposit")
-		}
-	}
-
-	// A newly initiated deposit begins in the INITIATED lifecycle state.
-	// An idempotency key is generated server-side for duplicate detection.
-	deposit, err := s.depositRepo.Create(ctx, clientID, customer.ID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
+	// The deposit identifiers are now external string identifiers (the
+	// HighLevel client name, contact id, and transactionId). The previous
+	// UUID-based customer/merchant tenant lookup no longer applies to this
+	// contract; the tenant boundary for this flow is the non-empty
+	// client_name validated above. The exact external identifiers supplied
+	// by the caller are persisted unchanged.
+	deposit, err := s.depositRepo.Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):
 			return nil, status.Error(codes.AlreadyExists, "deposit already exists")
-		case errors.Is(err, repo.ErrConstraint):
-			return nil, status.Error(codes.NotFound, "referenced merchant or customer not found")
 		default:
-			s.logger.Error().Err(err).Str("client_id", clientID.String()).Msg("could not create deposit")
+			s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not create deposit")
 			return nil, status.Error(codes.Internal, "could not create deposit")
 		}
 	}
 
-	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID.String()).Msg("deposit initiated")
+	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID).Msg("deposit initiated")
 
 	// Initiate the deposit with PawaPay using the caller-supplied provider and
 	// payer phone number. The deposit was already persisted in the INITIATED

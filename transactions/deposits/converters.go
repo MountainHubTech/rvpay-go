@@ -13,9 +13,9 @@ import (
 func depositToProto(deposit sqlc.Deposit) *transactionsgrpc.Deposit {
 	proto := &transactionsgrpc.Deposit{
 		Id:                deposit.ID.String(),
-		ClientId:          deposit.ClientID.String(),
-		CustomerId:        deposit.CustomerID.String(),
-		MerchantId:        deposit.MerchantID.String(),
+		ClientName:        deposit.ClientName,
+		CustomerId:        deposit.CustomerID,
+		MerchantId:        deposit.MerchantID,
 		Amount:            &commongrpc.Money{},
 		PaymentType:       sqlcPaymentTypeToGrpc(deposit.PaymentType),
 		PayerPhoneNumber:  deposit.PayerPhoneNumber,

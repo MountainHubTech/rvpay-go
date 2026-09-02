@@ -427,11 +427,15 @@ const chargeId = paymentContext.chargeId;
   }
 
   // Initiate the payment through the EXISTING Transactions-service endpoint:
-  // POST /v1/public/deposits (CreateDepositRequest contract). Only real values
-  // from the existing flow are sent; client/customer/merchant identifiers are
-  // forwarded when HighLevel/RVPay supplied them on the payment URL, and no
-  // identifiers are ever invented on the frontend. Returns the legitimate
-  // deposit identifier from the backend response when one is provided.
+  // POST /v1/public/deposits (CreateDepositRequest contract). The identifier
+  // mapping is the HighLevel payment-context contract:
+  //   client_name  = "highlevel-<locationId>"  (existing RVPay client-name
+  //                 convention used by the backend)
+  //   customer_id  = payment_initiate_props.contact.id
+  //   merchant_id  = payment_initiate_props.transactionId
+  // The payment fields (amount, currency, paymentType, payerPhoneNumber,
+  // provider) are unchanged. No identifier is ever invented: when a required
+  // HighLevel value is missing the initiation fails safely.
   async function initiatePayment(): Promise<string | null> {
     const provider = providerToApi(providerId);
     if (!provider) {
@@ -440,12 +444,28 @@ const chargeId = paymentContext.chargeId;
       );
     }
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const clientId = urlParams.get("clientId") ?? "";
-    const customerId = urlParams.get("customerId") ?? "";
-    const merchantId = urlParams.get("merchantId") ?? "";
+    if (!initiateProps?.locationId) {
+      throw new Error(
+        "Invalid payment request. Missing payment location information."
+      );
+    }
+
+    if (!initiateProps?.contact?.id) {
+      throw new Error(
+        "Invalid payment request. Missing payment contact information."
+      );
+    }
+
+    if (!transactionId) {
+      throw new Error(
+        "Invalid payment request. Missing payment transaction information."
+      );
+    }
 
     const body: Record<string, unknown> = {
+      clientName: `highlevel-${initiateProps.locationId}`,
+      customerId: initiateProps.contact.id,
+      merchantId: transactionId,
       amount: {
         amount: amount.toFixed(2),
         currency: currencyToApi(country.currency),
@@ -454,15 +474,6 @@ const chargeId = paymentContext.chargeId;
       payerPhoneNumber: `${country.dialCode}${phone}`,
       provider,
     };
-    if (clientId) {
-      body.clientId = clientId;
-    }
-    if (customerId) {
-      body.customerId = customerId;
-    }
-    if (merchantId) {
-      body.merchantId = merchantId;
-    }
 
     const response = await fetch("https://api.rvpay.xyz/v1/public/deposits", {
       method: "POST",
