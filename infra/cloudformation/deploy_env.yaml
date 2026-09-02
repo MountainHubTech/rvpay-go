@@ -201,10 +201,7 @@ Resources:
         HighLevelClientSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelClientSecretArn
         HighLevelProviderConfigsArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelProviderConfigsArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
-        HighLevelRedirectUri: !Sub "https://api.${DomainName}/oauth/callback"
-        HighLevelPaymentUrl: !Sub "https://admindashboard.${DomainName}/payment"
-        HighLevelQueryUrl: !Sub "https://api.${DomainName}/payments/custom-provider/query"
-        HighLevelProviderImageUrl: !Sub "https://rvpay-temp-image-bucket-12345.s3.us-east-1.amazonaws.com/rvpay_logomark-main-blue.png"
+        HighLevelEnvironmentSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelEnvironmentSecretArn
         PublicBaseUrl: !Sub "https://api.${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener

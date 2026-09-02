@@ -82,6 +82,10 @@ Parameters:
   LoadBalancerListenerArn:
     Type: String
     Description: ARN of the HTTPS listener for the RVPay load balancer.
+  
+  HighLevelEnvironmentSecretArn:
+    Type: String
+    Description: ARN of the HighLevel environment configuration Secrets Manager secret.
 
   DomainName:
     Type: String
@@ -215,6 +219,18 @@ Resources:
 
             - Name: HIGHLEVEL_TEST_PUBLISHABLE_KEY
               ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_publishable_key::"
+   
+            - Name: HIGHLEVEL_REDIRECT_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_redirect_url::}"
+            
+            - Name: HIGHLEVEL_PAYMENT_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_payment_url::}"
+            
+            - Name: HIGHLEVEL_QUERY_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_query_url::}"
+            
+            - Name: HIGHLEVEL_PROVIDER_IMAGE_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_provider_image_url::}"
 
   AppDatabase:
     Type: Custom::PgDatabase
