@@ -19,7 +19,7 @@ var envKeys = []string{
 	"DB_TLS_DISABLED",
 	"HIGHLEVEL_CLIENT_ID",
 	"HIGHLEVEL_CLIENT_SECRET",
-	"HIGHLEVEL_REDIRECT_URI",
+	"HIGHLEVEL_REDIRECT_URL",
 	"HIGHLEVEL_WEBHOOK_PUBLIC_KEY",
 	"HIGHLEVEL_PAYMENT_URL",
 	"HIGHLEVEL_QUERY_URL",
@@ -53,7 +53,7 @@ func setRequiredEnv() func() {
 		"DB_PASSWORD":                    "postgres",
 		"HIGHLEVEL_CLIENT_ID":            "test-client-id",
 		"HIGHLEVEL_CLIENT_SECRET":        "test-client-secret",
-		"HIGHLEVEL_REDIRECT_URI":         "https://example.com/callback",
+		"HIGHLEVEL_REDIRECT_URL":         "https://example.com/callback",
 		"HIGHLEVEL_WEBHOOK_PUBLIC_KEY":   "test-webhook-public-key",
 		"HIGHLEVEL_PAYMENT_URL":          "https://example.com/payment",
 		"HIGHLEVEL_QUERY_URL":            "https://example.com/query",
@@ -132,7 +132,7 @@ func TestLoadConfigEnvironmentOverrides(t *testing.T) {
 	os.Setenv("DB_PASSWORD", "test-pass")
 	os.Setenv("DB_TLS_DISABLED", "true")
 	os.Setenv("HIGHLEVEL_CLIENT_ID", "override-client-id")
-	os.Setenv("HIGHLEVEL_REDIRECT_URI", "https://override.example.com/callback")
+	os.Setenv("HIGHLEVEL_REDIRECT_URL", "https://override.example.com/callback")
 
 	cfg := Config{}
 	if err := cfg.LoadConfig(); err != nil {

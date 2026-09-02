@@ -59,7 +59,7 @@ type Service struct {
 
 // NewService creates a new OAuth service. redirectURI is the configured
 // callback URL used for the OAuth authorization and token exchange; it must
-// come from configuration (HIGHLEVEL_REDIRECT_URI), never be hard-coded.
+// come from configuration (HIGHLEVEL_REDIRECT_URL), never be hard-coded.
 // oauthStateRepo persists OAuth state so the callback can securely recover
 // the client/platform context and resist CSRF/replay attacks.
 //
