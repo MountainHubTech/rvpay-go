@@ -182,7 +182,7 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 	_, err = s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
 
 	s.logger.Info().Msg("No errors logged from PawaPay InitiateDeposit API...")
-	return nil
+	return err
 }
 
 // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
