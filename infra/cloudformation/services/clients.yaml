@@ -48,15 +48,6 @@ Parameters:
     Type: String
     Default: "clients"
 
-  # HighLevelRedirectUri:
-  #   Type: String
-
-  # HighLevelPaymentUrl:
-  #   Type: String
-
-  # HighLevelQueryUrl:
-  #   Type: String
-
   PublicBaseUrl:
     Type: String
 
@@ -70,10 +61,6 @@ Parameters:
   HighLevelProviderDescription:
     Type: String
     Default: "RVPay payment provider"
-
-  # HighLevelProviderImageUrl:
-  #   Type: String
-  #   # Default: ""
 
   HighLevelApiBaseUrl:
     Type: String
@@ -147,29 +134,17 @@ Resources:
             - Name: RUN_MIGRATIONS
               Value: "true"
 
-            - Name: HIGHLEVEL_REDIRECT_URI
-              Value: !Ref HighLevelRedirectUri
-
             - Name: HIGHLEVEL_WEBHOOK_PUBLIC_KEY
               Value: |
                 -----BEGIN PUBLIC KEY-----
                 MCowBQYDK2VwAyEAi2HR1srL4o18O8BRa7gVJY7G7bupbN3H9AwJrHCDiOg=
                 -----END PUBLIC KEY-----
 
-            - Name: HIGHLEVEL_PAYMENT_URL
-              Value: !Ref HighLevelPaymentUrl
-
-            - Name: HIGHLEVEL_QUERY_URL
-              Value: !Ref HighLevelQueryUrl
-
             - Name: HIGHLEVEL_PROVIDER_NAME
               Value: !Ref HighLevelProviderName
 
             - Name: HIGHLEVEL_PROVIDER_DESCRIPTION
               Value: !Ref HighLevelProviderDescription
-
-            - Name: HIGHLEVEL_PROVIDER_IMAGE_URL
-              Value: !Ref HighLevelProviderImageUrl
 
             - Name: HIGHLEVEL_API_BASE_URL
               Value: !Ref HighLevelApiBaseUrl
