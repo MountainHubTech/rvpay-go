@@ -248,6 +248,7 @@ Resources:
                   - !Ref DbAdminSecretArn
                   - !Ref HighLevelClientSecretArn
                   - !Ref HighLevelProviderConfigsArn
+                  - !Ref HighLevelEnvironmentSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
