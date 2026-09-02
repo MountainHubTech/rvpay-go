@@ -98,3 +98,30 @@ The UI (country, provider, phone, amount, terms) is unchanged; the backend remai
 - The hard `if (!transactionId)` gate was removed: Pay now always attempts the real initiation at `POST /v1/public/deposits` with the validated form values (terms, phone, positive amount, supported provider).
 - GHL verification polling runs **only** when a real `transactionId` exists; otherwise the page honestly reports "submitted — status tracking unavailable until correlation is configured." A backend-provided deposit `id` is retained/logged, but HTTP 200 is never shown as payment success.
 - All `[RVPay]` handshake diagnostics and the `custom_provider_ready` postMessage remain unchanged; backend/protobuf/Docker/config untouched.
+
+### Payment page redo (2026-09-02) — working `/payment/checkout` handshake reproduced
+
+The `/payment` page now reproduces the proven HighLevel custom-provider iframe
+behavior from the working `/payment/checkout` implementation:
+
+- **Handshake:** the `message` listener is registered before the ready post; the
+  ready message is sent JSON-stringified as
+  `{type:"custom_provider_ready", loaded:true, addCardOnFileSupported:false}`
+  and **retried every 500ms** until the payment context arrives (or unmount).
+- **Message parsing:** incoming `event.data` may be a JSON string or an object;
+  strings are safely `JSON.parse`d and malformed/unrelated messages are ignored.
+- **Events:** both `payment_initiate_props` and `setup_initiate_props` are
+  accepted as the HighLevel payment context (transactionId, orderId, amount,
+  currency, contact, locationId) and used to prefill amount/country/phone.
+- **transactionId:** preferred from the event payload; the genuine URL
+  `transactionId` param remains a fallback; `orderId` is never substituted and
+  nothing is fabricated. Without a real ID the page fails safely with
+  "Invalid payment request. Missing payment transaction information."
+- **Backend:** initiation still uses the existing `POST /v1/public/deposits`;
+  status polling still uses the existing `GET /v1/public/payments/verify?ghlTransactionId=`.
+  `CreateDepositRequest` has no `ghl_transaction_id` field (verified in
+  `protobuf/transactions.proto`), so none is invented client-side; end-to-end
+  correlation still requires an approved backend/proto change.
+- **Verification:** esbuild TSX transform passes. Full `tsc --noEmit`/`next build`
+  and a live HighLevel iframe test were NOT possible in this environment — re-run
+  `npm run build` and a live payment test before publish.

@@ -162,16 +162,52 @@ export default function PaymentPage() {
   const [initiateProps, setInitiateProps] =
     useState<PaymentInitiateProps | null>(null);
 
-  // HighLevel iframe handshake: announce readiness so HighLevel sends the
-  // payment_initiate_props event, then capture it. URL params remain a
-  // fallback for direct/manual loads.
-useEffect(() => {
+  // HighLevel iframe handshake, reproduced from the known-working
+  // /payment/checkout implementation:
+  //   1. The `message` listener is registered BEFORE the ready message is sent.
+  //   2. The ready message is sent as a JSON STRING with the exact fields the
+  //      working implementation uses: type, loaded, addCardOnFileSupported.
+  //   3. The ready message is RETRYED on a ~500ms interval so HighLevel still
+  //      picks it up when its own listener is installed after our first post.
+  //   4. Retrying stops once the payment context arrives (payment_initiate_props
+  //      / setup_initiate_props) and the interval is cleared on unmount.
+  useEffect(() => {
   console.log("========================================");
   console.log("[RVPay] Payment iframe initialized");
   console.log("[RVPay] window === window.parent:", window === window.parent);
   console.log("[RVPay] window.parent:", window.parent);
   console.log("[RVPay] current origin:", window.location.origin);
   console.log("[RVPay] parent origin:", document.referrer);
+
+  let readyInterval: number | null = null;
+
+  function stopReadyRetry() {
+    if (readyInterval !== null) {
+      window.clearInterval(readyInterval);
+      readyInterval = null;
+    }
+  }
+
+  // Safely normalize event.data: the working implementation receives
+  // JSON-stringified postMessage payloads, so a string is parsed before use.
+  // Malformed strings and unrelated messages are ignored, never thrown.
+  function parseMessageData(raw: unknown): Record<string, unknown> | null {
+    if (typeof raw === "string") {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+        return null;
+      } catch {
+        return null;
+      }
+    }
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    return null;
+  }
 
   function onMessage(event: MessageEvent) {
     console.log("========================================");
@@ -180,13 +216,18 @@ useEffect(() => {
     console.log("[RVPay] event.source === window.parent:", event.source === window.parent);
     console.log("[RVPay] event.data:", event.data);
 
-    const data = event.data;
+    const data = parseMessageData(event.data);
 
-    if (!data || typeof data === "string") {
+    if (!data) {
       return;
     }
 
-    if (data.type === "payment_initiate_props") {
+    // The working implementation accepts both payment_initiate_props and
+    // setup_initiate_props; treat them identically as the payment context.
+    if (
+      data.type === "payment_initiate_props" ||
+      data.type === "setup_initiate_props"
+    ) {
       console.log("[RVPay] payment_initiate_props RECEIVED!");
       console.log("[RVPay] transactionId:", data.transactionId);
       console.log("[RVPay] orderId:", data.orderId);
@@ -194,16 +235,23 @@ useEffect(() => {
       console.log("[RVPay] currency:", data.currency);
       console.log("[RVPay] locationId:", data.locationId);
 
-      setInitiateProps(data);
+      // The real HighLevel payment context has arrived: stop announcing
+      // readiness and store the context for the payment flow.
+      stopReadyRetry();
+      setInitiateProps(data as unknown as PaymentInitiateProps);
     }
   }
 
+  // Listener is registered before the first ready message is posted.
   window.addEventListener("message", onMessage);
 
-  const readyMessage = {
+  // Exact representation used by the working implementation: a
+  // JSON-stringified ready payload including addCardOnFileSupported.
+  const readyMessage = JSON.stringify({
     type: "custom_provider_ready",
     loaded: true,
-  };
+    addCardOnFileSupported: false,
+  });
 
   console.log("[RVPay] Sending ready event:", readyMessage);
   console.log("[RVPay] Sending to parent:", window.parent);
@@ -212,18 +260,27 @@ useEffect(() => {
 
   console.log("[RVPay] Ready event sent");
 
+  // Retry the ready message every ~500ms (the working implementation's
+  // interval) to win the race where HighLevel installs its listener after
+  // our first post. Cleared on payment context arrival and on unmount.
+  readyInterval = window.setInterval(() => {
+    console.log("[RVPay] Retrying ready event:", readyMessage);
+    window.parent.postMessage(readyMessage, "*");
+  }, 500);
+
   return () => {
     console.log("[RVPay] Removing message listener");
+    stopReadyRetry();
     window.removeEventListener("message", onMessage);
   };
 }, []);
 
-// SUSPENDED: the HighLevel payment_initiate_props handshake is currently
-// NON-AUTHORITATIVE. Live testing (see the [RVPay] console diagnostics in the
-// effect above) proves HighLevel never sends payment_initiate_props after the
-// custom_provider_ready post, so nothing in the payment flow may depend on it.
-// The authoritative transactionId is read from the payment URL below. The
-// listener/diagnostics are retained for future reactivation only.
+// The HighLevel payment_initiate_props handshake is ACTIVE and AUTHORITATIVE,
+// matching the known-working /payment/checkout implementation: HighLevel posts
+// the payment context (transactionId, orderId, amount, currency, contact,
+// locationId) into the iframe after the retried custom_provider_ready message.
+// The transactionId URL query parameter remains a legitimate fallback for
+// direct loads. No transactionId is ever generated or fabricated client-side.
 const paymentContext = useMemo(() => {
   if (typeof window === "undefined") {
     return {
@@ -251,12 +308,13 @@ const paymentContext = useMemo(() => {
   };
 }, []);
 
-// The GHL transactionId, when a REAL one is available (URL param or the
-// suspended payment_initiate_props event). It is used ONLY for GHL-specific
-// status verification — never as a gate in front of payment initiation, and
-// never fabricated when unavailable.
+// The GHL transactionId, when a REAL one is available. Preferred source is the
+// payment_initiate_props event (the working implementation's mechanism); the
+// genuine `transactionId` URL param remains the fallback for direct loads. It
+// is used for GHL-specific status verification and as the payment-context
+// requirement below — never fabricated when unavailable.
 const transactionId =
-  paymentContext.transactionId ?? initiateProps?.transactionId ?? null;
+  initiateProps?.transactionId ?? paymentContext.transactionId ?? null;
 const subscriptionId =
   paymentContext.subscriptionId ?? initiateProps?.subscriptionId ?? null;
 const chargeId = paymentContext.chargeId;
@@ -452,16 +510,25 @@ const chargeId = paymentContext.chargeId;
 
   async function handlePay() {
     // User-facing form validation: terms, phone, provider, and a positive
-    // amount. Payment initiation does NOT depend on a GHL transactionId —
-    // live testing shows the iframe URL does not carry one and HighLevel does
-    // not send payment_initiate_props, so blocking on it would permanently
-    // prevent the payment request from reaching the backend.
+    // amount. A REAL HighLevel transactionId is also required: it is the
+    // correlation identifier the existing backend flow needs (the
+    // /v1/public/payments/verify contract looks deposits up by
+    // ghlTransactionId). When neither the payment_initiate_props event nor
+    // the transactionId URL parameter supplied one, fail safely rather than
+    // fabricating or initiating an unverifiable payment.
     if (!agreed || !phone || isSubmitting) {
       return;
     }
 
     if (!Number.isFinite(amount) || amount <= 0) {
       setStatusMessage("Please enter a valid payment amount.");
+      return;
+    }
+
+    if (!transactionId) {
+      setStatusMessage(
+        "Invalid payment request. Missing payment transaction information."
+      );
       return;
     }
 
@@ -478,16 +545,9 @@ const chargeId = paymentContext.chargeId;
         console.log("[RVPay] Deposit initiated:", depositId);
       }
 
-      // GHL-specific verification only when a REAL GHL transactionId exists.
-      // Never fabricate one and never claim GHL verification occurred
-      // without it.
-      if (!transactionId) {
-        setStatusMessage(
-          "Payment request submitted. The deposit was accepted by RVPay; transaction status tracking is unavailable until the payment provider correlation is configured."
-        );
-        setIsSubmitting(false);
-        return;
-      }
+      // GHL-specific verification with the REAL transactionId captured from
+      // the payment context. Never fabricate one and never claim GHL
+      // verification occurred without it.
 
       // Poll the existing status endpoint with the same transactionId until
       // success/failure. A single interval is used (stopPolling first).
