@@ -48,7 +48,7 @@ type HighLevelConfig struct {
 
 	ClientSecret string `conf:"env:HIGHLEVEL_CLIENT_SECRET,required,mask"`
 
-	RedirectURI string `conf:"env:HIGHLEVEL_REDIRECT_URI,required"`
+	RedirectURI string `conf:"env:HIGHLEVEL_REDIRECT_URL,required"`
 
 	// WebhookPublicKey is the PEM-encoded Ed25519 public key used to verify
 	// HighLevel webhook signatures (HIGHLEVEL_WEBHOOK_PUBLIC_KEY). It is
