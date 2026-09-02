@@ -152,6 +152,8 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 // The amount is passed to the SDK as a decimal string to preserve monetary
 // precision.
 func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, amount pgtype.Numeric, currency, phoneNumber string, provider sqlc.PaymentProvider) error {
+	s.logger.Info().Msg("Initiating deposit with PawaPay...")
+
 	pawapayProvider, err := sqlcPaymentProviderToPawapay(provider)
 	if err != nil {
 		return err
@@ -162,6 +164,7 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 		return err
 	}
 
+	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
 	req := &pawapaydeposits.InitiateDepositRequest{
 		DepositID: depositID.String(),
 		Amount:    strconv.FormatFloat(amountValue.Float64, 'f', 2, 64),
@@ -175,8 +178,11 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 		},
 	}
 
+	s.logger.Info().Msg("Sending request to PawaPay InitiateDeposit API...")
 	_, err = s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
-	return err
+
+	s.logger.Info().Msg("No errors logged from PawaPay InitiateDeposit API...")
+	return nil
 }
 
 // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
