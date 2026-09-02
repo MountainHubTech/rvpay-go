@@ -2351,9 +2351,9 @@ const file_transactions_proto_rawDesc = "" +
 	"\x0fInitiateDeposit\x12&.transactionsgrpc.CreateDepositRequest\x1a'.transactionsgrpc.CreateDepositResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/public/deposits\x12\x81\x01\n" +
 	"\n" +
 	"GetDeposit\x12#.transactionsgrpc.GetDepositRequest\x1a$.transactionsgrpc.GetDepositResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/public/deposits/{deposit_id}\x12\xd2\x01\n" +
-	"\x1cGetDepositByGHLTransactionID\x125.transactionsgrpc.GetDepositByGHLTransactionIDRequest\x1a6.transactionsgrpc.GetDepositByGHLTransactionIDResponse\"C\x82\xd3\xe4\x93\x02=\x12;/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}2\xbd\x02\n" +
-	"\x0ePaymentService\x12\x87\x01\n" +
-	"\rVerifyPayment\x12&.transactionsgrpc.VerifyPaymentRequest\x1a'.transactionsgrpc.VerifyPaymentResponse\"%\x82\xd3\xe4\x93\x02\x1f:\x01*\"\x1a/v1/public/payments/verify\x12\xa0\x01\n" +
+	"\x1cGetDepositByGHLTransactionID\x125.transactionsgrpc.GetDepositByGHLTransactionIDRequest\x1a6.transactionsgrpc.GetDepositByGHLTransactionIDResponse\"C\x82\xd3\xe4\x93\x02=\x12;/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}2\xba\x02\n" +
+	"\x0ePaymentService\x12\x84\x01\n" +
+	"\rVerifyPayment\x12&.transactionsgrpc.VerifyPaymentRequest\x1a'.transactionsgrpc.VerifyPaymentResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/public/payments/verify\x12\xa0\x01\n" +
 	"\x15ProcessPaymentWebhook\x12..transactionsgrpc.ProcessPaymentWebhookRequest\x1a/.transactionsgrpc.ProcessPaymentWebhookResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/public/payments/webhook2\x8c\x02\n" +
 	"\rPayoutService\x12}\n" +
 	"\rRequestPayout\x12%.transactionsgrpc.CreatePayoutRequest\x1a&.transactionsgrpc.CreatePayoutResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/payouts\x12|\n" +

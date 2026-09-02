@@ -22,9 +22,10 @@ import (
 
 // Impl implements the DepositService gRPC server.
 type Impl struct {
-	depositRepo   repo.DepositRepo
-	logger        zerolog.Logger
-	pawapayClient pawapay_client.Client
+	depositRepo      repo.DepositRepo
+	transactionsRepo repo.TransactionsRepo
+	logger           zerolog.Logger
+	pawapayClient    pawapay_client.Client
 
 	transactionsgrpc.UnimplementedDepositServiceServer
 }
@@ -32,13 +33,15 @@ type Impl struct {
 // NewDepositService creates a new deposit service.
 func NewDepositService(
 	depositRepo repo.DepositRepo,
+	transactionsRepo repo.TransactionsRepo,
 	logger zerolog.Logger,
 	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
-		depositRepo:   depositRepo,
-		logger:        logger,
-		pawapayClient: pawapayClient,
+		depositRepo:      depositRepo,
+		transactionsRepo: transactionsRepo,
+		logger:           logger,
+		pawapayClient:    pawapayClient,
 	}
 }
 
@@ -88,13 +91,25 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// The deposit identifiers are now external string identifiers (the
-	// HighLevel client name, contact id, and transactionId). The previous
-	// UUID-based customer/merchant tenant lookup no longer applies to this
-	// contract; the tenant boundary for this flow is the non-empty
-	// client_name validated above. The exact external identifiers supplied
-	// by the caller are persisted unchanged.
-	deposit, err := s.depositRepo.Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
+	// The deposit creation and the PawaPay initiation are made consistent
+	// with a single simple database transaction: if the deposit INSERT
+	// succeeds but PawaPay initiation fails, the INSERT is rolled back so
+	// no orphaned deposit remains.
+	txQuerier, tx, err := s.transactionsRepo.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not begin deposit database transaction")
+		return nil, status.Error(codes.Internal, "could not create deposit")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				s.logger.Error().Err(rbErr).Msg("could not roll back deposit database transaction")
+			}
+		}
+	}()
+
+	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):
@@ -108,12 +123,19 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID).Msg("deposit initiated")
 
 	// Initiate the deposit with PawaPay using the caller-supplied provider and
-	// payer phone number. The deposit was already persisted in the INITIATED
-	// lifecycle state; the PawaPay request is the external initiation step.
+	// payer phone number. The deposit is persisted in the INITIATED lifecycle
+	// state within the open transaction; the PawaPay request is the external
+	// initiation step. On failure the deferred rollback undoes the INSERT.
 	if err := s.initiatePawapayDeposit(ctx, deposit.ID, amount, currency, phoneNumber, provider); err != nil {
 		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not initiate deposit with pawapay")
 		return nil, status.Error(codes.Internal, "could not initiate deposit with pawapay")
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not commit deposit database transaction")
+		return nil, status.Error(codes.Internal, "could not create deposit")
+	}
+	committed = true
 
 	return &transactionsgrpc.CreateDepositResponse{
 		Deposit: depositToProto(deposit),

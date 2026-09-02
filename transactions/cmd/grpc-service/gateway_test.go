@@ -64,7 +64,7 @@ func (f *fakeDepositService) GetDeposit(_ context.Context, req *transactionsgrpc
 // transactions/cmd/grpc-service/main.go: a grpc-gateway runtime.ServeMux with
 // the generated Register...HandlerServer functions, mounted behind the root
 // HTTP mux alongside /healthz.
-func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit *fakeDepositService, allowedOrigins ...string) *httptest.Server {
+func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit *fakeDepositService, payment *fakePaymentService, allowedOrigins ...string) *httptest.Server {
 	t.Helper()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,6 +76,9 @@ func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit
 	}
 	if err := transactionsgrpc.RegisterDepositServiceHandlerServer(ctx, gatewayMux, deposit); err != nil {
 		t.Fatalf("register deposit grpc-gateway handler: %v", err)
+	}
+	if err := transactionsgrpc.RegisterPaymentServiceHandlerServer(ctx, gatewayMux, payment); err != nil {
+		t.Fatalf("register payment grpc-gateway handler: %v", err)
 	}
 
 	httpMux := http.NewServeMux()
@@ -101,7 +104,7 @@ func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit
 }
 
 func TestGateway_MerchantRoute_JSONMapping(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	resp, err := http.Get(srv.URL + "/v1/public/merchants/mch_1")
 	if err != nil {
@@ -135,7 +138,7 @@ func TestGateway_MerchantRoute_JSONMapping(t *testing.T) {
 }
 
 func TestGateway_DepositRoute_SharedMoneyMapping(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	resp, err := http.Get(srv.URL + "/v1/public/deposits/dep_1")
 	if err != nil {
@@ -171,7 +174,7 @@ func TestGateway_DepositRoute_SharedMoneyMapping(t *testing.T) {
 
 func TestGateway_ErrorPropagation(t *testing.T) {
 	fake := &fakeMerchantService{getMerchantErr: status.Error(codes.NotFound, "merchant not found")}
-	srv := newTransactionsGateway(t, fake, &fakeDepositService{})
+	srv := newTransactionsGateway(t, fake, &fakeDepositService{}, &fakePaymentService{})
 
 	resp, err := http.Get(srv.URL + "/v1/public/merchants/missing")
 	if err != nil {
@@ -185,7 +188,7 @@ func TestGateway_ErrorPropagation(t *testing.T) {
 }
 
 func TestGateway_UnimplementedRPC(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	// CreateMerchant is not implemented by the fake; the generated
 	// UnimplementedMerchantServiceServer must map it to HTTP 501.
@@ -201,7 +204,7 @@ func TestGateway_UnimplementedRPC(t *testing.T) {
 }
 
 func TestGateway_Healthz(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	resp, err := http.Get(srv.URL + "/healthz")
 	if err != nil {
@@ -229,7 +232,7 @@ func TestGateway_Healthz(t *testing.T) {
 // with 204 and the required CORS headers instead of being terminated by the
 // grpc-gateway mux.
 func TestGateway_CORSPreflight_AllowedOrigin(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
 	if err != nil {
@@ -262,7 +265,7 @@ func TestGateway_CORSPreflight_AllowedOrigin(t *testing.T) {
 // TestGateway_CORSPreflight_OriginNotAllowed verifies that non-allowlisted
 // origins never receive CORS headers (no wildcard behavior).
 func TestGateway_CORSPreflight_OriginNotAllowed(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
 	if err != nil {
@@ -286,7 +289,7 @@ func TestGateway_CORSPreflight_OriginNotAllowed(t *testing.T) {
 // preflight) requests from an allowlisted origin carry the CORS header so the
 // browser accepts the response.
 func TestGateway_CORS_AllowedOriginOnActualRequest(t *testing.T) {
-	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{})
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, &fakePaymentService{})
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/deposits/dep_1", nil)
 	if err != nil {
@@ -312,6 +315,7 @@ func TestGateway_CORS_OverriddenAllowlist(t *testing.T) {
 		t,
 		&fakeMerchantService{},
 		&fakeDepositService{},
+		&fakePaymentService{},
 		"https://dashboard.example",
 	)
 
@@ -333,5 +337,61 @@ func TestGateway_CORS_OverriddenAllowlist(t *testing.T) {
 	}
 	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "https://dashboard.example" {
 		t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, "https://dashboard.example")
+	}
+}
+
+// fakePaymentService implements transactionsgrpc.PaymentServiceServer for
+// gateway wiring tests. It captures the VerifyPayment request so tests can
+// assert query-parameter binding.
+type fakePaymentService struct {
+	transactionsgrpc.UnimplementedPaymentServiceServer
+
+	gotVerifyReq *transactionsgrpc.VerifyPaymentRequest
+}
+
+func (f *fakePaymentService) VerifyPayment(_ context.Context, req *transactionsgrpc.VerifyPaymentRequest) (*transactionsgrpc.VerifyPaymentResponse, error) {
+	f.gotVerifyReq = req
+	return &transactionsgrpc.VerifyPaymentResponse{Success: true}, nil
+}
+
+// TestGateway_VerifyPaymentRoute_GetWithQueryParams verifies the public HTTP
+// contract of the payment verification endpoint: GET /v1/public/payments/verify
+// with ghlTransactionId, ghlChargeId, and subscriptionId as query parameters
+// (the exact form the Admin Dashboard polls).
+func TestGateway_VerifyPaymentRoute_GetWithQueryParams(t *testing.T) {
+	payment := &fakePaymentService{}
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, payment)
+
+	resp, err := http.Get(srv.URL + "/v1/public/payments/verify?ghlTransactionId=tx-1&ghlChargeId=ch-2&subscriptionId=sub-3")
+	if err != nil {
+		t.Fatalf("GET verify failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if payment.gotVerifyReq == nil {
+		t.Fatal("VerifyPayment was not invoked by the gateway")
+	}
+	if payment.gotVerifyReq.GetGhlTransactionId() != "tx-1" {
+		t.Fatalf("ghl_transaction_id = %q, want %q", payment.gotVerifyReq.GetGhlTransactionId(), "tx-1")
+	}
+	if payment.gotVerifyReq.GetGhlChargeId() != "ch-2" {
+		t.Fatalf("ghl_charge_id = %q, want %q", payment.gotVerifyReq.GetGhlChargeId(), "ch-2")
+	}
+	if payment.gotVerifyReq.GetSubscriptionId() != "sub-3" {
+		t.Fatalf("subscription_id = %q, want %q", payment.gotVerifyReq.GetSubscriptionId(), "sub-3")
+	}
+
+	var body struct {
+		Success bool `json:"success"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body.Success {
+		t.Fatal("success = false, want true")
 	}
 }

@@ -438,10 +438,12 @@ service PaymentService {
   // VerifyPayment verifies whether a referenced payment has succeeded. It
   // looks up the deposit by its GoHighLevel transaction identifier (or charge
   // identifier as a fallback) and interprets its lifecycle state.
+  // VerifyPayment verifies whether a referenced payment has succeeded.
+  // It is polled by the Admin Dashboard via GET with query parameters
+  // (ghlTransactionId, ghlChargeId, subscriptionId).
   rpc VerifyPayment(VerifyPaymentRequest) returns (VerifyPaymentResponse) {
     option (google.api.http) = {
-      post : "/v1/public/payments/verify"
-      body : "*"
+      get : "/v1/public/payments/verify"
     };
   }
   // ProcessPaymentWebhook processes a payment-provider webhook event. It

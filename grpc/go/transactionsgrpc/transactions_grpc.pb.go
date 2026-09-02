@@ -563,6 +563,9 @@ type PaymentServiceClient interface {
 	// VerifyPayment verifies whether a referenced payment has succeeded. It
 	// looks up the deposit by its GoHighLevel transaction identifier (or charge
 	// identifier as a fallback) and interprets its lifecycle state.
+	// VerifyPayment verifies whether a referenced payment has succeeded.
+	// It is polled by the Admin Dashboard via GET with query parameters
+	// (ghlTransactionId, ghlChargeId, subscriptionId).
 	VerifyPayment(ctx context.Context, in *VerifyPaymentRequest, opts ...grpc.CallOption) (*VerifyPaymentResponse, error)
 	// ProcessPaymentWebhook processes a payment-provider webhook event. It
 	// correlates the HighLevel transaction/charge with an RVPay deposit and
@@ -610,6 +613,9 @@ type PaymentServiceServer interface {
 	// VerifyPayment verifies whether a referenced payment has succeeded. It
 	// looks up the deposit by its GoHighLevel transaction identifier (or charge
 	// identifier as a fallback) and interprets its lifecycle state.
+	// VerifyPayment verifies whether a referenced payment has succeeded.
+	// It is polled by the Admin Dashboard via GET with query parameters
+	// (ghlTransactionId, ghlChargeId, subscriptionId).
 	VerifyPayment(context.Context, *VerifyPaymentRequest) (*VerifyPaymentResponse, error)
 	// ProcessPaymentWebhook processes a payment-provider webhook event. It
 	// correlates the HighLevel transaction/charge with an RVPay deposit and
