@@ -101,6 +101,10 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	depositRepo := repo.NewDepositRepo(queries)
 	payoutRepo := repo.NewPayoutRepo(queries)
 
+	logger.Info().Msg("Declaring PawaPay client...")
+	logger.Info().Msgf("PawaPay API URL: %s", config.APIURL)
+	logger.Info().Msgf("PawaPay API Key: %s", config.APIKey)
+
 	pawapayClient := pawapay_client.NewClient(config.APIURL, config.APIKey)
 
 	merchantService := merchants.NewMerchantService(merchantRepo, logger)

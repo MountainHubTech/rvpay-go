@@ -165,10 +165,10 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 	}
 
 	s.logger.Info().Msgf("PawaPay deposit request: deposit_id=%s, amount=%f, currency=%s, phone_number=%s, provider=%s", depositID.String(), amountValue.Float64, currency, phoneNumber, pawapayProvider)
-	
+
 	// Trims the '+' only if it is at the beginning
 	cleanNumber := strings.TrimPrefix(phoneNumber, "+")
-	
+
 	fmt.Println(cleanNumber) // Output: 237654131027
 
 	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
@@ -186,9 +186,20 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 	}
 
 	s.logger.Info().Msg("Sending request to PawaPay InitiateDeposit API...")
-	_, err = s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
+	response, err := s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
 
-	s.logger.Info().Msg("No errors logged from PawaPay InitiateDeposit API...")
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Msg("PawaPay InitiateDeposit API returned an error")
+
+		return err
+	}
+
+	s.logger.Info().
+		Interface("pawapay_response", response).
+		Msg("PawaPay InitiateDeposit API response")
+
 	return err
 }
 
