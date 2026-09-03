@@ -8,6 +8,7 @@ import (
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -122,6 +123,149 @@ func (s *Impl) resolveDeposit(ctx context.Context, ghlTransactionID, ghlChargeID
 	}
 
 	return sqlc.Deposit{}, repo.ErrNotFound
+}
+
+// pawapayTerminalStatuses are deposit lifecycle states that must never be
+// changed by a later callback: a completed or failed payment is final.
+func pawapayTerminalStatuses() map[sqlc.DepositStatus]bool {
+	return map[sqlc.DepositStatus]bool{
+		sqlc.DepositStatusCOMPLETED: true,
+		sqlc.DepositStatusFAILED:    true,
+	}
+}
+
+// ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+// Callback. The callback is correlated strictly by deposit_id — the RVPay
+// deposit UUID originally supplied to PawaPay — never by phone number,
+// amount, or HighLevel/customer/merchant identifiers.
+//
+// Behavior:
+//   - COMPLETED  → deposit marked COMPLETED (completed_at set), PawaPay
+//     providerTransactionId preserved in external_reference.
+//   - FAILED     → deposit marked FAILED (failed_at set) with the PawaPay
+//     failure message preserved in failure_reason.
+//   - PROCESSING → deposit moved to PROCESSING (no terminal transition).
+//   - Unknown depositId / conflicting late callbacks are handled safely and
+//     acknowledged with success so PawaPay does not retry pointlessly.
+//   - Duplicate callbacks are idempotent: a terminal deposit is never
+//     downgraded or re-side-effected.
+func (s *Impl) ProcessDepositCallback(ctx context.Context, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "callback request is required")
+	}
+
+	depositID := strings.TrimSpace(req.GetDepositId())
+	callbackStatus := strings.TrimSpace(req.GetStatus())
+	if depositID == "" || callbackStatus == "" {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id and status are required")
+	}
+
+	depositUUID, err := uuid.Parse(depositID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id must be a valid deposit identifier")
+	}
+
+	s.logger.Info().
+		Str("deposit_id", depositID).
+		Str("status", callbackStatus).
+		Str("provider_transaction_id", req.GetProviderTransactionId()).
+		Msg("PawaPay deposit callback received")
+
+	var target sqlc.DepositStatus
+	switch callbackStatus {
+	case "COMPLETED":
+		target = sqlc.DepositStatusCOMPLETED
+	case "FAILED":
+		target = sqlc.DepositStatusFAILED
+	case "PROCESSING":
+		target = sqlc.DepositStatusPROCESSING
+	default:
+		s.logger.Warn().
+			Str("deposit_id", depositID).
+			Str("status", callbackStatus).
+			Msg("unsupported PawaPay callback status")
+		return nil, status.Error(codes.InvalidArgument, "unsupported callback status")
+	}
+
+	deposit, err := s.depositRepo.GetByID(ctx, depositUUID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			// Unknown depositId: acknowledge so PawaPay does not retry; there
+			// is nothing this service can do for a deposit it does not have.
+			s.logger.Warn().
+				Str("deposit_id", depositID).
+				Str("status", callbackStatus).
+				Msg("PawaPay callback references unknown deposit")
+			return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+		}
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not look up deposit for PawaPay callback")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+
+	// Terminal-state protection: COMPLETED and FAILED are final. Duplicate
+	// callbacks are acknowledged idempotently; conflicting late callbacks are
+	// logged and ignored so a terminal state can never be downgraded.
+	if pawapayTerminalStatuses()[deposit.Status] {
+		if deposit.Status == target {
+			s.logger.Info().
+				Str("deposit_id", depositID).
+				Str("status", callbackStatus).
+				Msg("duplicate PawaPay callback for terminal deposit; acknowledged idempotently")
+			return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+		}
+		s.logger.Warn().
+			Str("deposit_id", depositID).
+			Str("current_status", string(deposit.Status)).
+			Str("status", callbackStatus).
+			Msg("conflicting PawaPay callback for terminal deposit; ignored")
+		return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+	}
+
+	return s.applyPawaPayCallbackTransition(ctx, depositUUID, depositID, target, req)
+}
+
+// applyPawaPayCallbackTransition applies a validated, non-terminal callback
+// status to the deposit and records the PawaPay provider reference.
+func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositUUID uuid.UUID, depositID string, target sqlc.DepositStatus, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	switch target {
+	case sqlc.DepositStatusCOMPLETED:
+		if _, err := s.depositRepo.MarkCompleted(ctx, depositUUID, sqlc.DepositStatusCOMPLETED); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit completed from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	case sqlc.DepositStatusFAILED:
+		failureReason := req.GetFailureReason().GetFailureMessage()
+		if failureReason == "" {
+			failureReason = req.GetFailureReason().GetFailureCode()
+		}
+		if _, err := s.depositRepo.MarkFailed(ctx, depositUUID, sqlc.DepositStatusFAILED, failureReason); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit failed from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	case sqlc.DepositStatusPROCESSING:
+		if _, err := s.depositRepo.UpdateStatus(ctx, depositUUID, sqlc.DepositStatusPROCESSING); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit processing from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
+	// Preserve PawaPay's own transaction reference when provided. This never
+	// touches ghl_transaction_id, which remains the HighLevel correlation ID
+	// used by VerifyPayment.
+	if req.GetProviderTransactionId() != "" {
+		if err := s.depositRepo.SetExternalReference(ctx, depositUUID, req.GetProviderTransactionId()); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not record PawaPay provider transaction reference")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
+	s.logger.Info().
+		Str("deposit_id", depositID).
+		Str("status", string(target)).
+		Str("provider_transaction_id", req.GetProviderTransactionId()).
+		Msg("PawaPay deposit callback processed")
+
+	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
 }
 
 // ProcessPaymentWebhook processes a payment-provider webhook event. It

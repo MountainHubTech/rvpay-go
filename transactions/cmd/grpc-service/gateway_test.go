@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -346,12 +347,18 @@ func TestGateway_CORS_OverriddenAllowlist(t *testing.T) {
 type fakePaymentService struct {
 	transactionsgrpc.UnimplementedPaymentServiceServer
 
-	gotVerifyReq *transactionsgrpc.VerifyPaymentRequest
+	gotVerifyReq   *transactionsgrpc.VerifyPaymentRequest
+	gotCallbackReq *transactionsgrpc.ProcessDepositCallbackRequest
 }
 
 func (f *fakePaymentService) VerifyPayment(_ context.Context, req *transactionsgrpc.VerifyPaymentRequest) (*transactionsgrpc.VerifyPaymentResponse, error) {
 	f.gotVerifyReq = req
 	return &transactionsgrpc.VerifyPaymentResponse{Success: true}, nil
+}
+
+func (f *fakePaymentService) ProcessDepositCallback(_ context.Context, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	f.gotCallbackReq = req
+	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
 }
 
 // TestGateway_VerifyPaymentRoute_GetWithQueryParams verifies the public HTTP
@@ -393,5 +400,44 @@ func TestGateway_VerifyPaymentRoute_GetWithQueryParams(t *testing.T) {
 	}
 	if !body.Success {
 		t.Fatal("success = false, want true")
+	}
+}
+
+// TestGateway_PawaPayDepositCallback_Post verifies the PawaPay V2 Deposit
+// Status Callback route: POST /v1/public/pawapay/deposits/callback binds the
+// documented PawaPay JSON payload (including fields outside the RVPay
+// contract, which the gateway must discard) and returns HTTP 200.
+func TestGateway_PawaPayDepositCallback_Post(t *testing.T) {
+	payment := &fakePaymentService{}
+	srv := newTransactionsGateway(t, &fakeMerchantService{}, &fakeDepositService{}, payment)
+
+	// The exact PawaPay V2 Deposit Status Callback shape, including fields
+	// RVPay does not model (payer, metadata, created).
+	body := `{"depositId":"0f14d0ab-9605-4a62-a9e4-5ed26688389b","status":"COMPLETED","amount":"25","currency":"XAF","country":"CMR","payer":{"type":"MMO","accountDetails":{"phoneNumber":"237654131027","provider":"MTN_MOMO_CMR"}},"providerTransactionId":"pp-txn-123","failureReason":{"failureCode":"","failureMessage":""},"metadata":{"orderId":"order-1"},"created":"2026-09-02T12:00:00Z"}`
+
+	resp, err := http.Post(srv.URL+"/v1/public/pawapay/deposits/callback", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("POST callback failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	if payment.gotCallbackReq == nil {
+		t.Fatal("ProcessDepositCallback was not invoked by the gateway")
+	}
+	if got := payment.gotCallbackReq.GetDepositId(); got != "0f14d0ab-9605-4a62-a9e4-5ed26688389b" {
+		t.Fatalf("deposit_id = %q, want the echoed PawaPay depositId", got)
+	}
+	if got := payment.gotCallbackReq.GetStatus(); got != "COMPLETED" {
+		t.Fatalf("status = %q, want COMPLETED", got)
+	}
+	if got := payment.gotCallbackReq.GetProviderTransactionId(); got != "pp-txn-123" {
+		t.Fatalf("provider_transaction_id = %q, want pp-txn-123", got)
+	}
+	if got := payment.gotCallbackReq.GetFailureReason().GetFailureCode(); got != "" {
+		t.Fatalf("failure_code = %q, want empty", got)
 	}
 }

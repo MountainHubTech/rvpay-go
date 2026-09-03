@@ -42,6 +42,7 @@ type DepositRepo interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error)
+	SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error
 	UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error)
 }
 
@@ -178,6 +179,19 @@ func (r *depositRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.
 		return sqlc.Deposit{}, wrapNotFound(err)
 	}
 	return deposit, nil
+}
+
+// SetExternalReference records the payment provider's transaction reference
+// on the deposit.
+func (r *depositRepo) SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error {
+	err := r.q.UpdateDepositExternalReference(ctx, sqlc.UpdateDepositExternalReferenceParams{
+		ID:                id,
+		ExternalReference: textRef(externalReference),
+	})
+	if err != nil {
+		return wrapNotFound(err)
+	}
+	return nil
 }
 
 func (r *depositRepo) UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error) {

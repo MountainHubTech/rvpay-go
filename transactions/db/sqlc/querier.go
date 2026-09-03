@@ -39,6 +39,7 @@ type Querier interface {
 	ListPayoutsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Payout, error)
 	ListPayoutsByStatus(ctx context.Context, status PayoutStatus) ([]Payout, error)
 	UpdateCustomerStatus(ctx context.Context, arg UpdateCustomerStatusParams) (Customer, error)
+	UpdateDepositExternalReference(ctx context.Context, arg UpdateDepositExternalReferenceParams) error
 	UpdateDepositGHLReference(ctx context.Context, arg UpdateDepositGHLReferenceParams) (Deposit, error)
 	UpdateDepositStatus(ctx context.Context, arg UpdateDepositStatusParams) (Deposit, error)
 	UpdateDepositStatusAndCompletedAt(ctx context.Context, arg UpdateDepositStatusAndCompletedAtParams) (Deposit, error)

@@ -506,6 +506,20 @@ func (mr *MockDepositRepoMockRecorder) MarkFailed(ctx, id, status, failureReason
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockDepositRepo)(nil).MarkFailed), ctx, id, status, failureReason)
 }
 
+// SetExternalReference mocks base method.
+func (m *MockDepositRepo) SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetExternalReference", ctx, id, externalReference)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetExternalReference indicates an expected call of SetExternalReference.
+func (mr *MockDepositRepoMockRecorder) SetExternalReference(ctx, id, externalReference any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExternalReference", reflect.TypeOf((*MockDepositRepo)(nil).SetExternalReference), ctx, id, externalReference)
+}
+
 // UpdateGHLReference mocks base method.
 func (m *MockDepositRepo) UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()

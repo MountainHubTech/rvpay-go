@@ -432,6 +432,23 @@ func (q *Queries) ListDepositsByStatus(ctx context.Context, status DepositStatus
 	return items, nil
 }
 
+const updateDepositExternalReference = `-- name: UpdateDepositExternalReference :exec
+UPDATE deposits
+SET external_reference = $2,
+    updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateDepositExternalReferenceParams struct {
+	ID                uuid.UUID `json:"id"`
+	ExternalReference *string   `json:"external_reference"`
+}
+
+func (q *Queries) UpdateDepositExternalReference(ctx context.Context, arg UpdateDepositExternalReferenceParams) error {
+	_, err := q.db.Exec(ctx, updateDepositExternalReference, arg.ID, arg.ExternalReference)
+	return err
+}
+
 const updateDepositGHLReference = `-- name: UpdateDepositGHLReference :one
 UPDATE deposits
 SET ghl_transaction_id = $2,

@@ -336,6 +336,44 @@ message ProcessPaymentWebhookRequest {
 // ProcessPaymentWebhookResponse acknowledges a processed payment webhook.
 message ProcessPaymentWebhookResponse {}
 
+// ProcessDepositCallbackRequest carries a PawaPay V2 Deposit Status Callback.
+// The callback is correlated by deposit_id, which is the RVPay deposit UUID
+// originally supplied to PawaPay as the deposit's depositId. Fields not part
+// of the RVPay contract (e.g. payer, metadata, created) are ignored by the
+// gateway.
+message ProcessDepositCallbackRequest {
+  // deposit_id is the RVPay deposit identifier echoed by PawaPay. Required.
+  string deposit_id = 1;
+  // status is the PawaPay deposit status: COMPLETED, FAILED, or PROCESSING.
+  // Required.
+  string status = 2;
+  // amount is the PawaPay-reported amount (informational; the authoritative
+  // amount is the persisted deposit row).
+  string amount = 3;
+  // currency is the PawaPay-reported currency (informational).
+  string currency = 4;
+  // country is the PawaPay-reported country (informational).
+  string country = 5;
+  // provider_transaction_id is PawaPay's own transaction reference, when
+  // present. Persisted in deposits.external_reference.
+  string provider_transaction_id = 6;
+  // failure_reason is present when status is FAILED.
+  ProcessDepositCallbackFailureReason failure_reason = 7;
+}
+
+// ProcessDepositCallbackFailureReason mirrors the PawaPay callback
+// failureReason object.
+message ProcessDepositCallbackFailureReason {
+  // failure_code is the PawaPay failure code.
+  string failure_code = 1;
+  // failure_message is the human-readable failure message.
+  string failure_message = 2;
+}
+
+// ProcessDepositCallbackResponse is returned after the callback has been
+// processed (including idempotent duplicates).
+message ProcessDepositCallbackResponse {}
+
 // CreatePayoutRequest requests a payout.
 message CreatePayoutRequest {
   // client_id references the RVPay client record.
@@ -457,6 +495,16 @@ service PaymentService {
       returns (ProcessPaymentWebhookResponse) {
     option (google.api.http) = {
       post : "/v1/public/payments/webhook"
+      body : "*"
+    };
+  }
+  // ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessDepositCallback(ProcessDepositCallbackRequest)
+      returns (ProcessDepositCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/pawapay/deposits/callback"
       body : "*"
     };
   }

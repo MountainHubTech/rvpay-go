@@ -462,6 +462,20 @@ func (mr *MockQuerierMockRecorder) UpdateCustomerStatus(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateCustomerStatus", reflect.TypeOf((*MockQuerier)(nil).UpdateCustomerStatus), ctx, arg)
 }
 
+// UpdateDepositExternalReference mocks base method.
+func (m *MockQuerier) UpdateDepositExternalReference(ctx context.Context, arg sqlc.UpdateDepositExternalReferenceParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDepositExternalReference", ctx, arg)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateDepositExternalReference indicates an expected call of UpdateDepositExternalReference.
+func (mr *MockQuerierMockRecorder) UpdateDepositExternalReference(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDepositExternalReference", reflect.TypeOf((*MockQuerier)(nil).UpdateDepositExternalReference), ctx, arg)
+}
+
 // UpdateDepositGHLReference mocks base method.
 func (m *MockQuerier) UpdateDepositGHLReference(ctx context.Context, arg sqlc.UpdateDepositGHLReferenceParams) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()

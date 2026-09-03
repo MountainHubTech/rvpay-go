@@ -547,8 +547,9 @@ var DepositService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	PaymentService_VerifyPayment_FullMethodName         = "/transactionsgrpc.PaymentService/VerifyPayment"
-	PaymentService_ProcessPaymentWebhook_FullMethodName = "/transactionsgrpc.PaymentService/ProcessPaymentWebhook"
+	PaymentService_VerifyPayment_FullMethodName          = "/transactionsgrpc.PaymentService/VerifyPayment"
+	PaymentService_ProcessPaymentWebhook_FullMethodName  = "/transactionsgrpc.PaymentService/ProcessPaymentWebhook"
+	PaymentService_ProcessDepositCallback_FullMethodName = "/transactionsgrpc.PaymentService/ProcessDepositCallback"
 )
 
 // PaymentServiceClient is the client API for PaymentService service.
@@ -571,6 +572,10 @@ type PaymentServiceClient interface {
 	// correlates the HighLevel transaction/charge with an RVPay deposit and
 	// records the GHL reference on the deposit.
 	ProcessPaymentWebhook(ctx context.Context, in *ProcessPaymentWebhookRequest, opts ...grpc.CallOption) (*ProcessPaymentWebhookResponse, error)
+	// ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+	// Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+	// application credentials) and must be idempotent.
+	ProcessDepositCallback(ctx context.Context, in *ProcessDepositCallbackRequest, opts ...grpc.CallOption) (*ProcessDepositCallbackResponse, error)
 }
 
 type paymentServiceClient struct {
@@ -601,6 +606,16 @@ func (c *paymentServiceClient) ProcessPaymentWebhook(ctx context.Context, in *Pr
 	return out, nil
 }
 
+func (c *paymentServiceClient) ProcessDepositCallback(ctx context.Context, in *ProcessDepositCallbackRequest, opts ...grpc.CallOption) (*ProcessDepositCallbackResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProcessDepositCallbackResponse)
+	err := c.cc.Invoke(ctx, PaymentService_ProcessDepositCallback_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PaymentServiceServer is the server API for PaymentService service.
 // All implementations must embed UnimplementedPaymentServiceServer
 // for forward compatibility.
@@ -621,6 +636,10 @@ type PaymentServiceServer interface {
 	// correlates the HighLevel transaction/charge with an RVPay deposit and
 	// records the GHL reference on the deposit.
 	ProcessPaymentWebhook(context.Context, *ProcessPaymentWebhookRequest) (*ProcessPaymentWebhookResponse, error)
+	// ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+	// Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+	// application credentials) and must be idempotent.
+	ProcessDepositCallback(context.Context, *ProcessDepositCallbackRequest) (*ProcessDepositCallbackResponse, error)
 	mustEmbedUnimplementedPaymentServiceServer()
 }
 
@@ -636,6 +655,9 @@ func (UnimplementedPaymentServiceServer) VerifyPayment(context.Context, *VerifyP
 }
 func (UnimplementedPaymentServiceServer) ProcessPaymentWebhook(context.Context, *ProcessPaymentWebhookRequest) (*ProcessPaymentWebhookResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ProcessPaymentWebhook not implemented")
+}
+func (UnimplementedPaymentServiceServer) ProcessDepositCallback(context.Context, *ProcessDepositCallbackRequest) (*ProcessDepositCallbackResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProcessDepositCallback not implemented")
 }
 func (UnimplementedPaymentServiceServer) mustEmbedUnimplementedPaymentServiceServer() {}
 func (UnimplementedPaymentServiceServer) testEmbeddedByValue()                        {}
@@ -694,6 +716,24 @@ func _PaymentService_ProcessPaymentWebhook_Handler(srv interface{}, ctx context.
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PaymentService_ProcessDepositCallback_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProcessDepositCallbackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PaymentServiceServer).ProcessDepositCallback(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PaymentService_ProcessDepositCallback_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PaymentServiceServer).ProcessDepositCallback(ctx, req.(*ProcessDepositCallbackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PaymentService_ServiceDesc is the grpc.ServiceDesc for PaymentService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -708,6 +748,10 @@ var PaymentService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ProcessPaymentWebhook",
 			Handler:    _PaymentService_ProcessPaymentWebhook_Handler,
+		},
+		{
+			MethodName: "ProcessDepositCallback",
+			Handler:    _PaymentService_ProcessDepositCallback_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -74,6 +74,12 @@ SET status = $2,
 WHERE id = $1
 RETURNING *;
 
+-- name: UpdateDepositExternalReference :exec
+UPDATE deposits
+SET external_reference = $2,
+    updated_at = NOW()
+WHERE id = $1;
+
 -- name: UpdateDepositGHLReference :one
 UPDATE deposits
 SET ghl_transaction_id = $2,
