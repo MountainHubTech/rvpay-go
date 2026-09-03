@@ -183,6 +183,30 @@ func (f *fakeTransactionsClient) ProcessPaymentWebhook(ctx context.Context, in *
 	return &transactionsgrpc.ProcessPaymentWebhookResponse{}, nil
 }
 
+func (f *fakeTransactionsClient) ProcessDepositCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessDepositCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+}
+
+func (f *fakeTransactionsClient) ProcessRefundCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessRefundCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessRefundCallbackResponse, error) {
+	return &transactionsgrpc.ProcessRefundCallbackResponse{}, nil
+}
+
+func (f *fakeTransactionsClient) ProcessCheckoutCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessCheckoutCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessCheckoutCallbackResponse, error) {
+	return &transactionsgrpc.ProcessCheckoutCallbackResponse{}, nil
+}
+
 func newTestService() (*Service, *mockConfigRepo, *mockIntegrationRepo, *mockWebhookEventRepo, *fakeTransactionsClient) {
 	configRepo := newMockConfigRepo()
 	integrationRepo := newMockIntegrationRepo()
