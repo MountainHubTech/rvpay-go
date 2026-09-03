@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -164,6 +165,20 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 		return err
 	}
 
+	// Serialize the amount per PawaPay's currency decimal rules. XAF is a
+	// zero-decimal currency on PawaPay: the amount must be sent with no
+	// decimal places ("25", not "25.00") and fractional amounts must be
+	// rejected rather than rounded or truncated.
+	pawapayAmount, err := pawapayAmountString(amount, currency)
+	if err != nil {
+		s.logger.Warn().
+			Str("deposit_id", depositID.String()).
+			Str("currency", currency).
+			Err(err).
+			Msg("invalid deposit amount for PawaPay currency")
+		return err
+	}
+
 	s.logger.Info().Msgf("PawaPay deposit request: deposit_id=%s, amount=%f, currency=%s, phone_number=%s, provider=%s", depositID.String(), amountValue.Float64, currency, phoneNumber, pawapayProvider)
 
 	// Trims the '+' only if it is at the beginning so the payer phone number
@@ -173,7 +188,7 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
 	req := &pawapaydeposits.InitiateDepositRequest{
 		DepositID: depositID.String(),
-		Amount:    strconv.FormatFloat(amountValue.Float64, 'f', 2, 64),
+		Amount:    pawapayAmount,
 		Currency:  currency,
 		Payer: pawapaydeposits.Payer{
 			Type: "MMO",
@@ -292,6 +307,59 @@ func (s *Impl) GetDeposit(ctx context.Context, req *transactionsgrpc.GetDepositR
 	return &transactionsgrpc.GetDepositResponse{
 		Deposit: depositToProto(deposit),
 	}, nil
+}
+
+// pawapayZeroDecimalCurrencies lists PawaPay currencies whose amounts are
+// specified with zero decimal places. XAF (Central African CFA franc) has no
+// minor unit, so PawaPay expects whole-number amounts (e.g. "25") and rejects
+// values like "25.00" with INVALID_AMOUNT.
+var pawapayZeroDecimalCurrencies = map[string]bool{
+	"XAF": true,
+}
+
+// pawapayAmountString serializes a deposit amount for the PawaPay
+// InitiateDeposit request.
+//
+// For zero-decimal currencies (XAF) the amount must be a whole number: the
+// integrality check is performed exactly on the numeric mantissa (no float
+// rounding) and fractional amounts are rejected with an error rather than
+// rounded or truncated. The value is serialized with zero decimal places.
+//
+// For all other currencies the existing two-decimal serialization is
+// preserved.
+func pawapayAmountString(amount pgtype.Numeric, currency string) (string, error) {
+	if !pawapayZeroDecimalCurrencies[currency] {
+		f, err := amount.Float64Value()
+		if err != nil {
+			return "", err
+		}
+		if !f.Valid {
+			return "", fmt.Errorf("amount is not a valid number")
+		}
+		return strconv.FormatFloat(f.Float64, 'f', 2, 64), nil
+	}
+
+	// Zero-decimal currency: the value is mantissa * 10^exp. It is a whole
+	// number iff exp >= 0 or the mantissa is divisible by 10^-exp. This check
+	// is exact; it never rounds or truncates.
+	if !amount.Valid || amount.NaN || amount.Int == nil {
+		return "", fmt.Errorf("amount is not a valid number")
+	}
+	if amount.Exp < 0 {
+		div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-amount.Exp)), nil)
+		if new(big.Int).Rem(amount.Int, div).Sign() != 0 {
+			return "", fmt.Errorf("amount must be a whole number for %s (zero-decimal currency); fractional amounts are rejected, not rounded", currency)
+		}
+	}
+
+	// Serialize the exact whole-number value: mantissa * 10^exp.
+	value := new(big.Int).Set(amount.Int)
+	if amount.Exp < 0 {
+		value.Div(value, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-amount.Exp)), nil))
+	} else if amount.Exp > 0 {
+		value.Mul(value, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(amount.Exp)), nil))
+	}
+	return value.String(), nil
 }
 
 // validateAmount validates and converts a protobuf Money amount to pgtype.Numeric.

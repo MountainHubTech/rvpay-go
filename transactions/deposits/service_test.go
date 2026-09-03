@@ -17,6 +17,7 @@ import (
 	sqlcmocks "github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc/mocks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
@@ -442,5 +443,133 @@ func TestInitiateDepositPawapayUnexpectedStatusRollsBack(t *testing.T) {
 	}
 	if !tx.rolledBack || tx.committed {
 		t.Fatal("transaction should have been rolled back, not committed, on unexpected status")
+	}
+}
+
+// TestPawapayAmountString verifies the PawaPay amount serialization rules:
+// XAF is zero-decimal (whole numbers only, no decimal places), fractional
+// XAF amounts are rejected, and other currencies keep two decimals.
+func TestPawapayAmountString(t *testing.T) {
+	t.Parallel()
+
+	mustNumeric := func(t *testing.T, s string) pgtype.Numeric {
+		t.Helper()
+		var n pgtype.Numeric
+		if err := n.Scan(s); err != nil {
+			t.Fatalf("scan %q: %v", s, err)
+		}
+		return n
+	}
+
+	tests := []struct {
+		name      string
+		numeric   pgtype.Numeric
+		currency  string
+		want      string
+		wantError bool
+	}{
+		{name: "XAF 25.00 serializes as 25", numeric: mustNumeric(t, "25.00"), currency: "XAF", want: "25"},
+		{name: "XAF 1000.00 serializes as 1000", numeric: mustNumeric(t, "1000.00"), currency: "XAF", want: "1000"},
+		{name: "XAF 25.50 rejected", numeric: mustNumeric(t, "25.50"), currency: "XAF", wantError: true},
+		{name: "XAF 25.05 rejected", numeric: mustNumeric(t, "25.05"), currency: "XAF", wantError: true},
+		{name: "XAF integer 25 serializes as 25", numeric: mustNumeric(t, "25"), currency: "XAF", want: "25"},
+		{name: "non-XAF keeps two decimals", numeric: mustNumeric(t, "25.50"), currency: "USD", want: "25.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := pawapayAmountString(tt.numeric, tt.currency)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("pawapayAmountString(%s, %s) = %q, want error", tt.numeric.Int, tt.currency, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("pawapayAmountString(%s, %s) error: %v", tt.numeric.Int, tt.currency, err)
+			}
+			if got != tt.want {
+				t.Fatalf("pawapayAmountString(%s, %s) = %q, want %q", tt.numeric.Int, tt.currency, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestInitiateDepositZeroDecimalAmount verifies that a whole-number XAF
+// deposit (25.00) is serialized to PawaPay as "25" with no decimal places.
+func TestInitiateDepositZeroDecimalAmount(t *testing.T) {
+	t.Parallel()
+
+	var gotAmount string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Amount string `json:"amount"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		gotAmount = body.Amount
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	req := validCreateRequest()
+	req.Amount = &commongrpc.Money{Amount: "25.00", Currency: "XAF"}
+
+	if _, err := service.InitiateDeposit(context.Background(), req); err != nil {
+		t.Fatalf("InitiateDeposit failed: %v", err)
+	}
+	if gotAmount != "25" {
+		t.Fatalf("pawapay amount = %q, want %q", gotAmount, "25")
+	}
+}
+
+// TestInitiateDepositFractionalXAFRejectedBeforePawapay verifies that a
+// fractional XAF amount (25.50) is rejected before any PawaPay call: the
+// provider is never contacted, the transaction is rolled back, and the RPC
+// returns an error.
+func TestInitiateDepositFractionalXAFRejectedBeforePawapay(t *testing.T) {
+	t.Parallel()
+
+	pawapayCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pawapayCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	req := validCreateRequest()
+	req.Amount = &commongrpc.Money{Amount: "25.50", Currency: "XAF"}
+
+	if _, err := service.InitiateDeposit(context.Background(), req); err == nil {
+		t.Fatal("InitiateDeposit should fail for a fractional XAF amount")
+	}
+	if pawapayCalled {
+		t.Fatal("PawaPay must not be called for a fractional XAF amount")
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed")
 	}
 }
