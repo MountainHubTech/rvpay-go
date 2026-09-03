@@ -374,6 +374,14 @@ message ProcessDepositCallbackFailureReason {
 // processed (including idempotent duplicates).
 message ProcessDepositCallbackResponse {}
 
+message ProcessRefundCallbackRequest {}
+
+message ProcessRefundCallbackResponse {}
+
+message ProcessCheckoutCallbackRequest {}
+
+message ProcessCheckoutCallbackResponse {}
+
 // CreatePayoutRequest requests a payout.
 message CreatePayoutRequest {
   // client_id references the RVPay client record.
@@ -505,6 +513,28 @@ service PaymentService {
       returns (ProcessDepositCallbackResponse) {
     option (google.api.http) = {
       post : "/v1/public/pawapay/deposits/callback"
+      body : "*"
+    };
+  }
+
+  // ProcessRefundCallback processes an inbound PawaPay V2 Refund Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessRefundCallback(ProcessRefundCallbackRequest)
+      returns (ProcessRefundCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/pawapay/deposits/refunds/callback"
+      body : "*"
+    };
+  }
+
+  // ProcessCheckoutCallback processes an inbound PawaPay V2 Checkout Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessCheckoutCallback(ProcessCheckoutCallbackRequest)
+      returns (ProcessCheckoutCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/pawapay/deposits/checkouts/callback"
       body : "*"
     };
   }

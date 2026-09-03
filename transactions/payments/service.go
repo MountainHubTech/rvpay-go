@@ -330,3 +330,12 @@ func (s *Impl) ProcessPaymentWebhook(ctx context.Context, req *transactionsgrpc.
 
 	return &transactionsgrpc.ProcessPaymentWebhookResponse{}, nil
 }
+
+
+func (s *Impl) ProcessRefundCallback(ctx context.Context, req *transactionsgrpc.ProcessRefundCallbackRequest) (*transactionsgrpc.ProcessRefundCallbackResponse, error) {
+	panic("not implemented: ProcessRefundCallback")
+}
+
+func (s *Impl) ProcessCheckoutCallback(ctx context.Context, req *transactionsgrpc.ProcessCheckoutCallbackRequest) (*transactionsgrpc.ProcessCheckoutCallbackResponse, error) {
+	panic("not implemented: ProcessCheckoutCallback")
+}
