@@ -2,8 +2,8 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25UVaW/CKtUDjefjrs0SPonmDGUVOYP0=
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
-github.com/I-Frostbyte/pawapay_client v0.0.0-20260813104302-0841c026f9f4 h1:bl0OSr9NcgCPVhjxHmXB6Q7Q1i3DSP3/X040vILKn3o=
-github.com/I-Frostbyte/pawapay_client v0.0.0-20260813104302-0841c026f9f4/go.mod h1:S3/38y4xLVr9ZOGkuT63ZC+Tv4j2R/EK3kVVA5/0b6w=
+github.com/I-Frostbyte/pawapay_client v0.0.0-20260903094819-00df3fe06f9d h1:OWxIeqdKPoUl35x5r2L3d+kqubblffP8QKsMNHmN/YA=
+github.com/I-Frostbyte/pawapay_client v0.0.0-20260903094819-00df3fe06f9d/go.mod h1:S3/38y4xLVr9ZOGkuT63ZC+Tv4j2R/EK3kVVA5/0b6w=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/ardanlabs/conf/v3 v3.13.0 h1:XKQXX35fFq/jencPu19xh0a6NPMT4NrpcRP/F9x7ejY=

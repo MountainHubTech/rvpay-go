@@ -2,6 +2,7 @@ package deposits
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -272,6 +273,22 @@ func TestInitiateDepositSuccess(t *testing.T) {
 		if r.URL.Path != "/v2/deposits" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
+		// Assert the serialized request: the payer phone number must reach
+		// PawaPay in MSISDN format (no leading '+').
+		var body struct {
+			Payer struct {
+				AccountDetails struct {
+					PhoneNumber string `json:"phoneNumber"`
+				} `json:"accountDetails"`
+			} `json:"payer"`
+		}
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if body.Payer.AccountDetails.PhoneNumber != "237600000000" {
+			t.Errorf("payer phone number = %q, want MSISDN 237600000000 without '+'", body.Payer.AccountDetails.PhoneNumber)
+		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
 	}))
@@ -362,5 +379,68 @@ func TestGetDepositRepositoryError(t *testing.T) {
 	})
 	if got := status.Code(err); got != codes.Internal {
 		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+}
+
+// TestInitiateDepositPawapayRejectedRollsBack verifies that a PawaPay HTTP
+// 200 response with status REJECTED is treated as a failed initiation: the
+// transaction is rolled back, not committed, and the RPC returns an error.
+func TestInitiateDepositPawapayRejectedRollsBack(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"REJECTED","failureReason":{"failureCode":"INVALID_AMOUNT","failureMessage":"amount below minimum"}}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if !tx.rolledBack {
+		t.Fatal("transaction should have been rolled back after PawaPay REJECTED response")
+	}
+	if tx.committed {
+		t.Fatal("transaction must not be committed when PawaPay rejects the deposit")
+	}
+}
+
+// TestInitiateDepositPawapayUnexpectedStatusRollsBack verifies that an
+// unexpected PawaPay status is never treated as success: rollback, no commit,
+// RPC error.
+func TestInitiateDepositPawapayUnexpectedStatusRollsBack(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"UNKNOWN_STATUS"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed, on unexpected status")
 	}
 }

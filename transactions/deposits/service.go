@@ -166,10 +166,9 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 
 	s.logger.Info().Msgf("PawaPay deposit request: deposit_id=%s, amount=%f, currency=%s, phone_number=%s, provider=%s", depositID.String(), amountValue.Float64, currency, phoneNumber, pawapayProvider)
 
-	// Trims the '+' only if it is at the beginning
+	// Trims the '+' only if it is at the beginning so the payer phone number
+	// is sent to PawaPay in MSISDN format (e.g. 237654131027, no '+').
 	cleanNumber := strings.TrimPrefix(phoneNumber, "+")
-
-	fmt.Println(cleanNumber) // Output: 237654131027
 
 	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
 	req := &pawapaydeposits.InitiateDepositRequest{
@@ -186,21 +185,57 @@ func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, 
 	}
 
 	s.logger.Info().Msg("Sending request to PawaPay InitiateDeposit API...")
+	s.logger.Info().Msgf("PawaPay InitiateDeposit request body: %+v", req)
 	response, err := s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
-
 	if err != nil {
 		s.logger.Error().
 			Err(err).
+			Str("deposit_id", depositID.String()).
 			Msg("PawaPay InitiateDeposit API returned an error")
 
 		return err
 	}
 
 	s.logger.Info().
+		Str("deposit_id", depositID.String()).
+		Str("status", response.Status).
 		Interface("pawapay_response", response).
 		Msg("PawaPay InitiateDeposit API response")
 
-	return err
+	// The authoritative initiation outcome is the response status, not the
+	// HTTP status code: PawaPay returns HTTP 200 with status REJECTED (and a
+	// structured failureReason) for rejected payments. Only ACCEPTED may
+	// proceed to commit; anything else must fail the initiation.
+	switch response.Status {
+	case "ACCEPTED":
+		return nil
+	case "REJECTED":
+		failureCode, failureMessage := "", ""
+		if response.FailureReason != nil {
+			failureCode = response.FailureReason.FailureCode
+			failureMessage = response.FailureReason.FailureMessage
+		}
+
+		s.logger.Warn().
+			Str("deposit_id", depositID.String()).
+			Str("status", response.Status).
+			Str("failure_code", failureCode).
+			Str("failure_message", failureMessage).
+			Str("provider", pawapayProvider).
+			Str("phone_number", cleanNumber).
+			Str("amount", req.Amount).
+			Str("currency", currency).
+			Msg("PawaPay rejected the deposit initiation")
+
+		return fmt.Errorf("pawapay rejected deposit initiation (status=REJECTED, failureCode=%s, failureMessage=%s)", failureCode, failureMessage)
+	default:
+		s.logger.Error().
+			Str("deposit_id", depositID.String()).
+			Str("status", response.Status).
+			Msg("unexpected PawaPay initiation status; treating initiation as failed")
+
+		return fmt.Errorf("pawapay deposit initiation returned unexpected status %q", response.Status)
+	}
 }
 
 // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
