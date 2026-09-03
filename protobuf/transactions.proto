@@ -512,7 +512,7 @@ service PaymentService {
   rpc ProcessDepositCallback(ProcessDepositCallbackRequest)
       returns (ProcessDepositCallbackResponse) {
     option (google.api.http) = {
-      post : "/v1/public/pawapay/deposits/callback"
+      post : "/v1/public/deposits/callback"
       body : "*"
     };
   }
@@ -523,7 +523,7 @@ service PaymentService {
   rpc ProcessRefundCallback(ProcessRefundCallbackRequest)
       returns (ProcessRefundCallbackResponse) {
     option (google.api.http) = {
-      post : "/v1/public/pawapay/deposits/refunds/callback"
+      post : "/v1/public/deposits/refunds/callback"
       body : "*"
     };
   }
@@ -534,7 +534,7 @@ service PaymentService {
   rpc ProcessCheckoutCallback(ProcessCheckoutCallbackRequest)
       returns (ProcessCheckoutCallbackResponse) {
     option (google.api.http) = {
-      post : "/v1/public/pawapay/deposits/checkouts/callback"
+      post : "/v1/public/deposits/checkouts/callback"
       body : "*"
     };
   }

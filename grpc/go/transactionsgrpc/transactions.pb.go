@@ -2725,13 +2725,13 @@ const file_transactions_proto_rawDesc = "" +
 	"\x0fInitiateDeposit\x12&.transactionsgrpc.CreateDepositRequest\x1a'.transactionsgrpc.CreateDepositResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/public/deposits\x12\x81\x01\n" +
 	"\n" +
 	"GetDeposit\x12#.transactionsgrpc.GetDepositRequest\x1a$.transactionsgrpc.GetDepositResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/public/deposits/{deposit_id}\x12\xd2\x01\n" +
-	"\x1cGetDepositByGHLTransactionID\x125.transactionsgrpc.GetDepositByGHLTransactionIDRequest\x1a6.transactionsgrpc.GetDepositByGHLTransactionIDResponse\"C\x82\xd3\xe4\x93\x02=\x12;/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}2\xd9\x06\n" +
+	"\x1cGetDepositByGHLTransactionID\x125.transactionsgrpc.GetDepositByGHLTransactionIDRequest\x1a6.transactionsgrpc.GetDepositByGHLTransactionIDResponse\"C\x82\xd3\xe4\x93\x02=\x12;/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}2\xc1\x06\n" +
 	"\x0ePaymentService\x12\x84\x01\n" +
 	"\rVerifyPayment\x12&.transactionsgrpc.VerifyPaymentRequest\x1a'.transactionsgrpc.VerifyPaymentResponse\"\"\x82\xd3\xe4\x93\x02\x1c\x12\x1a/v1/public/payments/verify\x12\xa0\x01\n" +
-	"\x15ProcessPaymentWebhook\x12..transactionsgrpc.ProcessPaymentWebhookRequest\x1a/.transactionsgrpc.ProcessPaymentWebhookResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/public/payments/webhook\x12\xac\x01\n" +
-	"\x16ProcessDepositCallback\x12/.transactionsgrpc.ProcessDepositCallbackRequest\x1a0.transactionsgrpc.ProcessDepositCallbackResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/public/pawapay/deposits/callback\x12\xb1\x01\n" +
-	"\x15ProcessRefundCallback\x12..transactionsgrpc.ProcessRefundCallbackRequest\x1a/.transactionsgrpc.ProcessRefundCallbackResponse\"7\x82\xd3\xe4\x93\x021:\x01*\",/v1/public/pawapay/deposits/refunds/callback\x12\xb9\x01\n" +
-	"\x17ProcessCheckoutCallback\x120.transactionsgrpc.ProcessCheckoutCallbackRequest\x1a1.transactionsgrpc.ProcessCheckoutCallbackResponse\"9\x82\xd3\xe4\x93\x023:\x01*\"./v1/public/pawapay/deposits/checkouts/callback2\x8c\x02\n" +
+	"\x15ProcessPaymentWebhook\x12..transactionsgrpc.ProcessPaymentWebhookRequest\x1a/.transactionsgrpc.ProcessPaymentWebhookResponse\"&\x82\xd3\xe4\x93\x02 :\x01*\"\x1b/v1/public/payments/webhook\x12\xa4\x01\n" +
+	"\x16ProcessDepositCallback\x12/.transactionsgrpc.ProcessDepositCallbackRequest\x1a0.transactionsgrpc.ProcessDepositCallbackResponse\"'\x82\xd3\xe4\x93\x02!:\x01*\"\x1c/v1/public/deposits/callback\x12\xa9\x01\n" +
+	"\x15ProcessRefundCallback\x12..transactionsgrpc.ProcessRefundCallbackRequest\x1a/.transactionsgrpc.ProcessRefundCallbackResponse\"/\x82\xd3\xe4\x93\x02):\x01*\"$/v1/public/deposits/refunds/callback\x12\xb1\x01\n" +
+	"\x17ProcessCheckoutCallback\x120.transactionsgrpc.ProcessCheckoutCallbackRequest\x1a1.transactionsgrpc.ProcessCheckoutCallbackResponse\"1\x82\xd3\xe4\x93\x02+:\x01*\"&/v1/public/deposits/checkouts/callback2\x8c\x02\n" +
 	"\rPayoutService\x12}\n" +
 	"\rRequestPayout\x12%.transactionsgrpc.CreatePayoutRequest\x1a&.transactionsgrpc.CreatePayoutResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/payouts\x12|\n" +
 	"\tGetPayout\x12\".transactionsgrpc.GetPayoutRequest\x1a#.transactionsgrpc.GetPayoutResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/payouts/{payout_id}2\x99\x01\n" +

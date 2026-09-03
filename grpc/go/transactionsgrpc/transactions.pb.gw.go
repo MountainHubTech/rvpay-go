@@ -884,7 +884,7 @@ func RegisterPaymentServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessDepositCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/callback"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessDepositCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -909,7 +909,7 @@ func RegisterPaymentServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessRefundCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/refunds/callback"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessRefundCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/refunds/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -934,7 +934,7 @@ func RegisterPaymentServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessCheckoutCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/checkouts/callback"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessCheckoutCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/checkouts/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1480,7 +1480,7 @@ func RegisterPaymentServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessDepositCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/callback"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessDepositCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1502,7 +1502,7 @@ func RegisterPaymentServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessRefundCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/refunds/callback"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessRefundCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/refunds/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1524,7 +1524,7 @@ func RegisterPaymentServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessCheckoutCallback", runtime.WithHTTPPathPattern("/v1/public/pawapay/deposits/checkouts/callback"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.PaymentService/ProcessCheckoutCallback", runtime.WithHTTPPathPattern("/v1/public/deposits/checkouts/callback"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1548,11 +1548,11 @@ var (
 
 	pattern_PaymentService_ProcessPaymentWebhook_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "public", "payments", "webhook"}, ""))
 
-	pattern_PaymentService_ProcessDepositCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"v1", "public", "pawapay", "deposits", "callback"}, ""))
+	pattern_PaymentService_ProcessDepositCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "public", "deposits", "callback"}, ""))
 
-	pattern_PaymentService_ProcessRefundCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5}, []string{"v1", "public", "pawapay", "deposits", "refunds", "callback"}, ""))
+	pattern_PaymentService_ProcessRefundCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"v1", "public", "deposits", "refunds", "callback"}, ""))
 
-	pattern_PaymentService_ProcessCheckoutCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4, 2, 5}, []string{"v1", "public", "pawapay", "deposits", "checkouts", "callback"}, ""))
+	pattern_PaymentService_ProcessCheckoutCallback_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"v1", "public", "deposits", "checkouts", "callback"}, ""))
 )
 
 var (
