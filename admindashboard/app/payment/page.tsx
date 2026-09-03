@@ -140,6 +140,11 @@ function ProviderLogo({ provider }: { provider: Provider }) {
   );
 }
 
+// Terminal payment result shown in the modal overlay. Only success/failure
+// are terminal payment results; a polling timeout is NOT one and does not
+// open this modal.
+type PaymentResult = "completed" | "failed" | null;
+
 // Payment status polling configuration. The page polls the existing
 // VerifyPayment endpoint (GET /v1/public/payments/verify) while a payment is
 // pending: success === true → terminal success; failed === true → terminal
@@ -166,6 +171,8 @@ export default function PaymentPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [paymentResult, setPaymentResult] =
+    useState<PaymentResult>(null);
   const pollingRef = useRef<number | null>(null);
   const pollDeadlineRef = useRef<number | null>(null);
   const [initiateProps, setInitiateProps] =
@@ -532,6 +539,21 @@ const chargeId = paymentContext.chargeId;
     }
   }
 
+  // OK button of the terminal payment-result modal.
+  //
+  // SAFE SEAM — do not fabricate a URL: the current HighLevel integration
+  // (payment_initiate_props, URL parameters, configuration, checkout code)
+  // provides NO products/store return URL. Once HighLevel supplies one (e.g.
+  // as payment_initiate_props.returnTo or an environment variable), navigate
+  // to it here instead of dismissing the modal. For now, OK simply closes the
+  // modal and leaves the user on this page with the terminal status text.
+  function handlePaymentResultOk() {
+    console.log(
+      "[RVPay] Payment result OK clicked: no HighLevel products return URL is available in the current integration; staying on the payment page."
+    );
+    setPaymentResult(null);
+  }
+
   function stopPolling() {
     if (pollingRef.current) {
       window.clearInterval(pollingRef.current);
@@ -616,6 +638,7 @@ const chargeId = paymentContext.chargeId;
 
           if (status.success === true) {
             stopPolling();
+            setPaymentResult("completed");
             setStatusMessage("Payment completed successfully.");
             setIsSubmitting(false);
             return;
@@ -626,6 +649,7 @@ const chargeId = paymentContext.chargeId;
           // success === false alone must NOT stop polling.
           if (status.failed === true) {
             stopPolling();
+            setPaymentResult("failed");
             setStatusMessage(status.message ?? "Payment failed.");
             setIsSubmitting(false);
           }
@@ -809,6 +833,54 @@ const chargeId = paymentContext.chargeId;
             : `Pay ${amount.toLocaleString()}${country.currency}`}
         </button>
       </div>
+
+      {/* Terminal payment-result modal (success/failure only — never shown
+          for a polling timeout). Rendered above everything else. */}
+      {paymentResult !== null && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-result-title"
+            className="w-full max-w-xs rounded-lg bg-background p-6 text-center shadow-lg"
+          >
+            {paymentResult === "completed" ? (
+              <div
+                aria-hidden="true"
+                className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-2xl font-bold text-green-600"
+              >
+                ✓
+              </div>
+            ) : (
+              <div
+                aria-hidden="true"
+                className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-2xl font-bold text-red-600"
+              >
+                ✕
+              </div>
+            )}
+            <p
+              id="payment-result-title"
+              className="mt-4 text-sm font-semibold"
+            >
+              {paymentResult === "completed"
+                ? "Payment completed"
+                : "Payment failed"}
+            </p>
+            <button
+              type="button"
+              autoFocus
+              onClick={handlePaymentResultOk}
+              className="mt-6 w-full rounded-md bg-[#1a237e] py-2 text-sm font-semibold text-white hover:opacity-90"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
