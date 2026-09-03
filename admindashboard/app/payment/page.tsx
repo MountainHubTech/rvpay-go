@@ -140,6 +140,14 @@ function ProviderLogo({ provider }: { provider: Provider }) {
   );
 }
 
+// Payment status polling configuration. The page polls the existing
+// VerifyPayment endpoint (GET /v1/public/payments/verify) while a payment is
+// pending: success === true → terminal success; failed === true → terminal
+// failure; anything else → still pending. Temporary fetch errors never stop
+// polling on their own; the loop always ends after PAYMENT_POLL_TIMEOUT_MS.
+const PAYMENT_POLL_TIMEOUT_MS = 10 * 60 * 1000;
+const PAYMENT_POLL_INTERVAL_MS = 3000;
+
 export default function PaymentPage() {
   const [countryCode, setCountryCode] = useState("CM");
   const [countryOpen, setCountryOpen] = useState(false);
@@ -159,6 +167,7 @@ export default function PaymentPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const pollingRef = useRef<number | null>(null);
+  const pollDeadlineRef = useRef<number | null>(null);
   const [initiateProps, setInitiateProps] =
     useState<PaymentInitiateProps | null>(null);
 
@@ -367,7 +376,9 @@ const chargeId = paymentContext.chargeId;
     return () => {
       if (pollingRef.current) {
         window.clearInterval(pollingRef.current);
+        pollingRef.current = null;
       }
+      pollDeadlineRef.current = null;
     };
   }, []);
 
@@ -526,6 +537,7 @@ const chargeId = paymentContext.chargeId;
       window.clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    pollDeadlineRef.current = null;
   }
 
   async function handlePay() {
@@ -570,14 +582,37 @@ const chargeId = paymentContext.chargeId;
       // verification occurred without it.
 
       // Poll the existing status endpoint with the same transactionId until
-      // success/failure. A single interval is used (stopPolling first).
+      // success/failure/timeout. Semantics (VerifyPayment contract):
+      //   success === true                    → terminal success
+      //   failed === true                     → terminal failure
+      //   both false/undefined                → still pending, keep polling
+      //   fetch/network/server error          → logged, keep polling within
+      //                                         the 10-minute window
+      //   10 minutes elapsed                  → stop, timeout message
+      // A single interval is used (stopPolling first).
       setStatusMessage("Waiting for mobile money confirmation...");
 
       stopPolling();
+      pollDeadlineRef.current = Date.now() + PAYMENT_POLL_TIMEOUT_MS;
 
       pollingRef.current = window.setInterval(async () => {
+        // Hard stop once the 10-minute window has elapsed.
+        if (
+          pollDeadlineRef.current !== null &&
+          Date.now() >= pollDeadlineRef.current
+        ) {
+          console.log("[RVPay] Payment polling timed out");
+          stopPolling();
+          setStatusMessage(
+            "Payment confirmation timed out. Please check the transaction status before trying again."
+          );
+          setIsSubmitting(false);
+          return;
+        }
+
         try {
           const status = await queryPaymentStatus();
+          console.log("[RVPay] Payment status:", status);
 
           if (status.success === true) {
             stopPolling();
@@ -586,19 +621,23 @@ const chargeId = paymentContext.chargeId;
             return;
           }
 
-          if (status.failed || status.success === false) {
+          // Only failed === true is a terminal failure. Pending deposits
+          // legitimately return success === false AND failed === false, so
+          // success === false alone must NOT stop polling.
+          if (status.failed === true) {
             stopPolling();
-            setStatusMessage(
-              status.message ?? "Payment failed."
-            );
+            setStatusMessage(status.message ?? "Payment failed.");
             setIsSubmitting(false);
           }
-        } catch {
-          stopPolling();
-          setStatusMessage("Unable to verify payment status.");
-          setIsSubmitting(false);
+
+          // Otherwise still pending: keep polling within the window.
+        } catch (error) {
+          // Temporary fetch/network/server error: log it and let the next
+          // poll attempt run. Only success/failure/timeout/unmount stop
+          // polling.
+          console.warn("[RVPay] Payment status polling request failed:", error);
         }
-      }, 3000);
+      }, PAYMENT_POLL_INTERVAL_MS);
     } catch (error) {
       stopPolling();
       setStatusMessage(
