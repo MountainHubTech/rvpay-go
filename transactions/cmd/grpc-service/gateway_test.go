@@ -404,7 +404,7 @@ func TestGateway_VerifyPaymentRoute_GetWithQueryParams(t *testing.T) {
 }
 
 // TestGateway_PawaPayDepositCallback_Post verifies the PawaPay V2 Deposit
-// Status Callback route: POST /v1/public/pawapay/deposits/callback binds the
+// Status Callback route: POST /v1/public/deposits/callback binds the
 // documented PawaPay JSON payload (including fields outside the RVPay
 // contract, which the gateway must discard) and returns HTTP 200.
 func TestGateway_PawaPayDepositCallback_Post(t *testing.T) {
@@ -415,7 +415,7 @@ func TestGateway_PawaPayDepositCallback_Post(t *testing.T) {
 	// RVPay does not model (payer, metadata, created).
 	body := `{"depositId":"0f14d0ab-9605-4a62-a9e4-5ed26688389b","status":"COMPLETED","amount":"25","currency":"XAF","country":"CMR","payer":{"type":"MMO","accountDetails":{"phoneNumber":"237654131027","provider":"MTN_MOMO_CMR"}},"providerTransactionId":"pp-txn-123","failureReason":{"failureCode":"","failureMessage":""},"metadata":{"orderId":"order-1"},"created":"2026-09-02T12:00:00Z"}`
 
-	resp, err := http.Post(srv.URL+"/v1/public/pawapay/deposits/callback", "application/json", strings.NewReader(body))
+	resp, err := http.Post(srv.URL+"/v1/public/deposits/callback", "application/json", strings.NewReader(body))
 	if err != nil {
 		t.Fatalf("POST callback failed: %v", err)
 	}
