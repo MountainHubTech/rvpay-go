@@ -1,6 +1,5 @@
 "use client"
 
-import { useMemo, useState } from "react"
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -28,12 +27,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import {
-  payoutOverviewRows,
-  payoutOverviewStats,
-  type PayoutOverviewRow,
-  type PayoutOverviewStat,
-  type PayoutOverviewStatus,
+import type {
+  PayoutOverviewRow,
+  PayoutOverviewStat,
+  PayoutOverviewStatus,
 } from "@/lib/dashboard-data"
 
 const statIcons = {
@@ -87,21 +84,40 @@ function StatCard({ stat }: { stat: PayoutOverviewStat }) {
   )
 }
 
-export function PayoutsOverview({ rows = payoutOverviewRows }: { rows?: PayoutOverviewRow[] }) {
-  const [query, setQuery] = useState("")
-  const [status, setStatus] = useState<PayoutOverviewStatus | "All">("All")
-  const [page, setPage] = useState(1)
-  const pageSize = 3
-  const filteredRows = useMemo(() => rows.filter((row) => {
-    const matchesQuery = `${row.name} ${row.location}`.toLowerCase().includes(query.toLowerCase())
-    return matchesQuery && (status === "All" || row.status === status)
-  }), [query, rows, status])
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize))
-  const visibleRows = filteredRows.slice((page - 1) * pageSize, page * pageSize)
+// Server-driven payouts overview: data, pagination, and filters come from the
+// Transactions service via the page component; this component only renders.
+export function PayoutsOverview({
+  stats = [],
+  rows = [],
+  total = 0,
+  page = 1,
+  pageSize = 20,
+  loading = false,
+  query = "",
+  status = "All",
+  onQueryChange,
+  onStatusChange,
+  onPageChange,
+}: {
+  stats?: PayoutOverviewStat[]
+  rows?: PayoutOverviewRow[]
+  total?: number
+  page?: number
+  pageSize?: number
+  loading?: boolean
+  query?: string
+  status?: PayoutOverviewStatus | "All"
+  onQueryChange?: (next: string) => void
+  onStatusChange?: (next: PayoutOverviewStatus | "All") => void
+  onPageChange?: (next: number) => void
+}) {
+  const setPage = (next: number) => onPageChange?.(next)
+  const pageCount = Math.max(1, Math.ceil(total / pageSize))
+  const visibleRows = rows
   const pageNumbers = Array.from({ length: pageCount }, (_, index) => index + 1)
 
   function exportCsv() {
-    const csv = ["Sub-account,Amount,Status,Initiated", ...filteredRows.map((row) => `${row.name},${row.amount},${row.status},${row.initiated}`)].join("\n")
+    const csv = ["Sub-account,Amount,Status,Initiated", ...rows.map((row) => `${row.name},${row.amount},${row.status},${row.initiated}`)].join("\n")
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }))
     const link = document.createElement("a")
     link.href = url
@@ -128,7 +144,7 @@ export function PayoutsOverview({ rows = payoutOverviewRows }: { rows?: PayoutOv
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {payoutOverviewStats.map((stat) => (
+        {stats.map((stat) => (
           <StatCard key={stat.label} stat={stat} />
         ))}
       </div>
@@ -139,7 +155,7 @@ export function PayoutsOverview({ rows = payoutOverviewRows }: { rows?: PayoutOv
           <input
             type="search"
             value={query}
-            onChange={(event) => { setQuery(event.target.value); setPage(1) }}
+            onChange={(event) => onQueryChange?.(event.target.value)}
             placeholder="Sub-account..."
             className="h-9 w-full rounded-lg border bg-white pl-9 pr-4 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
           />
@@ -162,8 +178,8 @@ export function PayoutsOverview({ rows = payoutOverviewRows }: { rows?: PayoutOv
         <div className="flex-1" />
         <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium">
           <ListFilter className="size-4 text-muted-foreground" />
-          <select value={status} onChange={(event) => { setStatus(event.target.value as PayoutOverviewStatus | "All"); setPage(1) }} className="bg-transparent outline-none">
-            <option value="All">All Statuses</option><option>Failed</option><option>In Transit</option><option>Cleared</option><option>Pending</option>
+          <select value={status} onChange={(event) => onStatusChange?.(event.target.value as PayoutOverviewStatus | "All")} className="bg-transparent outline-none">
+            <option value="All">All Statuses</option><option>Failed</option><option>Cleared</option><option>Pending</option>
           </select>
           <ChevronDown className="size-4 text-muted-foreground" />
         </label>
@@ -231,7 +247,8 @@ export function PayoutsOverview({ rows = payoutOverviewRows }: { rows?: PayoutOv
                 </TableCell>
               </TableRow>
             ))}
-            {visibleRows.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground">No payouts match your filters.</TableCell></TableRow>}
+            {loading && <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground" role="status">Loading payouts…</TableCell></TableRow>}
+            {!loading && visibleRows.length === 0 && <TableRow><TableCell colSpan={6} className="py-10 text-center text-muted-foreground">No payouts match your filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
 

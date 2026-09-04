@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	sqlc "github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	uuid "github.com/google/uuid"
@@ -341,6 +342,21 @@ func (m *MockDepositRepo) EXPECT() *MockDepositRepoMockRecorder {
 	return m.recorder
 }
 
+// CountInWindow mocks base method.
+func (m *MockDepositRepo) CountInWindow(ctx context.Context, since time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountInWindow", ctx, since)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountInWindow indicates an expected call of CountInWindow.
+func (mr *MockDepositRepoMockRecorder) CountInWindow(ctx, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountInWindow", reflect.TypeOf((*MockDepositRepo)(nil).CountInWindow), ctx, since)
+}
+
 // Create mocks base method.
 func (m *MockDepositRepo) Create(ctx context.Context, clientName, customerID, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
@@ -491,6 +507,21 @@ func (mr *MockDepositRepoMockRecorder) ListByStatus(ctx, status any) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByStatus", reflect.TypeOf((*MockDepositRepo)(nil).ListByStatus), ctx, status)
 }
 
+// ListRecent mocks base method.
+func (m *MockDepositRepo) ListRecent(ctx context.Context, limit int32) ([]sqlc.Deposit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecent", ctx, limit)
+	ret0, _ := ret[0].([]sqlc.Deposit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecent indicates an expected call of ListRecent.
+func (mr *MockDepositRepoMockRecorder) ListRecent(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecent", reflect.TypeOf((*MockDepositRepo)(nil).ListRecent), ctx, limit)
+}
+
 // MarkCompleted mocks base method.
 func (m *MockDepositRepo) MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
@@ -521,6 +552,21 @@ func (mr *MockDepositRepoMockRecorder) MarkFailed(ctx, id, status, failureReason
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockDepositRepo)(nil).MarkFailed), ctx, id, status, failureReason)
 }
 
+// RevenueOverTimeInWindow mocks base method.
+func (m *MockDepositRepo) RevenueOverTimeInWindow(ctx context.Context, since time.Time) ([]sqlc.RevenueOverTimeInWindowRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevenueOverTimeInWindow", ctx, since)
+	ret0, _ := ret[0].([]sqlc.RevenueOverTimeInWindowRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevenueOverTimeInWindow indicates an expected call of RevenueOverTimeInWindow.
+func (mr *MockDepositRepoMockRecorder) RevenueOverTimeInWindow(ctx, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevenueOverTimeInWindow", reflect.TypeOf((*MockDepositRepo)(nil).RevenueOverTimeInWindow), ctx, since)
+}
+
 // SetExternalReference mocks base method.
 func (m *MockDepositRepo) SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error {
 	m.ctrl.T.Helper()
@@ -533,6 +579,21 @@ func (m *MockDepositRepo) SetExternalReference(ctx context.Context, id uuid.UUID
 func (mr *MockDepositRepoMockRecorder) SetExternalReference(ctx, id, externalReference any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetExternalReference", reflect.TypeOf((*MockDepositRepo)(nil).SetExternalReference), ctx, id, externalReference)
+}
+
+// SumAmountInWindow mocks base method.
+func (m *MockDepositRepo) SumAmountInWindow(ctx context.Context, since time.Time) (pgtype.Numeric, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SumAmountInWindow", ctx, since)
+	ret0, _ := ret[0].(pgtype.Numeric)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SumAmountInWindow indicates an expected call of SumAmountInWindow.
+func (mr *MockDepositRepoMockRecorder) SumAmountInWindow(ctx, since any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SumAmountInWindow", reflect.TypeOf((*MockDepositRepo)(nil).SumAmountInWindow), ctx, since)
 }
 
 // UpdateGHLReference mocks base method.
@@ -587,6 +648,36 @@ func NewMockPayoutRepo(ctrl *gomock.Controller) *MockPayoutRepo {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockPayoutRepo) EXPECT() *MockPayoutRepoMockRecorder {
 	return m.recorder
+}
+
+// CountByStatus mocks base method.
+func (m *MockPayoutRepo) CountByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountByStatus", ctx, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountByStatus indicates an expected call of CountByStatus.
+func (mr *MockPayoutRepoMockRecorder) CountByStatus(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountByStatus", reflect.TypeOf((*MockPayoutRepo)(nil).CountByStatus), ctx, status)
+}
+
+// CountFiltered mocks base method.
+func (m *MockPayoutRepo) CountFiltered(ctx context.Context, search, status string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountFiltered", ctx, search, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountFiltered indicates an expected call of CountFiltered.
+func (mr *MockPayoutRepoMockRecorder) CountFiltered(ctx, search, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountFiltered", reflect.TypeOf((*MockPayoutRepo)(nil).CountFiltered), ctx, search, status)
 }
 
 // Create mocks base method.
@@ -694,6 +785,21 @@ func (mr *MockPayoutRepoMockRecorder) ListByStatus(ctx, status any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByStatus", reflect.TypeOf((*MockPayoutRepo)(nil).ListByStatus), ctx, status)
 }
 
+// ListFiltered mocks base method.
+func (m *MockPayoutRepo) ListFiltered(ctx context.Context, search, status string, limit, offset int32) ([]sqlc.Payout, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListFiltered", ctx, search, status, limit, offset)
+	ret0, _ := ret[0].([]sqlc.Payout)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListFiltered indicates an expected call of ListFiltered.
+func (mr *MockPayoutRepoMockRecorder) ListFiltered(ctx, search, status, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListFiltered", reflect.TypeOf((*MockPayoutRepo)(nil).ListFiltered), ctx, search, status, limit, offset)
+}
+
 // MarkCompleted mocks base method.
 func (m *MockPayoutRepo) MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus) (sqlc.Payout, error) {
 	m.ctrl.T.Helper()
@@ -722,6 +828,21 @@ func (m *MockPayoutRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sq
 func (mr *MockPayoutRepoMockRecorder) MarkFailed(ctx, id, status, failureReason any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MarkFailed", reflect.TypeOf((*MockPayoutRepo)(nil).MarkFailed), ctx, id, status, failureReason)
+}
+
+// SumAmountByStatus mocks base method.
+func (m *MockPayoutRepo) SumAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (pgtype.Numeric, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SumAmountByStatus", ctx, status)
+	ret0, _ := ret[0].(pgtype.Numeric)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SumAmountByStatus indicates an expected call of SumAmountByStatus.
+func (mr *MockPayoutRepoMockRecorder) SumAmountByStatus(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SumAmountByStatus", reflect.TypeOf((*MockPayoutRepo)(nil).SumAmountByStatus), ctx, status)
 }
 
 // UpdateStatus mocks base method.

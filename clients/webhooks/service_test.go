@@ -278,6 +278,14 @@ func (m *mockWebhookClientRepo) Delete(ctx context.Context, id uuid.UUID) error 
 	return nil
 }
 
+func (m *mockWebhookClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	return nil, nil
+}
+
+func (m *mockWebhookClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	return 0, nil
+}
+
 // mockWebhookPlatformRepo is a minimal PlatformRepo test double
 type mockWebhookPlatformRepo struct {
 	platforms map[string]sqlc.Platform

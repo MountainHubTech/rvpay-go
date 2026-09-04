@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -30,6 +31,26 @@ SELECT COUNT(*) FROM clients
 
 func (q *Queries) CountClients(ctx context.Context) (int64, error) {
 	row := q.db.QueryRow(ctx, countClients)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSubAccountsFiltered = `-- name: CountSubAccountsFiltered :one
+SELECT COUNT(*)
+FROM clients c
+LEFT JOIN integrations i ON i.client_id = c.id
+WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR c.status = $2::client_status)
+`
+
+type CountSubAccountsFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+}
+
+func (q *Queries) CountSubAccountsFiltered(ctx context.Context, arg CountSubAccountsFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSubAccountsFiltered, arg.Column1, arg.Column2)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -175,6 +196,72 @@ func (q *Queries) ListClients(ctx context.Context, arg ListClientsParams) ([]Cli
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSubAccountsFiltered = `-- name: ListSubAccountsFiltered :many
+SELECT c.id, c.client_name, c.status, c.created_at,
+       i.external_account_id
+FROM clients c
+LEFT JOIN integrations i ON i.client_id = c.id
+WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR c.status = $2::client_status)
+ORDER BY
+  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'asc' THEN c.client_name END ASC,
+  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'desc' THEN c.client_name END DESC,
+  CASE WHEN $3::TEXT = 'name' THEN c.client_name END ASC,
+  CASE WHEN $4::TEXT = 'desc' THEN c.created_at END DESC,
+  c.created_at ASC
+LIMIT $5 OFFSET $6
+`
+
+type ListSubAccountsFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+	Column3 string `json:"column_3"`
+	Column4 string `json:"column_4"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+type ListSubAccountsFilteredRow struct {
+	ID                uuid.UUID    `json:"id"`
+	ClientName        string       `json:"client_name"`
+	Status            ClientStatus `json:"status"`
+	CreatedAt         time.Time    `json:"created_at"`
+	ExternalAccountID string       `json:"external_account_id"`
+}
+
+func (q *Queries) ListSubAccountsFiltered(ctx context.Context, arg ListSubAccountsFilteredParams) ([]ListSubAccountsFilteredRow, error) {
+	rows, err := q.db.Query(ctx, listSubAccountsFiltered,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSubAccountsFilteredRow{}
+	for rows.Next() {
+		var i ListSubAccountsFilteredRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientName,
+			&i.Status,
+			&i.CreatedAt,
+			&i.ExternalAccountID,
 		); err != nil {
 			return nil, err
 		}

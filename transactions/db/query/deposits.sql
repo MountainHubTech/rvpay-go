@@ -74,6 +74,39 @@ SET status = $2,
 WHERE id = $1
 RETURNING *;
 
+-- Overview-snapshot aggregates. Deposits drive revenue + volume; payouts are
+-- queried separately. All money is NUMERIC(18,2).
+
+-- name: SumDepositAmountInWindow :one
+SELECT COALESCE(SUM(amount), 0)
+FROM deposits
+WHERE status = 'COMPLETED'
+  AND created_at >= $1;
+
+-- name: CountDepositsInWindow :one
+SELECT COUNT(*)
+FROM deposits
+WHERE created_at >= $1;
+
+-- name: RevenueOverTimeInWindow :many
+-- Returns per-day revenue buckets for the window. The bucket label is a
+-- calendar date; revenue is the raw numeric sum (service formats to minor
+-- units). Buckets with no deposits are omitted (no zero-filling), matching a
+-- sparse time series.
+SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS period_label,
+       COALESCE(SUM(amount), 0) AS revenue
+FROM deposits
+WHERE status = 'COMPLETED'
+  AND created_at >= $1
+GROUP BY period_label
+ORDER BY period_label;
+
+-- name: ListRecentDeposits :many
+SELECT *
+FROM deposits
+ORDER BY created_at DESC
+LIMIT $1;
+
 -- name: UpdateDepositExternalReference :exec
 UPDATE deposits
 SET external_reference = $2,

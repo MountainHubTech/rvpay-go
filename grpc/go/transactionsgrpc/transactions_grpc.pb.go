@@ -847,8 +847,10 @@ var PaymentService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	PayoutService_RequestPayout_FullMethodName = "/transactionsgrpc.PayoutService/RequestPayout"
-	PayoutService_GetPayout_FullMethodName     = "/transactionsgrpc.PayoutService/GetPayout"
+	PayoutService_RequestPayout_FullMethodName          = "/transactionsgrpc.PayoutService/RequestPayout"
+	PayoutService_GetPayout_FullMethodName              = "/transactionsgrpc.PayoutService/GetPayout"
+	PayoutService_GetPayoutOverviewStats_FullMethodName = "/transactionsgrpc.PayoutService/GetPayoutOverviewStats"
+	PayoutService_ListPayouts_FullMethodName            = "/transactionsgrpc.PayoutService/ListPayouts"
 )
 
 // PayoutServiceClient is the client API for PayoutService service.
@@ -861,6 +863,12 @@ type PayoutServiceClient interface {
 	RequestPayout(ctx context.Context, in *CreatePayoutRequest, opts ...grpc.CallOption) (*CreatePayoutResponse, error)
 	// GetPayout fetches a payout by id.
 	GetPayout(ctx context.Context, in *GetPayoutRequest, opts ...grpc.CallOption) (*GetPayoutResponse, error)
+	// GetPayoutOverviewStats returns the real payout metrics required by the
+	// Admin Dashboard: pending/cleared/failed breakdowns.
+	GetPayoutOverviewStats(ctx context.Context, in *GetPayoutOverviewStatsRequest, opts ...grpc.CallOption) (*GetPayoutOverviewStatsResponse, error)
+	// ListPayouts returns a paginated, searchable, status-filtered list of
+	// payouts for the Admin Dashboard payouts page.
+	ListPayouts(ctx context.Context, in *ListPayoutsRequest, opts ...grpc.CallOption) (*ListPayoutsResponse, error)
 }
 
 type payoutServiceClient struct {
@@ -891,6 +899,26 @@ func (c *payoutServiceClient) GetPayout(ctx context.Context, in *GetPayoutReques
 	return out, nil
 }
 
+func (c *payoutServiceClient) GetPayoutOverviewStats(ctx context.Context, in *GetPayoutOverviewStatsRequest, opts ...grpc.CallOption) (*GetPayoutOverviewStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetPayoutOverviewStatsResponse)
+	err := c.cc.Invoke(ctx, PayoutService_GetPayoutOverviewStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *payoutServiceClient) ListPayouts(ctx context.Context, in *ListPayoutsRequest, opts ...grpc.CallOption) (*ListPayoutsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListPayoutsResponse)
+	err := c.cc.Invoke(ctx, PayoutService_ListPayouts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PayoutServiceServer is the server API for PayoutService service.
 // All implementations must embed UnimplementedPayoutServiceServer
 // for forward compatibility.
@@ -901,6 +929,12 @@ type PayoutServiceServer interface {
 	RequestPayout(context.Context, *CreatePayoutRequest) (*CreatePayoutResponse, error)
 	// GetPayout fetches a payout by id.
 	GetPayout(context.Context, *GetPayoutRequest) (*GetPayoutResponse, error)
+	// GetPayoutOverviewStats returns the real payout metrics required by the
+	// Admin Dashboard: pending/cleared/failed breakdowns.
+	GetPayoutOverviewStats(context.Context, *GetPayoutOverviewStatsRequest) (*GetPayoutOverviewStatsResponse, error)
+	// ListPayouts returns a paginated, searchable, status-filtered list of
+	// payouts for the Admin Dashboard payouts page.
+	ListPayouts(context.Context, *ListPayoutsRequest) (*ListPayoutsResponse, error)
 	mustEmbedUnimplementedPayoutServiceServer()
 }
 
@@ -916,6 +950,12 @@ func (UnimplementedPayoutServiceServer) RequestPayout(context.Context, *CreatePa
 }
 func (UnimplementedPayoutServiceServer) GetPayout(context.Context, *GetPayoutRequest) (*GetPayoutResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetPayout not implemented")
+}
+func (UnimplementedPayoutServiceServer) GetPayoutOverviewStats(context.Context, *GetPayoutOverviewStatsRequest) (*GetPayoutOverviewStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetPayoutOverviewStats not implemented")
+}
+func (UnimplementedPayoutServiceServer) ListPayouts(context.Context, *ListPayoutsRequest) (*ListPayoutsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListPayouts not implemented")
 }
 func (UnimplementedPayoutServiceServer) mustEmbedUnimplementedPayoutServiceServer() {}
 func (UnimplementedPayoutServiceServer) testEmbeddedByValue()                       {}
@@ -974,6 +1014,42 @@ func _PayoutService_GetPayout_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PayoutService_GetPayoutOverviewStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetPayoutOverviewStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PayoutServiceServer).GetPayoutOverviewStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PayoutService_GetPayoutOverviewStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PayoutServiceServer).GetPayoutOverviewStats(ctx, req.(*GetPayoutOverviewStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _PayoutService_ListPayouts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPayoutsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PayoutServiceServer).ListPayouts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PayoutService_ListPayouts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PayoutServiceServer).ListPayouts(ctx, req.(*ListPayoutsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PayoutService_ServiceDesc is the grpc.ServiceDesc for PayoutService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -988,6 +1064,127 @@ var PayoutService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetPayout",
 			Handler:    _PayoutService_GetPayout_Handler,
+		},
+		{
+			MethodName: "GetPayoutOverviewStats",
+			Handler:    _PayoutService_GetPayoutOverviewStats_Handler,
+		},
+		{
+			MethodName: "ListPayouts",
+			Handler:    _PayoutService_ListPayouts_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "transactions.proto",
+}
+
+const (
+	DashboardOverviewService_GetOverviewSnapshot_FullMethodName = "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot"
+)
+
+// DashboardOverviewServiceClient is the client API for DashboardOverviewService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// DashboardOverviewService aggregates cross-entity metrics for the Admin
+// Dashboard overview page, served by the Transactions service.
+type DashboardOverviewServiceClient interface {
+	// GetOverviewSnapshot returns all information rendered by the Overview
+	// page for the requested period.
+	GetOverviewSnapshot(ctx context.Context, in *GetOverviewSnapshotRequest, opts ...grpc.CallOption) (*GetOverviewSnapshotResponse, error)
+}
+
+type dashboardOverviewServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewDashboardOverviewServiceClient(cc grpc.ClientConnInterface) DashboardOverviewServiceClient {
+	return &dashboardOverviewServiceClient{cc}
+}
+
+func (c *dashboardOverviewServiceClient) GetOverviewSnapshot(ctx context.Context, in *GetOverviewSnapshotRequest, opts ...grpc.CallOption) (*GetOverviewSnapshotResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOverviewSnapshotResponse)
+	err := c.cc.Invoke(ctx, DashboardOverviewService_GetOverviewSnapshot_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// DashboardOverviewServiceServer is the server API for DashboardOverviewService service.
+// All implementations must embed UnimplementedDashboardOverviewServiceServer
+// for forward compatibility.
+//
+// DashboardOverviewService aggregates cross-entity metrics for the Admin
+// Dashboard overview page, served by the Transactions service.
+type DashboardOverviewServiceServer interface {
+	// GetOverviewSnapshot returns all information rendered by the Overview
+	// page for the requested period.
+	GetOverviewSnapshot(context.Context, *GetOverviewSnapshotRequest) (*GetOverviewSnapshotResponse, error)
+	mustEmbedUnimplementedDashboardOverviewServiceServer()
+}
+
+// UnimplementedDashboardOverviewServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedDashboardOverviewServiceServer struct{}
+
+func (UnimplementedDashboardOverviewServiceServer) GetOverviewSnapshot(context.Context, *GetOverviewSnapshotRequest) (*GetOverviewSnapshotResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetOverviewSnapshot not implemented")
+}
+func (UnimplementedDashboardOverviewServiceServer) mustEmbedUnimplementedDashboardOverviewServiceServer() {
+}
+func (UnimplementedDashboardOverviewServiceServer) testEmbeddedByValue() {}
+
+// UnsafeDashboardOverviewServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DashboardOverviewServiceServer will
+// result in compilation errors.
+type UnsafeDashboardOverviewServiceServer interface {
+	mustEmbedUnimplementedDashboardOverviewServiceServer()
+}
+
+func RegisterDashboardOverviewServiceServer(s grpc.ServiceRegistrar, srv DashboardOverviewServiceServer) {
+	// If the following call pancis, it indicates UnimplementedDashboardOverviewServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&DashboardOverviewService_ServiceDesc, srv)
+}
+
+func _DashboardOverviewService_GetOverviewSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOverviewSnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DashboardOverviewServiceServer).GetOverviewSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DashboardOverviewService_GetOverviewSnapshot_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DashboardOverviewServiceServer).GetOverviewSnapshot(ctx, req.(*GetOverviewSnapshotRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// DashboardOverviewService_ServiceDesc is the grpc.ServiceDesc for DashboardOverviewService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var DashboardOverviewService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "transactionsgrpc.DashboardOverviewService",
+	HandlerType: (*DashboardOverviewServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetOverviewSnapshot",
+			Handler:    _DashboardOverviewService_GetOverviewSnapshot_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

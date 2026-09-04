@@ -1,18 +1,12 @@
 # RVPay Go — Stage Checkpoint
 
-## Stage: Final Task — HighLevel OAuth v3 Migration — COMPLETE
-- [x] highlevel.go: ExchangeCode/RefreshToken use v3 camelCase fields (clientId, clientSecret, grantType, redirectUri, refreshToken, userType)
-- [x] highlevel.go: Version: v3 + Accept: application/json headers on token endpoint
-- [x] highlevel.go: v3 camelCase response parsing (accessToken, refreshToken, expiresIn, tokenType); locationId preserved
-- [x] service_test.go mock verifies v3 fields sent and obsolete snake_case NOT sent
-- [x] gofmt PASS; go build ./clients/... PASS; go test ./clients/... PASS; go vet ./clients/... PASS; go test ./... PASS
-- [x] Diff scope clean (only clients/providers/highlevel.go + clients/oauth/service_test.go)
+## Stage: Server-Connection Implementation — COMPLETE (2026-09-04)
+- [x] Customer transactional flow: migration 000004 (client_id→client_name + name/address), proto customer=9, resolve-or-create inside deposit tx, ACCEPTED-only commit, 9 rollback tests
+- [x] Dashboard LIVE endpoints: POST /v1/public/deposits(+customer), GET /v1/public/payments/verify, GET /v1/public/overview/snapshot, GET /v1/public/payouts/overview/stats, GET /v1/public/payouts, GET /v1/public/sub-accounts (all v1/public convention)
+- [x] Dashboard wired: lib/api.ts (NEW), dashboard-home, payouts page/overview, sub-accounts page/table fetch live; gaps render "—" (no fabrication)
+- [x] .dashboard-setup.md LIVE/FUTURE classified; all 6 checkpoint files appended; clients + transactions mocks/test-doubles updated
+- [x] go build/vet/test ./clients/... ./transactions/... PASS; gofmt clean (CRLF baseline preserved); dashboard tsc/next build env-blocked (incomplete node_modules — pre-existing)
+- [x] FUTURE documented: POST /sub-accounts (UI inert), payouts export/detail, transactions/disputes/settings pages, GET /me (auth-blocked)
 
-## Stage: Server-Connection Mapping Agent — COMPLETE (2026-09-04)
-- [x] directives: agents/server-connection.md consumed in full; dashboard/fetches vs proto contracts verified
-- [x] Mapping: only 2 live requests (POST /v1/public/deposits, GET /v1/public/payments/verify) — both MATCH; 0 dashboard code changes
-- [x] Appends: admindashboard/.clinecheck.md, admindashboard/.project-checkpoint.md, clients/.clinecheck.md, clients/.service-checkpoint.md, transactions/.clinecheck.md, transactions/.service-checkpoint.md
-- [x] go vet + go test ./clients/... ./transactions/... PASS; npm lint env-blocked (incomplete node_modules, pre-existing)
-- [x] Delegated (not implemented): overview snapshot, payouts stats/list (Transactions); sub-accounts list/create (Clients); /me blocked on auth decision
-
-## Next: Fresh real GHL Marketplace installation test against deployed service
+## Prior: HighLevel OAuth v3 Migration — COMPLETE | Server-Connection Mapping audit — COMPLETE
+## Next: npm run build in a normal Node env; live GHL install + payment end-to-end test; cross-service gaps (sub-account metrics, needsAttention) when enabled

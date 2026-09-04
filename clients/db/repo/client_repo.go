@@ -18,6 +18,8 @@ type ClientRepo interface {
 	ExistsByID(ctx context.Context, id uuid.UUID) (bool, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.ClientStatus) (sqlc.Client, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error)
+	CountSubAccounts(ctx context.Context, search, status string) (int64, error)
 }
 
 type clientRepo struct {
@@ -114,4 +116,30 @@ func (r *clientRepo) Delete(ctx context.Context, id uuid.UUID) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+func (r *clientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	rows, err := r.q.ListSubAccountsFiltered(ctx, sqlc.ListSubAccountsFilteredParams{
+		Column1: search,
+		Column2: status,
+		Column3: sort,
+		Column4: order,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return rows, nil
+}
+
+func (r *clientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	count, err := r.q.CountSubAccountsFiltered(ctx, sqlc.CountSubAccountsFilteredParams{
+		Column1: search,
+		Column2: status,
+	})
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
 }

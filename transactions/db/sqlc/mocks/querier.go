@@ -12,6 +12,7 @@ package mocks
 import (
 	context "context"
 	reflect "reflect"
+	time "time"
 
 	sqlc "github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	uuid "github.com/google/uuid"
@@ -43,6 +44,21 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// CountDepositsInWindow mocks base method.
+func (m *MockQuerier) CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountDepositsInWindow", ctx, createdAt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountDepositsInWindow indicates an expected call of CountDepositsInWindow.
+func (mr *MockQuerierMockRecorder) CountDepositsInWindow(ctx, createdAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountDepositsInWindow", reflect.TypeOf((*MockQuerier)(nil).CountDepositsInWindow), ctx, createdAt)
+}
+
 // CountMerchants mocks base method.
 func (m *MockQuerier) CountMerchants(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -56,6 +72,51 @@ func (m *MockQuerier) CountMerchants(ctx context.Context) (int64, error) {
 func (mr *MockQuerierMockRecorder) CountMerchants(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountMerchants", reflect.TypeOf((*MockQuerier)(nil).CountMerchants), ctx)
+}
+
+// CountPayoutsByStatus mocks base method.
+func (m *MockQuerier) CountPayoutsByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPayoutsByStatus", ctx, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPayoutsByStatus indicates an expected call of CountPayoutsByStatus.
+func (mr *MockQuerierMockRecorder) CountPayoutsByStatus(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPayoutsByStatus", reflect.TypeOf((*MockQuerier)(nil).CountPayoutsByStatus), ctx, status)
+}
+
+// CountPayoutsFiltered mocks base method.
+func (m *MockQuerier) CountPayoutsFiltered(ctx context.Context, arg sqlc.CountPayoutsFilteredParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPayoutsFiltered", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPayoutsFiltered indicates an expected call of CountPayoutsFiltered.
+func (mr *MockQuerierMockRecorder) CountPayoutsFiltered(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPayoutsFiltered", reflect.TypeOf((*MockQuerier)(nil).CountPayoutsFiltered), ctx, arg)
+}
+
+// CountPayoutsInWindow mocks base method.
+func (m *MockQuerier) CountPayoutsInWindow(ctx context.Context, createdAt time.Time) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountPayoutsInWindow", ctx, createdAt)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountPayoutsInWindow indicates an expected call of CountPayoutsInWindow.
+func (mr *MockQuerierMockRecorder) CountPayoutsInWindow(ctx, createdAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountPayoutsInWindow", reflect.TypeOf((*MockQuerier)(nil).CountPayoutsInWindow), ctx, createdAt)
 }
 
 // CreateCustomer mocks base method.
@@ -461,6 +522,81 @@ func (m *MockQuerier) ListPayoutsByStatus(ctx context.Context, status sqlc.Payou
 func (mr *MockQuerierMockRecorder) ListPayoutsByStatus(ctx, status any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPayoutsByStatus", reflect.TypeOf((*MockQuerier)(nil).ListPayoutsByStatus), ctx, status)
+}
+
+// ListPayoutsFiltered mocks base method.
+func (m *MockQuerier) ListPayoutsFiltered(ctx context.Context, arg sqlc.ListPayoutsFilteredParams) ([]sqlc.Payout, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListPayoutsFiltered", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.Payout)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListPayoutsFiltered indicates an expected call of ListPayoutsFiltered.
+func (mr *MockQuerierMockRecorder) ListPayoutsFiltered(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListPayoutsFiltered", reflect.TypeOf((*MockQuerier)(nil).ListPayoutsFiltered), ctx, arg)
+}
+
+// ListRecentDeposits mocks base method.
+func (m *MockQuerier) ListRecentDeposits(ctx context.Context, limit int32) ([]sqlc.Deposit, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecentDeposits", ctx, limit)
+	ret0, _ := ret[0].([]sqlc.Deposit)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecentDeposits indicates an expected call of ListRecentDeposits.
+func (mr *MockQuerierMockRecorder) ListRecentDeposits(ctx, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecentDeposits", reflect.TypeOf((*MockQuerier)(nil).ListRecentDeposits), ctx, limit)
+}
+
+// RevenueOverTimeInWindow mocks base method.
+func (m *MockQuerier) RevenueOverTimeInWindow(ctx context.Context, createdAt time.Time) ([]sqlc.RevenueOverTimeInWindowRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RevenueOverTimeInWindow", ctx, createdAt)
+	ret0, _ := ret[0].([]sqlc.RevenueOverTimeInWindowRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RevenueOverTimeInWindow indicates an expected call of RevenueOverTimeInWindow.
+func (mr *MockQuerierMockRecorder) RevenueOverTimeInWindow(ctx, createdAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevenueOverTimeInWindow", reflect.TypeOf((*MockQuerier)(nil).RevenueOverTimeInWindow), ctx, createdAt)
+}
+
+// SumDepositAmountInWindow mocks base method.
+func (m *MockQuerier) SumDepositAmountInWindow(ctx context.Context, createdAt time.Time) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SumDepositAmountInWindow", ctx, createdAt)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SumDepositAmountInWindow indicates an expected call of SumDepositAmountInWindow.
+func (mr *MockQuerierMockRecorder) SumDepositAmountInWindow(ctx, createdAt any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SumDepositAmountInWindow", reflect.TypeOf((*MockQuerier)(nil).SumDepositAmountInWindow), ctx, createdAt)
+}
+
+// SumPayoutAmountByStatus mocks base method.
+func (m *MockQuerier) SumPayoutAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SumPayoutAmountByStatus", ctx, status)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SumPayoutAmountByStatus indicates an expected call of SumPayoutAmountByStatus.
+func (mr *MockQuerierMockRecorder) SumPayoutAmountByStatus(ctx, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SumPayoutAmountByStatus", reflect.TypeOf((*MockQuerier)(nil).SumPayoutAmountByStatus), ctx, status)
 }
 
 // UpdateCustomerStatus mocks base method.

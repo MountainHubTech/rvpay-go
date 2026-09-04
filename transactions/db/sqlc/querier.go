@@ -6,13 +6,23 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
 	CountMerchants(ctx context.Context) (int64, error)
+	// Payout overview aggregates (for /v1/public/payouts/overview/stats and the
+	// overview snapshot). All money is stored as NUMERIC(18,2); sums are returned
+	// as int64 minor-unit values by the caller's choice — here we return the raw
+	// numeric sum and let the service format it. Status filtering uses the
+	// payout_status enum values: REQUESTED, PROCESSING, COMPLETED, FAILED.
+	CountPayoutsByStatus(ctx context.Context, status PayoutStatus) (int64, error)
+	CountPayoutsFiltered(ctx context.Context, arg CountPayoutsFilteredParams) (int64, error)
+	CountPayoutsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
 	CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error)
 	CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error)
 	CreateMerchant(ctx context.Context, arg CreateMerchantParams) (Merchant, error)
@@ -40,6 +50,17 @@ type Querier interface {
 	ListPayoutsByClient(ctx context.Context, clientID uuid.UUID) ([]Payout, error)
 	ListPayoutsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Payout, error)
 	ListPayoutsByStatus(ctx context.Context, status PayoutStatus) ([]Payout, error)
+	ListPayoutsFiltered(ctx context.Context, arg ListPayoutsFilteredParams) ([]Payout, error)
+	ListRecentDeposits(ctx context.Context, limit int32) ([]Deposit, error)
+	// Returns per-day revenue buckets for the window. The bucket label is a
+	// calendar date; revenue is the raw numeric sum (service formats to minor
+	// units). Buckets with no deposits are omitted (no zero-filling), matching a
+	// sparse time series.
+	RevenueOverTimeInWindow(ctx context.Context, createdAt time.Time) ([]RevenueOverTimeInWindowRow, error)
+	// Overview-snapshot aggregates. Deposits drive revenue + volume; payouts are
+	// queried separately. All money is NUMERIC(18,2).
+	SumDepositAmountInWindow(ctx context.Context, createdAt time.Time) (interface{}, error)
+	SumPayoutAmountByStatus(ctx context.Context, status PayoutStatus) (interface{}, error)
 	UpdateCustomerStatus(ctx context.Context, arg UpdateCustomerStatusParams) (Customer, error)
 	UpdateDepositExternalReference(ctx context.Context, arg UpdateDepositExternalReferenceParams) error
 	UpdateDepositGHLReference(ctx context.Context, arg UpdateDepositGHLReferenceParams) (Deposit, error)

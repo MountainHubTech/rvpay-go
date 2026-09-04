@@ -219,3 +219,50 @@ func (s *ClientsServiceImpl) DeactivateClient(ctx context.Context, req *clientsg
 		Client: sqlcClientToProto(updated),
 	}, nil
 }
+
+// ListSubAccounts lists client/sub-account records for the Admin Dashboard
+// sub-accounts page. balance/last_payout_date/total_processed are not
+// populated (they require Transactions-owned data); the dashboard renders
+// placeholders for those cells. See dashboard-setup.md for the documented
+// cross-service gaps.
+func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgrpc.ListSubAccountsRequest) (*clientsgrpc.ListSubAccountsResponse, error) {
+	if req == nil {
+		req = &clientsgrpc.ListSubAccountsRequest{}
+	}
+
+	page := req.GetPage()
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.GetPageSize()
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	rows, err := s.clientsRepo.ListSubAccounts(ctx, req.GetSearch(), req.GetStatus(), req.GetSort(), req.GetOrder(), pageSize, offset)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not list sub-accounts")
+		return nil, translateRepoError(err)
+	}
+	total, err := s.clientsRepo.CountSubAccounts(ctx, req.GetSearch(), req.GetStatus())
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count sub-accounts")
+		return nil, translateRepoError(err)
+	}
+
+	protoRows := make([]*clientsgrpc.SubAccountRow, 0, len(rows))
+	for _, row := range rows {
+		protoRows = append(protoRows, subAccountRowToProto(row))
+	}
+
+	return &clientsgrpc.ListSubAccountsResponse{
+		Rows:     protoRows,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}

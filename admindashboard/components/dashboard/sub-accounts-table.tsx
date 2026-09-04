@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { Calendar, ChevronDown, Plus, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -14,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { subAccounts, type SubAccount, type SubAccountStatus } from "@/lib/dashboard-data"
+import { type SubAccount, type SubAccountStatus } from "@/lib/dashboard-data"
 
 const statusStyles: Record<SubAccountStatus, string> = {
   Active: "bg-emerald-100 text-emerald-700",
@@ -22,13 +21,24 @@ const statusStyles: Record<SubAccountStatus, string> = {
   Inactive: "bg-muted text-muted-foreground",
 }
 
-export function SubAccountsTable({ accounts = subAccounts }: { accounts?: SubAccount[] }) {
-  const [query, setQuery] = useState("")
-  const [status, setStatus] = useState<SubAccountStatus | "All">("All")
-  const filteredAccounts = accounts.filter((account) => {
-    const matchesQuery = `${account.name} ${account.id} ${account.location}`.toLowerCase().includes(query.toLowerCase())
-    return matchesQuery && (status === "All" || account.status === status)
-  })
+// Server-driven sub-accounts table: data and filters come from the Clients
+// service via the page component; this component only renders.
+export function SubAccountsTable({
+  accounts = [],
+  loading = false,
+  query = "",
+  status = "All",
+  onQueryChange,
+  onStatusChange,
+}: {
+  accounts?: SubAccount[]
+  loading?: boolean
+  query?: string
+  status?: SubAccountStatus | "All"
+  onQueryChange?: (next: string) => void
+  onStatusChange?: (next: SubAccountStatus | "All") => void
+}) {
+  const filteredAccounts = accounts
 
   return (
     <div className="space-y-4">
@@ -53,14 +63,14 @@ export function SubAccountsTable({ accounts = subAccounts }: { accounts?: SubAcc
           <input
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => onQueryChange?.(event.target.value)}
             placeholder="Search by name, ID, or email..."
             className="h-9 w-full rounded-lg border bg-white pl-9 pr-4 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
           />
         </div>
         <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium">
           Status:
-          <select value={status} onChange={(event) => setStatus(event.target.value as SubAccountStatus | "All")} className="bg-transparent outline-none">
+          <select value={status} onChange={(event) => onStatusChange?.(event.target.value as SubAccountStatus | "All")} className="bg-transparent outline-none">
             <option>All</option><option>Active</option><option>Restricted</option><option>Inactive</option>
           </select>
           <ChevronDown className="size-4 text-muted-foreground" />
@@ -138,7 +148,8 @@ export function SubAccountsTable({ accounts = subAccounts }: { accounts?: SubAcc
                 </TableRow>
               )
             })}
-            {filteredAccounts.length === 0 && <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No sub-accounts match your filters.</TableCell></TableRow>}
+            {loading && <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground" role="status">Loading sub-accounts…</TableCell></TableRow>}
+            {!loading && filteredAccounts.length === 0 && <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No sub-accounts match your filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>

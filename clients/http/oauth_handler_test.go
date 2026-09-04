@@ -92,6 +92,14 @@ func (m *testOAuthClientRepo) UpdateStatus(ctx context.Context, id uuid.UUID, st
 }
 func (m *testOAuthClientRepo) Delete(ctx context.Context, id uuid.UUID) error { return nil }
 
+func (m *testOAuthClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	return nil, nil
+}
+
+func (m *testOAuthClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	return 0, nil
+}
+
 // testOAuthPlatformRepo is an in-memory PlatformRepo for handler tests.
 type testOAuthPlatformRepo struct {
 	platforms map[string]sqlc.Platform

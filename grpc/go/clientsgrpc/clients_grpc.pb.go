@@ -26,6 +26,7 @@ const (
 	ClientsService_ListClients_FullMethodName      = "/clientsgrpc.ClientsService/ListClients"
 	ClientsService_ActivateClient_FullMethodName   = "/clientsgrpc.ClientsService/ActivateClient"
 	ClientsService_DeactivateClient_FullMethodName = "/clientsgrpc.ClientsService/DeactivateClient"
+	ClientsService_ListSubAccounts_FullMethodName  = "/clientsgrpc.ClientsService/ListSubAccounts"
 )
 
 // ClientsServiceClient is the client API for ClientsService service.
@@ -48,6 +49,12 @@ type ClientsServiceClient interface {
 	ActivateClient(ctx context.Context, in *ActivateClientRequest, opts ...grpc.CallOption) (*ActivateClientResponse, error)
 	// DeactivateClient deactivates a client account.
 	DeactivateClient(ctx context.Context, in *DeactivateClientRequest, opts ...grpc.CallOption) (*DeactivateClientResponse, error)
+	// ListSubAccounts lists client/sub-account records for the Admin Dashboard
+	// sub-accounts page. balance/last_payout_date/total_processed are not
+	// populated here: they require Transactions-owned data the Clients service
+	// cannot read directly. They are documented in dashboard-setup.md as
+	// cross-service gaps until a cross-service capability is wired up.
+	ListSubAccounts(ctx context.Context, in *ListSubAccountsRequest, opts ...grpc.CallOption) (*ListSubAccountsResponse, error)
 }
 
 type clientsServiceClient struct {
@@ -128,6 +135,16 @@ func (c *clientsServiceClient) DeactivateClient(ctx context.Context, in *Deactiv
 	return out, nil
 }
 
+func (c *clientsServiceClient) ListSubAccounts(ctx context.Context, in *ListSubAccountsRequest, opts ...grpc.CallOption) (*ListSubAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSubAccountsResponse)
+	err := c.cc.Invoke(ctx, ClientsService_ListSubAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClientsServiceServer is the server API for ClientsService service.
 // All implementations must embed UnimplementedClientsServiceServer
 // for forward compatibility.
@@ -148,6 +165,12 @@ type ClientsServiceServer interface {
 	ActivateClient(context.Context, *ActivateClientRequest) (*ActivateClientResponse, error)
 	// DeactivateClient deactivates a client account.
 	DeactivateClient(context.Context, *DeactivateClientRequest) (*DeactivateClientResponse, error)
+	// ListSubAccounts lists client/sub-account records for the Admin Dashboard
+	// sub-accounts page. balance/last_payout_date/total_processed are not
+	// populated here: they require Transactions-owned data the Clients service
+	// cannot read directly. They are documented in dashboard-setup.md as
+	// cross-service gaps until a cross-service capability is wired up.
+	ListSubAccounts(context.Context, *ListSubAccountsRequest) (*ListSubAccountsResponse, error)
 	mustEmbedUnimplementedClientsServiceServer()
 }
 
@@ -178,6 +201,9 @@ func (UnimplementedClientsServiceServer) ActivateClient(context.Context, *Activa
 }
 func (UnimplementedClientsServiceServer) DeactivateClient(context.Context, *DeactivateClientRequest) (*DeactivateClientResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateClient not implemented")
+}
+func (UnimplementedClientsServiceServer) ListSubAccounts(context.Context, *ListSubAccountsRequest) (*ListSubAccountsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSubAccounts not implemented")
 }
 func (UnimplementedClientsServiceServer) mustEmbedUnimplementedClientsServiceServer() {}
 func (UnimplementedClientsServiceServer) testEmbeddedByValue()                        {}
@@ -326,6 +352,24 @@ func _ClientsService_DeactivateClient_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientsService_ListSubAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSubAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientsServiceServer).ListSubAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientsService_ListSubAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientsServiceServer).ListSubAccounts(ctx, req.(*ListSubAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClientsService_ServiceDesc is the grpc.ServiceDesc for ClientsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -360,6 +404,10 @@ var ClientsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateClient",
 			Handler:    _ClientsService_DeactivateClient_Handler,
+		},
+		{
+			MethodName: "ListSubAccounts",
+			Handler:    _ClientsService_ListSubAccounts_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -20,6 +20,10 @@ type PayoutRepo interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus) (sqlc.Payout, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus) (sqlc.Payout, error)
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus, failureReason string) (sqlc.Payout, error)
+	CountByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error)
+	SumAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (pgtype.Numeric, error)
+	ListFiltered(ctx context.Context, search string, status string, limit, offset int32) ([]sqlc.Payout, error)
+	CountFiltered(ctx context.Context, search string, status string) (int64, error)
 }
 
 type payoutRepo struct {
@@ -128,4 +132,44 @@ func (r *payoutRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.P
 		return sqlc.Payout{}, wrapNotFound(err)
 	}
 	return payout, nil
+}
+
+func (r *payoutRepo) CountByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error) {
+	count, err := r.q.CountPayoutsByStatus(ctx, status)
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
+}
+
+func (r *payoutRepo) SumAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (pgtype.Numeric, error) {
+	raw, err := r.q.SumPayoutAmountByStatus(ctx, status)
+	if err != nil {
+		return pgtype.Numeric{}, wrapError(err)
+	}
+	return numericFromInterface(raw)
+}
+
+func (r *payoutRepo) ListFiltered(ctx context.Context, search string, status string, limit, offset int32) ([]sqlc.Payout, error) {
+	payouts, err := r.q.ListPayoutsFiltered(ctx, sqlc.ListPayoutsFilteredParams{
+		Column1: search,
+		Column2: status,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return payouts, nil
+}
+
+func (r *payoutRepo) CountFiltered(ctx context.Context, search string, status string) (int64, error) {
+	count, err := r.q.CountPayoutsFiltered(ctx, sqlc.CountPayoutsFilteredParams{
+		Column1: search,
+		Column2: status,
+	})
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
 }

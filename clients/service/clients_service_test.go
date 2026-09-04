@@ -68,6 +68,14 @@ func (m *mockClientRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	delete(m.clients, id.String())
 	return nil
 }
+func (m *mockClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	return nil, nil
+}
+
+func (m *mockClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	return 0, nil
+}
+
 
 func (m *mockClientRepo) List(ctx context.Context, limit, offset int32) ([]sqlc.Client, error) {
 	clients := make([]sqlc.Client, 0, len(m.clients))

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"strings"
 	"time"
 
 	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
@@ -107,4 +108,49 @@ func toTimePtr(ts *timestamppb.Timestamp) *time.Time {
 	}
 	t := ts.AsTime()
 	return &t
+}
+
+// subAccountStatusToProto maps a persisted client status to the dashboard
+// sub-account lifecycle status.
+func subAccountStatusToProto(status sqlc.ClientStatus) clientsgrpc.SubAccountStatus {
+	switch status {
+	case sqlc.ClientStatusACTIVE:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE
+	case sqlc.ClientStatusSUSPENDED:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_RESTRICTED
+	case sqlc.ClientStatusREGISTERED, sqlc.ClientStatusCLOSED:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_INACTIVE
+	default:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_UNSPECIFIED
+	}
+}
+
+// subAccountInitials derives two-letter initials from a sub-account name.
+func subAccountInitials(name string) string {
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return "--"
+	}
+	initials := string([]rune(parts[0])[0])
+	if len(parts) > 1 {
+		initials += string([]rune(parts[1])[0])
+	}
+	return strings.ToUpper(initials)
+}
+
+// subAccountRowToProto maps a persisted sub-account row to its protobuf
+// representation. balance/last_payout_date/total_processed are intentionally
+// left empty: they require Transactions-owned data the Clients service cannot
+// read directly.
+func subAccountRowToProto(row sqlc.ListSubAccountsFilteredRow) *clientsgrpc.SubAccountRow {
+	return &clientsgrpc.SubAccountRow{
+		Id:               row.ID.String(),
+		Name:             row.ClientName,
+		Location:         row.ExternalAccountID,
+		Initials:         subAccountInitials(row.ClientName),
+		Status:           subAccountStatusToProto(row.Status),
+		Balance:          "",
+		LastPayoutDate:   "",
+		TotalProcessed:   "",
+	}
 }

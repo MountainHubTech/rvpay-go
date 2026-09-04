@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/I-Frostbyte/pawapay_client"
 	pawapaypayouts "github.com/I-Frostbyte/pawapay_client/payouts"
@@ -199,6 +200,196 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 		return "", status.Errorf(codes.InvalidArgument, "unsupported provider: %s", provider)
 	}
 }
+
+
+// GetPayoutOverviewStats returns the payout metrics rendered on the Admin
+// Dashboard payouts page. Values come from the payout table; no metrics are
+// fabricated.
+func (s *Impl) GetPayoutOverviewStats(ctx context.Context, _ *transactionsgrpc.GetPayoutOverviewStatsRequest) (*transactionsgrpc.GetPayoutOverviewStatsResponse, error) {
+	pendingCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusREQUESTED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count pending payouts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	processingCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusPROCESSING)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count processing payouts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	clearedCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusCOMPLETED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count cleared payouts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	failedCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusFAILED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count failed payouts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+
+	pendingAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusREQUESTED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not sum pending payout amounts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	processingAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusPROCESSING)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not sum processing payout amounts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	clearedAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusCOMPLETED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not sum cleared payout amounts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+	failedAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusFAILED)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not sum failed payout amounts")
+		return nil, status.Error(codes.Internal, "could not load payout stats")
+	}
+
+	pendingTotal := addNumeric(numericOrZero(pendingAmount), numericOrZero(processingAmount))
+	clearedTotal := numericOrZero(clearedAmount)
+	failedTotal := numericOrZero(failedAmount)
+
+	stats := []*transactionsgrpc.PayoutStat{
+		{Label: "Total Pending", Value: formatMoney(pendingTotal, "XAF"), Meta: fmt.Sprintf("%d payouts processing", pendingCount+processingCount)},
+		{Label: "Total Cleared (MTD)", Value: formatMoney(clearedTotal, "XAF"), Meta: fmt.Sprintf("%d payouts cleared", clearedCount)},
+		{Label: "Failed Payouts", Value: strconv.FormatInt(failedCount, 10), Meta: fmt.Sprintf("Totaling %s", formatMoney(failedTotal, "XAF"))},
+	}
+
+	return &transactionsgrpc.GetPayoutOverviewStatsResponse{Stats: stats}, nil
+}
+
+
+
+// ListPayouts returns a paginated, searchable, status-filtered list of payouts
+// for the Admin Dashboard payouts page.
+func (s *Impl) ListPayouts(ctx context.Context, req *transactionsgrpc.ListPayoutsRequest) (*transactionsgrpc.ListPayoutsResponse, error) {
+	if req == nil {
+		req = &transactionsgrpc.ListPayoutsRequest{}
+	}
+	page := req.GetPage()
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.GetPageSize()
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	payouts, err := s.payoutRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), pageSize, offset)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not list payouts")
+		return nil, status.Error(codes.Internal, "could not list payouts")
+	}
+	total, err := s.payoutRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus())
+	if err != nil {
+		s.logger.Error().Err(err).Msg("could not count payouts")
+		return nil, status.Error(codes.Internal, "could not list payouts")
+	}
+
+	rows := make([]*transactionsgrpc.PayoutListRow, 0, len(payouts))
+	for _, payout := range payouts {
+		name := textValue(payout.DestinationReference)
+		rows = append(rows, &transactionsgrpc.PayoutListRow{
+			Id:                      payout.ID.String(),
+			Initials:                initialsFromName(name),
+			Name:                    name,
+			Amount:                  formatMoney(payout.Amount, payout.Currency),
+			Status:                  payoutListStatus(payout.Status),
+			Initiated:               formatTimestamp(payout.RequestedAt),
+			ExpectedOrCleared:       completedOrExpected(payout),
+			ExpectedOrClearedStrong: payout.Status == sqlc.PayoutStatusCOMPLETED,
+		})
+	}
+
+	return &transactionsgrpc.ListPayoutsResponse{Rows: rows, Total: total, Page: page, PageSize: pageSize}, nil
+}
+
+// payoutListStatus maps a persisted payout status to the dashboard-facing
+// status string. RVPay has no partial/"In Transit" payout state, so
+// PROCESSING is reported as Pending.
+func payoutListStatus(status sqlc.PayoutStatus) string {
+	switch status {
+	case sqlc.PayoutStatusREQUESTED, sqlc.PayoutStatusPROCESSING:
+		return "Pending"
+	case sqlc.PayoutStatusCOMPLETED:
+		return "Cleared"
+	case sqlc.PayoutStatusFAILED:
+		return "Failed"
+	default:
+		return "Pending"
+	}
+}
+
+// completedOrExpected returns the cleared time for completed payouts and a
+// dash otherwise (no expected-date concept is modeled yet).
+func completedOrExpected(payout sqlc.Payout) string {
+	if payout.Status == sqlc.PayoutStatusCOMPLETED && payout.CompletedAt.Valid {
+		return formatTimestamp(payout.CompletedAt.Time)
+	}
+	return "-"
+}
+
+// numericOrZero returns n when valid, otherwise a zero pgtype.Numeric.
+func numericOrZero(n pgtype.Numeric) pgtype.Numeric {
+	if !n.Valid || n.NaN {
+		return pgtype.Numeric{Valid: true}
+	}
+	return n
+}
+
+// addNumeric returns the arithmetic sum of a and b as a pgtype.Numeric,
+// decoding through float64 (display-only aggregation).
+func addNumeric(a, b pgtype.Numeric) pgtype.Numeric {
+	fa, _ := a.Float64Value()
+	fb, _ := b.Float64Value()
+	sum := pgtype.Numeric{}
+	_ = sum.Scan(strconv.FormatFloat(fa.Float64+fb.Float64, 'f', 2, 64))
+	return sum
+}
+
+// initialsFromName derives two-letter initials from a payout display name.
+func initialsFromName(name string) string {
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return "--"
+	}
+	initials := string([]rune(parts[0])[0])
+	if len(parts) > 1 {
+		initials += string([]rune(parts[1])[0])
+	}
+	return strings.ToUpper(initials)
+}
+
+// formatTimestamp renders a timestamp for the dashboard.
+func formatTimestamp(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format("Jan 02, 2006")
+}
+
+// formatMoney renders a NUMERIC amount as a human-readable money string in the
+// given currency. It is lossy (two decimals) and intended for display only.
+func formatMoney(amount pgtype.Numeric, currency string) string {
+	f, err := amount.Float64Value()
+	if err != nil || !f.Valid {
+		return "--"
+	}
+	switch currency {
+	case "XAF", "XOF", "JPY", "KRW":
+		return fmt.Sprintf("%s %s", currency, strconv.FormatFloat(f.Float64, 'f', 0, 64))
+	default:
+		return fmt.Sprintf("%s %s", currency, strconv.FormatFloat(f.Float64, 'f', 2, 64))
+	}
+}
+
 
 // sqlcPaymentProviderToPawapay maps a persisted payment provider to the
 // string value expected by the PawaPay V2 API.

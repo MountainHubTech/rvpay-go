@@ -7,10 +7,58 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const countPayoutsByStatus = `-- name: CountPayoutsByStatus :one
+
+SELECT COUNT(*) FROM payouts WHERE status = $1
+`
+
+// Payout overview aggregates (for /v1/public/payouts/overview/stats and the
+// overview snapshot). All money is stored as NUMERIC(18,2); sums are returned
+// as int64 minor-unit values by the caller's choice — here we return the raw
+// numeric sum and let the service format it. Status filtering uses the
+// payout_status enum values: REQUESTED, PROCESSING, COMPLETED, FAILED.
+func (q *Queries) CountPayoutsByStatus(ctx context.Context, status PayoutStatus) (int64, error) {
+	row := q.db.QueryRow(ctx, countPayoutsByStatus, status)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPayoutsFiltered = `-- name: CountPayoutsFiltered :one
+SELECT COUNT(*)
+FROM payouts
+WHERE ($1::TEXT = '' OR destination_reference ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::payout_status)
+`
+
+type CountPayoutsFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+}
+
+func (q *Queries) CountPayoutsFiltered(ctx context.Context, arg CountPayoutsFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPayoutsFiltered, arg.Column1, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countPayoutsInWindow = `-- name: CountPayoutsInWindow :one
+SELECT COUNT(*) FROM payouts WHERE created_at >= $1
+`
+
+func (q *Queries) CountPayoutsInWindow(ctx context.Context, createdAt time.Time) (int64, error) {
+	row := q.db.QueryRow(ctx, countPayoutsInWindow, createdAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const createPayout = `-- name: CreatePayout :one
 INSERT INTO payouts (
@@ -282,6 +330,75 @@ func (q *Queries) ListPayoutsByStatus(ctx context.Context, status PayoutStatus) 
 		return nil, err
 	}
 	return items, nil
+}
+
+const listPayoutsFiltered = `-- name: ListPayoutsFiltered :many
+SELECT id, client_id, merchant_id, amount, currency, provider, destination_reference, status, external_reference, idempotency_key, requested_at, completed_at, failed_at, failure_reason, created_at, updated_at
+FROM payouts
+WHERE ($1::TEXT = '' OR destination_reference ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::payout_status)
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListPayoutsFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+func (q *Queries) ListPayoutsFiltered(ctx context.Context, arg ListPayoutsFilteredParams) ([]Payout, error) {
+	rows, err := q.db.Query(ctx, listPayoutsFiltered,
+		arg.Column1,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Payout{}
+	for rows.Next() {
+		var i Payout
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientID,
+			&i.MerchantID,
+			&i.Amount,
+			&i.Currency,
+			&i.Provider,
+			&i.DestinationReference,
+			&i.Status,
+			&i.ExternalReference,
+			&i.IdempotencyKey,
+			&i.RequestedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
+			&i.FailureReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumPayoutAmountByStatus = `-- name: SumPayoutAmountByStatus :one
+SELECT COALESCE(SUM(amount), 0) FROM payouts WHERE status = $1
+`
+
+func (q *Queries) SumPayoutAmountByStatus(ctx context.Context, status PayoutStatus) (interface{}, error) {
+	row := q.db.QueryRow(ctx, sumPayoutAmountByStatus, status)
+	var coalesce interface{}
+	err := row.Scan(&coalesce)
+	return coalesce, err
 }
 
 const updatePayoutStatus = `-- name: UpdatePayoutStatus :one

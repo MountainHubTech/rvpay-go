@@ -7,10 +7,24 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const countDepositsInWindow = `-- name: CountDepositsInWindow :one
+SELECT COUNT(*)
+FROM deposits
+WHERE created_at >= $1
+`
+
+func (q *Queries) CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error) {
+	row := q.db.QueryRow(ctx, countDepositsInWindow, createdAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
 
 const createDeposit = `-- name: CreateDeposit :one
 INSERT INTO deposits (
@@ -430,6 +444,110 @@ func (q *Queries) ListDepositsByStatus(ctx context.Context, status DepositStatus
 		return nil, err
 	}
 	return items, nil
+}
+
+const listRecentDeposits = `-- name: ListRecentDeposits :many
+SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
+FROM deposits
+ORDER BY created_at DESC
+LIMIT $1
+`
+
+func (q *Queries) ListRecentDeposits(ctx context.Context, limit int32) ([]Deposit, error) {
+	rows, err := q.db.Query(ctx, listRecentDeposits, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Deposit{}
+	for rows.Next() {
+		var i Deposit
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClientName,
+			&i.CustomerID,
+			&i.MerchantID,
+			&i.Amount,
+			&i.Currency,
+			&i.PaymentType,
+			&i.PayerPhoneNumber,
+			&i.Provider,
+			&i.Status,
+			&i.ExternalReference,
+			&i.IdempotencyKey,
+			&i.InitiatedAt,
+			&i.CompletedAt,
+			&i.FailedAt,
+			&i.FailureReason,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.GhlTransactionID,
+			&i.GhlChargeID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const revenueOverTimeInWindow = `-- name: RevenueOverTimeInWindow :many
+SELECT to_char(date_trunc('day', created_at), 'YYYY-MM-DD') AS period_label,
+       COALESCE(SUM(amount), 0) AS revenue
+FROM deposits
+WHERE status = 'COMPLETED'
+  AND created_at >= $1
+GROUP BY period_label
+ORDER BY period_label
+`
+
+type RevenueOverTimeInWindowRow struct {
+	PeriodLabel string      `json:"period_label"`
+	Revenue     interface{} `json:"revenue"`
+}
+
+// Returns per-day revenue buckets for the window. The bucket label is a
+// calendar date; revenue is the raw numeric sum (service formats to minor
+// units). Buckets with no deposits are omitted (no zero-filling), matching a
+// sparse time series.
+func (q *Queries) RevenueOverTimeInWindow(ctx context.Context, createdAt time.Time) ([]RevenueOverTimeInWindowRow, error) {
+	rows, err := q.db.Query(ctx, revenueOverTimeInWindow, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RevenueOverTimeInWindowRow{}
+	for rows.Next() {
+		var i RevenueOverTimeInWindowRow
+		if err := rows.Scan(&i.PeriodLabel, &i.Revenue); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const sumDepositAmountInWindow = `-- name: SumDepositAmountInWindow :one
+
+SELECT COALESCE(SUM(amount), 0)
+FROM deposits
+WHERE status = 'COMPLETED'
+  AND created_at >= $1
+`
+
+// Overview-snapshot aggregates. Deposits drive revenue + volume; payouts are
+// queried separately. All money is NUMERIC(18,2).
+func (q *Queries) SumDepositAmountInWindow(ctx context.Context, createdAt time.Time) (interface{}, error) {
+	row := q.db.QueryRow(ctx, sumDepositAmountInWindow, createdAt)
+	var coalesce interface{}
+	err := row.Scan(&coalesce)
+	return coalesce, err
 }
 
 const updateDepositExternalReference = `-- name: UpdateDepositExternalReference :exec

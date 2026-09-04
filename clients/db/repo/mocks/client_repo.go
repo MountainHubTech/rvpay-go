@@ -57,6 +57,21 @@ func (mr *MockClientRepoMockRecorder) Count(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockClientRepo)(nil).Count), ctx)
 }
 
+// CountSubAccounts mocks base method.
+func (m *MockClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSubAccounts", ctx, search, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSubAccounts indicates an expected call of CountSubAccounts.
+func (mr *MockClientRepoMockRecorder) CountSubAccounts(ctx, search, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSubAccounts", reflect.TypeOf((*MockClientRepo)(nil).CountSubAccounts), ctx, search, status)
+}
+
 // Create mocks base method.
 func (m *MockClientRepo) Create(ctx context.Context, name string, status sqlc.ClientStatus) (sqlc.Client, error) {
 	m.ctrl.T.Helper()
@@ -159,6 +174,21 @@ func (m *MockClientRepo) ListActive(ctx context.Context, limit, offset int32) ([
 func (mr *MockClientRepoMockRecorder) ListActive(ctx, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActive", reflect.TypeOf((*MockClientRepo)(nil).ListActive), ctx, limit, offset)
+}
+
+// ListSubAccounts mocks base method.
+func (m *MockClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSubAccounts", ctx, search, status, sort, order, limit, offset)
+	ret0, _ := ret[0].([]sqlc.ListSubAccountsFilteredRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSubAccounts indicates an expected call of ListSubAccounts.
+func (mr *MockClientRepoMockRecorder) ListSubAccounts(ctx, search, status, sort, order, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSubAccounts", reflect.TypeOf((*MockClientRepo)(nil).ListSubAccounts), ctx, search, status, sort, order, limit, offset)
 }
 
 // UpdateStatus mocks base method.

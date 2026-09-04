@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
@@ -20,6 +21,25 @@ func textPtr(s string) *string {
 // textRef returns a pointer to s preserving the exact value ("" stays "").
 func textRef(s string) *string {
 	return &s
+}
+
+// numericFromInterface decodes a sqlc aggregate result (COALESCE(SUM(...), 0))
+// into a pgtype.Numeric. sqlc emits these as interface{}; a nil result is
+// treated as a zero value.
+func numericFromInterface(raw interface{}) (pgtype.Numeric, error) {
+	if raw == nil {
+		return pgtype.Numeric{Valid: true}, nil
+	}
+	switch v := raw.(type) {
+	case pgtype.Numeric:
+		return v, nil
+	default:
+		var n pgtype.Numeric
+		if err := n.Scan(v); err != nil {
+			return pgtype.Numeric{}, err
+		}
+		return n, nil
+	}
 }
 
 // DepositRepo provides persistence operations for deposits.
@@ -44,6 +64,10 @@ type DepositRepo interface {
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error)
 	SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error
 	UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error)
+	SumAmountInWindow(ctx context.Context, since time.Time) (pgtype.Numeric, error)
+	CountInWindow(ctx context.Context, since time.Time) (int64, error)
+	RevenueOverTimeInWindow(ctx context.Context, since time.Time) ([]sqlc.RevenueOverTimeInWindowRow, error)
+	ListRecent(ctx context.Context, limit int32) ([]sqlc.Deposit, error)
 }
 
 type depositRepo struct {
@@ -204,4 +228,36 @@ func (r *depositRepo) UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlT
 		return sqlc.Deposit{}, wrapNotFound(err)
 	}
 	return deposit, nil
+}
+
+func (r *depositRepo) SumAmountInWindow(ctx context.Context, since time.Time) (pgtype.Numeric, error) {
+	raw, err := r.q.SumDepositAmountInWindow(ctx, since)
+	if err != nil {
+		return pgtype.Numeric{}, wrapError(err)
+	}
+	return numericFromInterface(raw)
+}
+
+func (r *depositRepo) CountInWindow(ctx context.Context, since time.Time) (int64, error) {
+	count, err := r.q.CountDepositsInWindow(ctx, since)
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
+}
+
+func (r *depositRepo) RevenueOverTimeInWindow(ctx context.Context, since time.Time) ([]sqlc.RevenueOverTimeInWindowRow, error) {
+	rows, err := r.q.RevenueOverTimeInWindow(ctx, since)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return rows, nil
+}
+
+func (r *depositRepo) ListRecent(ctx context.Context, limit int32) ([]sqlc.Deposit, error) {
+	deposits, err := r.q.ListRecentDeposits(ctx, limit)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return deposits, nil
 }

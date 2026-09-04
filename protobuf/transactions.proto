@@ -568,11 +568,148 @@ service PayoutService {
       get : "/v1/public/payouts/{payout_id}"
     };
   }
+  // GetPayoutOverviewStats returns the real payout metrics required by the
+  // Admin Dashboard: pending/cleared/failed breakdowns.
+  rpc GetPayoutOverviewStats(GetPayoutOverviewStatsRequest)
+      returns (GetPayoutOverviewStatsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/payouts/overview/stats"
+    };
+  }
+  // ListPayouts returns a paginated, searchable, status-filtered list of
+  // payouts for the Admin Dashboard payouts page.
+  rpc ListPayouts(ListPayoutsRequest) returns (ListPayoutsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/payouts"
+    };
+  }
 }
 
 message HealthCheckRequest {}
 
 message HealthCheckResponse { string status = 1; }
+
+// DashboardOverviewService aggregates cross-entity metrics for the Admin
+// Dashboard overview page, served by the Transactions service.
+service DashboardOverviewService {
+  // GetOverviewSnapshot returns all information rendered by the Overview
+  // page for the requested period.
+  rpc GetOverviewSnapshot(GetOverviewSnapshotRequest)
+      returns (GetOverviewSnapshotResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/overview/snapshot"
+    };
+  }
+}
+
+// GetOverviewSnapshotRequest requests the overview snapshot for a period.
+message GetOverviewSnapshotRequest {
+  // period is one of: 7d, 30d, 90d, ytd.
+  string period = 1;
+}
+
+// RevenueBucket is a single revenue-over-time aggregation bucket.
+message RevenueBucket {
+  // period_label is the human-readable bucket label (e.g. "Week 1").
+  string period_label = 1;
+  // revenue is the whole-currency revenue for the bucket.
+  int64 revenue = 2;
+}
+
+// OverviewPayoutRow is a single recent-payout entry for the overview page.
+message OverviewPayoutRow {
+  // sub_account is the display name of the sub-account paid out.
+  string sub_account = 1;
+  // amount is the human-readable payout amount.
+  string amount = 2;
+  // status is one of Paid | Processing | Failed.
+  string status = 3;
+  // date is the human-readable payout date.
+  string date = 4;
+}
+
+// GetOverviewSnapshotResponse carries the overview page data.
+message GetOverviewSnapshotResponse {
+  // total_revenue is the revenue over the whole period (minor units).
+  int64 total_revenue = 1;
+  // revenue_currency is the ISO-4217 currency code for monetary values.
+  string revenue_currency = 2;
+  // transaction_volume is the number of deposits over the period.
+  int64 transaction_volume = 3;
+  // active_sub_accounts is NOT currently populated (requires Clients-owned
+  // tenancy data); left at 0 and documented in dashboard-setup.md.
+  int64 active_sub_accounts = 4;
+  // pending_payouts is the count of payouts not yet completed.
+  int64 pending_payouts = 5;
+  // needs_attention is NOT currently populated (dispute tracking is not a
+  // current concept); left empty and documented in dashboard-setup.md.
+  repeated string needs_attention = 6;
+  // revenue_over_time is the bucketed revenue series.
+  repeated RevenueBucket revenue_over_time = 7;
+  // recent_payouts are the most recent payouts.
+  repeated OverviewPayoutRow recent_payouts = 8;
+}
+
+// GetPayoutOverviewStatsRequest requests the payout overview metrics.
+message GetPayoutOverviewStatsRequest {}
+
+// PayoutStat is a single payout overview metric card.
+message PayoutStat {
+  // label is the human-readable metric label.
+  string label = 1;
+  // value is the human-readable metric value.
+  string value = 2;
+  // meta is a secondary descriptive line.
+  string meta = 3;
+}
+
+// GetPayoutOverviewStatsResponse carries the payout overview metric cards.
+message GetPayoutOverviewStatsResponse {
+  repeated PayoutStat stats = 1;
+}
+
+// ListPayoutsRequest requests a paginated payout list.
+message ListPayoutsRequest {
+  // search filters by destination reference (case-insensitive).
+  string search = 1;
+  // status filters by payout status. Empty means all.
+  string status = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// PayoutListRow is a single row of the payout list.
+message PayoutListRow {
+  // id is the stable payout identifier.
+  string id = 1;
+  // initials are derived from the destination reference.
+  string initials = 2;
+  // name is the display name (destination reference).
+  string name = 3;
+  // amount is the human-readable payout amount.
+  string amount = 4;
+  // status is the payout status.
+  string status = 5;
+  // initiated is the human-readable initiation time.
+  string initiated = 6;
+  // expected_or_cleared is the expected/cleared time, if any.
+  string expected_or_cleared = 7;
+  // expected_or_cleared_strong renders the time emphatically when true.
+  bool expected_or_cleared_strong = 8;
+}
+
+// ListPayoutsResponse carries a page of payouts.
+message ListPayoutsResponse {
+  repeated PayoutListRow rows = 1;
+  // total is the total number of payouts matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
 
 service HealthService {
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {

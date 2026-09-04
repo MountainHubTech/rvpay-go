@@ -357,6 +357,73 @@ service ClientsService {
       body : "*"
     };
   }
+
+  // ListSubAccounts lists client/sub-account records for the Admin Dashboard
+  // sub-accounts page. balance/last_payout_date/total_processed are not
+  // populated here: they require Transactions-owned data the Clients service
+  // cannot read directly. They are documented in dashboard-setup.md as
+  // cross-service gaps until a cross-service capability is wired up.
+  rpc ListSubAccounts(ListSubAccountsRequest) returns (ListSubAccountsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/sub-accounts"
+    };
+  }
+}
+
+// SubAccountStatus enumerates the lifecycle states a sub-account can show in
+// the dashboard. It mirrors commongrpc.ClientStatus labels for wire display.
+enum SubAccountStatus {
+  SUB_ACCOUNT_STATUS_UNSPECIFIED = 0;
+  SUB_ACCOUNT_STATUS_ACTIVE = 1;
+  SUB_ACCOUNT_STATUS_RESTRICTED = 2;
+  SUB_ACCOUNT_STATUS_INACTIVE = 3;
+}
+
+// ListSubAccountsRequest requests a paginated sub-account list.
+message ListSubAccountsRequest {
+  // search filters by name or location (external account id).
+  string search = 1;
+  // status filters by lifecycle status. Empty means all.
+  string status = 2;
+  // sort is the sort field. Supported: dateJoined, name.
+  string sort = 3;
+  // order is asc or desc.
+  string order = 4;
+  // page is the 1-based page number.
+  int32 page = 5;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 6;
+}
+
+// SubAccountRow is a single sub-account row.
+message SubAccountRow {
+  // id is the client identifier.
+  string id = 1;
+  // name is the display name (client_name).
+  string name = 2;
+  // location is the external account id (e.g. HighLevel locationId).
+  string location = 3;
+  // initials are derived from the name.
+  string initials = 4;
+  // status is the lifecycle status.
+  SubAccountStatus status = 5;
+  // balance is NOT populated (cross-service gap); empty string.
+  string balance = 6;
+  // last_payout_date is NOT populated (cross-service gap); empty string.
+  string last_payout_date = 7;
+  // total_processed is NOT populated (cross-service gap); empty string.
+  string total_processed = 8;
+}
+
+// ListSubAccountsResponse carries a page of sub-accounts.
+message ListSubAccountsResponse {
+  repeated SubAccountRow rows = 1;
+  // total is the total number of sub-accounts matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
 }
 
 // PlatformsService manages supported marketplace platforms.
