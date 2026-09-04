@@ -444,6 +444,20 @@ const chargeId = paymentContext.chargeId;
     return currency === "FCFA" ? "XAF" : currency.toUpperCase();
   }
 
+  // Shipping addresses arrive as a free-form Record; collapse them into a
+  // single human-readable address string for customer persistence. Returns an
+  // empty string when no usable address component is present so the backend
+  // can persist NULL instead of a fabricated value.
+  function shippingAddressToText(address: Record<string, unknown> | undefined): string {
+    if (!address) {
+      return "";
+    }
+    const parts = Object.values(address)
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter((value) => value !== "");
+    return parts.join(", ");
+  }
+
   // Initiate the payment through the EXISTING Transactions-service endpoint:
   // POST /v1/public/deposits (CreateDepositRequest contract). The identifier
   // mapping is the HighLevel payment-context contract:
@@ -493,6 +507,16 @@ const chargeId = paymentContext.chargeId;
       customerId: initiateProps.contact.id,
       merchantId: `${country.dialCode}${phone}`,
       ghlTransactionId: transactionId,
+      // Customer information: persisted in the customers table and associated
+      // with client_name = highlevel-<locationId>. Only fields actually
+      // present in the HighLevel payment context are sent; absent fields are
+      // omitted so the backend persists them as NULL rather than fabricating
+      // empty values.
+      customer: {
+        name: initiateProps.contact.name ?? "",
+        phoneNumber: `${country.dialCode}${phone}`,
+        address: shippingAddressToText(initiateProps.contact.shippingAddress),
+      },
       amount: {
         amount: amount.toFixed(2),
         currency: currencyToApi(country.currency),

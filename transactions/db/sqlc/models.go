@@ -273,12 +273,14 @@ func (ns NullPayoutStatus) Value() (driver.Value, error) {
 
 type Customer struct {
 	ID          uuid.UUID      `json:"id"`
-	ClientID    uuid.UUID      `json:"client_id"`
-	MerchantID  uuid.UUID      `json:"merchant_id"`
+	ClientName  string         `json:"client_name"`
+	MerchantID  pgtype.UUID    `json:"merchant_id"`
 	PhoneNumber string         `json:"phone_number"`
 	Status      CustomerStatus `json:"status"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
+	Name        *string        `json:"name"`
+	Address     *string        `json:"address"`
 }
 
 type Deposit struct {

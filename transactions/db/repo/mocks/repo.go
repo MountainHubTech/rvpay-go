@@ -213,33 +213,48 @@ func (m *MockCustomerRepo) EXPECT() *MockCustomerRepoMockRecorder {
 }
 
 // Create mocks base method.
-func (m *MockCustomerRepo) Create(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string, status sqlc.CustomerStatus) (sqlc.Customer, error) {
+func (m *MockCustomerRepo) Create(ctx context.Context, clientName string, merchantID *uuid.UUID, phoneNumber string, name, address *string, status sqlc.CustomerStatus) (sqlc.Customer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, clientID, merchantID, phoneNumber, status)
+	ret := m.ctrl.Call(m, "Create", ctx, clientName, merchantID, phoneNumber, name, address, status)
 	ret0, _ := ret[0].(sqlc.Customer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockCustomerRepoMockRecorder) Create(ctx, clientID, merchantID, phoneNumber, status any) *gomock.Call {
+func (mr *MockCustomerRepoMockRecorder) Create(ctx, clientName, merchantID, phoneNumber, name, address, status any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCustomerRepo)(nil).Create), ctx, clientID, merchantID, phoneNumber, status)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockCustomerRepo)(nil).Create), ctx, clientName, merchantID, phoneNumber, name, address, status)
 }
 
 // GetByClientAndMerchantAndPhone mocks base method.
-func (m *MockCustomerRepo) GetByClientAndMerchantAndPhone(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error) {
+func (m *MockCustomerRepo) GetByClientAndMerchantAndPhone(ctx context.Context, clientName string, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByClientAndMerchantAndPhone", ctx, clientID, merchantID, phoneNumber)
+	ret := m.ctrl.Call(m, "GetByClientAndMerchantAndPhone", ctx, clientName, merchantID, phoneNumber)
 	ret0, _ := ret[0].(sqlc.Customer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetByClientAndMerchantAndPhone indicates an expected call of GetByClientAndMerchantAndPhone.
-func (mr *MockCustomerRepoMockRecorder) GetByClientAndMerchantAndPhone(ctx, clientID, merchantID, phoneNumber any) *gomock.Call {
+func (mr *MockCustomerRepoMockRecorder) GetByClientAndMerchantAndPhone(ctx, clientName, merchantID, phoneNumber any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByClientAndMerchantAndPhone", reflect.TypeOf((*MockCustomerRepo)(nil).GetByClientAndMerchantAndPhone), ctx, clientID, merchantID, phoneNumber)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByClientAndMerchantAndPhone", reflect.TypeOf((*MockCustomerRepo)(nil).GetByClientAndMerchantAndPhone), ctx, clientName, merchantID, phoneNumber)
+}
+
+// GetByClientNameAndPhone mocks base method.
+func (m *MockCustomerRepo) GetByClientNameAndPhone(ctx context.Context, clientName, phoneNumber string) (sqlc.Customer, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByClientNameAndPhone", ctx, clientName, phoneNumber)
+	ret0, _ := ret[0].(sqlc.Customer)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByClientNameAndPhone indicates an expected call of GetByClientNameAndPhone.
+func (mr *MockCustomerRepoMockRecorder) GetByClientNameAndPhone(ctx, clientName, phoneNumber any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByClientNameAndPhone", reflect.TypeOf((*MockCustomerRepo)(nil).GetByClientNameAndPhone), ctx, clientName, phoneNumber)
 }
 
 // GetByID mocks base method.
@@ -257,19 +272,19 @@ func (mr *MockCustomerRepoMockRecorder) GetByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByID", reflect.TypeOf((*MockCustomerRepo)(nil).GetByID), ctx, id)
 }
 
-// ListByClient mocks base method.
-func (m *MockCustomerRepo) ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Customer, error) {
+// ListByClientName mocks base method.
+func (m *MockCustomerRepo) ListByClientName(ctx context.Context, clientName string) ([]sqlc.Customer, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListByClient", ctx, clientID)
+	ret := m.ctrl.Call(m, "ListByClientName", ctx, clientName)
 	ret0, _ := ret[0].([]sqlc.Customer)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListByClient indicates an expected call of ListByClient.
-func (mr *MockCustomerRepoMockRecorder) ListByClient(ctx, clientID any) *gomock.Call {
+// ListByClientName indicates an expected call of ListByClientName.
+func (mr *MockCustomerRepoMockRecorder) ListByClientName(ctx, clientName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByClient", reflect.TypeOf((*MockCustomerRepo)(nil).ListByClient), ctx, clientID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListByClientName", reflect.TypeOf((*MockCustomerRepo)(nil).ListByClientName), ctx, clientName)
 }
 
 // ListByMerchant mocks base method.

@@ -24,9 +24,6 @@ sql:
           nullable: false
           go_type: "time.Time"
         - db_type: "uuid"
-          nullable: true
-          go_type: "github.com/google/uuid.UUID"
-        - db_type: "uuid"
           nullable: false
           go_type: "github.com/google/uuid.UUID"
         - db_type: "text"

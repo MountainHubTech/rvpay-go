@@ -9,69 +9,106 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createCustomer = `-- name: CreateCustomer :one
-INSERT INTO customers (client_id, merchant_id, phone_number, status)
-VALUES ($1, $2, $3, $4)
-RETURNING id, client_id, merchant_id, phone_number, status, created_at, updated_at
+INSERT INTO customers (client_name, merchant_id, phone_number, name, address, status)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (client_name, phone_number) DO NOTHING
+RETURNING id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address
 `
 
 type CreateCustomerParams struct {
-	ClientID    uuid.UUID      `json:"client_id"`
-	MerchantID  uuid.UUID      `json:"merchant_id"`
+	ClientName  string         `json:"client_name"`
+	MerchantID  pgtype.UUID    `json:"merchant_id"`
 	PhoneNumber string         `json:"phone_number"`
+	Name        *string        `json:"name"`
+	Address     *string        `json:"address"`
 	Status      CustomerStatus `json:"status"`
 }
 
 func (q *Queries) CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error) {
 	row := q.db.QueryRow(ctx, createCustomer,
-		arg.ClientID,
+		arg.ClientName,
 		arg.MerchantID,
 		arg.PhoneNumber,
+		arg.Name,
+		arg.Address,
 		arg.Status,
 	)
 	var i Customer
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.MerchantID,
 		&i.PhoneNumber,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.Address,
 	)
 	return i, err
 }
 
 const getCustomerByClientAndMerchantAndPhone = `-- name: GetCustomerByClientAndMerchantAndPhone :one
-SELECT id, client_id, merchant_id, phone_number, status, created_at, updated_at FROM customers
-WHERE client_id = $1 AND merchant_id = $2 AND phone_number = $3
+SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers
+WHERE client_name = $1 AND merchant_id = $2 AND phone_number = $3
 `
 
 type GetCustomerByClientAndMerchantAndPhoneParams struct {
-	ClientID    uuid.UUID `json:"client_id"`
-	MerchantID  uuid.UUID `json:"merchant_id"`
-	PhoneNumber string    `json:"phone_number"`
+	ClientName  string      `json:"client_name"`
+	MerchantID  pgtype.UUID `json:"merchant_id"`
+	PhoneNumber string      `json:"phone_number"`
 }
 
 func (q *Queries) GetCustomerByClientAndMerchantAndPhone(ctx context.Context, arg GetCustomerByClientAndMerchantAndPhoneParams) (Customer, error) {
-	row := q.db.QueryRow(ctx, getCustomerByClientAndMerchantAndPhone, arg.ClientID, arg.MerchantID, arg.PhoneNumber)
+	row := q.db.QueryRow(ctx, getCustomerByClientAndMerchantAndPhone, arg.ClientName, arg.MerchantID, arg.PhoneNumber)
 	var i Customer
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.MerchantID,
 		&i.PhoneNumber,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.Address,
+	)
+	return i, err
+}
+
+const getCustomerByClientNameAndPhone = `-- name: GetCustomerByClientNameAndPhone :one
+SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers
+WHERE client_name = $1 AND phone_number = $2
+`
+
+type GetCustomerByClientNameAndPhoneParams struct {
+	ClientName  string `json:"client_name"`
+	PhoneNumber string `json:"phone_number"`
+}
+
+func (q *Queries) GetCustomerByClientNameAndPhone(ctx context.Context, arg GetCustomerByClientNameAndPhoneParams) (Customer, error) {
+	row := q.db.QueryRow(ctx, getCustomerByClientNameAndPhone, arg.ClientName, arg.PhoneNumber)
+	var i Customer
+	err := row.Scan(
+		&i.ID,
+		&i.ClientName,
+		&i.MerchantID,
+		&i.PhoneNumber,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+		&i.Address,
 	)
 	return i, err
 }
 
 const getCustomerByID = `-- name: GetCustomerByID :one
-SELECT id, client_id, merchant_id, phone_number, status, created_at, updated_at FROM customers WHERE id = $1
+SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers WHERE id = $1
 `
 
 func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error) {
@@ -79,24 +116,26 @@ func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, 
 	var i Customer
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.MerchantID,
 		&i.PhoneNumber,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.Address,
 	)
 	return i, err
 }
 
-const listCustomersByClient = `-- name: ListCustomersByClient :many
-SELECT id, client_id, merchant_id, phone_number, status, created_at, updated_at FROM customers
-WHERE client_id = $1
+const listCustomersByClientName = `-- name: ListCustomersByClientName :many
+SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers
+WHERE client_name = $1
 ORDER BY created_at
 `
 
-func (q *Queries) ListCustomersByClient(ctx context.Context, clientID uuid.UUID) ([]Customer, error) {
-	rows, err := q.db.Query(ctx, listCustomersByClient, clientID)
+func (q *Queries) ListCustomersByClientName(ctx context.Context, clientName string) ([]Customer, error) {
+	rows, err := q.db.Query(ctx, listCustomersByClientName, clientName)
 	if err != nil {
 		return nil, err
 	}
@@ -106,12 +145,14 @@ func (q *Queries) ListCustomersByClient(ctx context.Context, clientID uuid.UUID)
 		var i Customer
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.MerchantID,
 			&i.PhoneNumber,
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Name,
+			&i.Address,
 		); err != nil {
 			return nil, err
 		}
@@ -124,12 +165,12 @@ func (q *Queries) ListCustomersByClient(ctx context.Context, clientID uuid.UUID)
 }
 
 const listCustomersByMerchant = `-- name: ListCustomersByMerchant :many
-SELECT id, client_id, merchant_id, phone_number, status, created_at, updated_at FROM customers
+SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers
 WHERE merchant_id = $1
 ORDER BY created_at
 `
 
-func (q *Queries) ListCustomersByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Customer, error) {
+func (q *Queries) ListCustomersByMerchant(ctx context.Context, merchantID pgtype.UUID) ([]Customer, error) {
 	rows, err := q.db.Query(ctx, listCustomersByMerchant, merchantID)
 	if err != nil {
 		return nil, err
@@ -140,12 +181,14 @@ func (q *Queries) ListCustomersByMerchant(ctx context.Context, merchantID uuid.U
 		var i Customer
 		if err := rows.Scan(
 			&i.ID,
-			&i.ClientID,
+			&i.ClientName,
 			&i.MerchantID,
 			&i.PhoneNumber,
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Name,
+			&i.Address,
 		); err != nil {
 			return nil, err
 		}
@@ -162,7 +205,7 @@ UPDATE customers
 SET status = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_id, merchant_id, phone_number, status, created_at, updated_at
+RETURNING id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address
 `
 
 type UpdateCustomerStatusParams struct {
@@ -175,12 +218,14 @@ func (q *Queries) UpdateCustomerStatus(ctx context.Context, arg UpdateCustomerSt
 	var i Customer
 	err := row.Scan(
 		&i.ID,
-		&i.ClientID,
+		&i.ClientName,
 		&i.MerchantID,
 		&i.PhoneNumber,
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Name,
+		&i.Address,
 	)
 	return i, err
 }

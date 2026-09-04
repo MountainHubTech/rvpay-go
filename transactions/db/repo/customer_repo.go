@@ -5,14 +5,27 @@ import (
 
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+// uuidToPg converts a nullable uuid.UUID to the pgtype.UUID representation
+// used by the generated sqlc code for the nullable customers.merchant_id.
+func uuidToPg(id *uuid.UUID) pgtype.UUID {
+	if id == nil {
+		return pgtype.UUID{}
+	}
+	var bytes [16]byte
+	copy(bytes[:], id[:])
+	return pgtype.UUID{Bytes: bytes, Valid: true}
+}
 
 // CustomerRepo provides persistence operations for customers.
 type CustomerRepo interface {
-	Create(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string, status sqlc.CustomerStatus) (sqlc.Customer, error)
+	Create(ctx context.Context, clientName string, merchantID *uuid.UUID, phoneNumber string, name, address *string, status sqlc.CustomerStatus) (sqlc.Customer, error)
 	GetByID(ctx context.Context, id uuid.UUID) (sqlc.Customer, error)
-	GetByClientAndMerchantAndPhone(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error)
-	ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Customer, error)
+	GetByClientNameAndPhone(ctx context.Context, clientName, phoneNumber string) (sqlc.Customer, error)
+	GetByClientAndMerchantAndPhone(ctx context.Context, clientName string, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error)
+	ListByClientName(ctx context.Context, clientName string) ([]sqlc.Customer, error)
 	ListByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Customer, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.CustomerStatus) (sqlc.Customer, error)
 }
@@ -26,11 +39,13 @@ func NewCustomerRepo(q sqlc.Querier) CustomerRepo {
 	return &customerRepo{q: q}
 }
 
-func (r *customerRepo) Create(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string, status sqlc.CustomerStatus) (sqlc.Customer, error) {
+func (r *customerRepo) Create(ctx context.Context, clientName string, merchantID *uuid.UUID, phoneNumber string, name, address *string, status sqlc.CustomerStatus) (sqlc.Customer, error) {
 	customer, err := r.q.CreateCustomer(ctx, sqlc.CreateCustomerParams{
-		ClientID:    clientID,
-		MerchantID:  merchantID,
+		ClientName:  clientName,
+		MerchantID:  uuidToPg(merchantID),
 		PhoneNumber: phoneNumber,
+		Name:        name,
+		Address:     address,
 		Status:      status,
 	})
 	if err != nil {
@@ -47,10 +62,9 @@ func (r *customerRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Customer
 	return customer, nil
 }
 
-func (r *customerRepo) GetByClientAndMerchantAndPhone(ctx context.Context, clientID, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error) {
-	customer, err := r.q.GetCustomerByClientAndMerchantAndPhone(ctx, sqlc.GetCustomerByClientAndMerchantAndPhoneParams{
-		ClientID:    clientID,
-		MerchantID:  merchantID,
+func (r *customerRepo) GetByClientNameAndPhone(ctx context.Context, clientName, phoneNumber string) (sqlc.Customer, error) {
+	customer, err := r.q.GetCustomerByClientNameAndPhone(ctx, sqlc.GetCustomerByClientNameAndPhoneParams{
+		ClientName:  clientName,
 		PhoneNumber: phoneNumber,
 	})
 	if err != nil {
@@ -59,8 +73,20 @@ func (r *customerRepo) GetByClientAndMerchantAndPhone(ctx context.Context, clien
 	return customer, nil
 }
 
-func (r *customerRepo) ListByClient(ctx context.Context, clientID uuid.UUID) ([]sqlc.Customer, error) {
-	customers, err := r.q.ListCustomersByClient(ctx, clientID)
+func (r *customerRepo) GetByClientAndMerchantAndPhone(ctx context.Context, clientName string, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error) {
+	customer, err := r.q.GetCustomerByClientAndMerchantAndPhone(ctx, sqlc.GetCustomerByClientAndMerchantAndPhoneParams{
+		ClientName:  clientName,
+		MerchantID:  uuidToPg(&merchantID),
+		PhoneNumber: phoneNumber,
+	})
+	if err != nil {
+		return sqlc.Customer{}, wrapNotFound(err)
+	}
+	return customer, nil
+}
+
+func (r *customerRepo) ListByClientName(ctx context.Context, clientName string) ([]sqlc.Customer, error) {
+	customers, err := r.q.ListCustomersByClientName(ctx, clientName)
 	if err != nil {
 		return nil, wrapError(err)
 	}
@@ -68,7 +94,7 @@ func (r *customerRepo) ListByClient(ctx context.Context, clientID uuid.UUID) ([]
 }
 
 func (r *customerRepo) ListByMerchant(ctx context.Context, merchantID uuid.UUID) ([]sqlc.Customer, error) {
-	customers, err := r.q.ListCustomersByMerchant(ctx, merchantID)
+	customers, err := r.q.ListCustomersByMerchant(ctx, uuidToPg(&merchantID))
 	if err != nil {
 		return nil, wrapError(err)
 	}

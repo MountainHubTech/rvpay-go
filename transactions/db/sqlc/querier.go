@@ -8,6 +8,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
@@ -17,6 +18,7 @@ type Querier interface {
 	CreateMerchant(ctx context.Context, arg CreateMerchantParams) (Merchant, error)
 	CreatePayout(ctx context.Context, arg CreatePayoutParams) (Payout, error)
 	GetCustomerByClientAndMerchantAndPhone(ctx context.Context, arg GetCustomerByClientAndMerchantAndPhoneParams) (Customer, error)
+	GetCustomerByClientNameAndPhone(ctx context.Context, arg GetCustomerByClientNameAndPhoneParams) (Customer, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
 	GetDepositByExternalReference(ctx context.Context, externalReference *string) (Deposit, error)
 	GetDepositByGHLChargeID(ctx context.Context, ghlChargeID *string) (Deposit, error)
@@ -28,8 +30,8 @@ type Querier interface {
 	GetPayoutByExternalReference(ctx context.Context, externalReference *string) (Payout, error)
 	GetPayoutByID(ctx context.Context, id uuid.UUID) (Payout, error)
 	GetPayoutByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Payout, error)
-	ListCustomersByClient(ctx context.Context, clientID uuid.UUID) ([]Customer, error)
-	ListCustomersByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Customer, error)
+	ListCustomersByClientName(ctx context.Context, clientName string) ([]Customer, error)
+	ListCustomersByMerchant(ctx context.Context, merchantID pgtype.UUID) ([]Customer, error)
 	ListDepositsByClient(ctx context.Context, clientName string) ([]Deposit, error)
 	ListDepositsByCustomer(ctx context.Context, customerID *string) ([]Deposit, error)
 	ListDepositsByMerchant(ctx context.Context, merchantID *string) ([]Deposit, error)

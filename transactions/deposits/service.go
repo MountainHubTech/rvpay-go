@@ -25,6 +25,7 @@ import (
 type Impl struct {
 	depositRepo      repo.DepositRepo
 	transactionsRepo repo.TransactionsRepo
+	customerRepo     repo.CustomerRepo
 	logger           zerolog.Logger
 	pawapayClient    pawapay_client.Client
 
@@ -35,12 +36,14 @@ type Impl struct {
 func NewDepositService(
 	depositRepo repo.DepositRepo,
 	transactionsRepo repo.TransactionsRepo,
+	customerRepo repo.CustomerRepo,
 	logger zerolog.Logger,
 	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
 		depositRepo:      depositRepo,
 		transactionsRepo: transactionsRepo,
+		customerRepo:     customerRepo,
 		logger:           logger,
 		pawapayClient:    pawapayClient,
 	}
@@ -116,6 +119,23 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		}
 	}()
 
+	// Create (or resolve) the Customer inside the SAME database transaction
+	// as the deposit: Customer + Deposit + PawaPay initiation succeed or
+	// fail together. The customer is scoped by the external client_name and
+	// the customer phone number; no customer is fabricated when the request
+	// carries no customer information.
+	txCustomerRepo := repo.NewCustomerRepo(txQuerier)
+	customerPhone := phoneNumber
+	customerInfo := req.GetCustomer()
+	if customerInfo != nil {
+		if p := strings.TrimSpace(customerInfo.GetPhoneNumber()); p != "" {
+			customerPhone = p
+		}
+		if err := s.resolveOrCreateCustomer(ctx, txCustomerRepo, clientName, customerInfo, customerPhone); err != nil {
+			return nil, err
+		}
+	}
+
 	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New(), ghlTransactionID)
 	if err != nil {
 		switch {
@@ -147,6 +167,70 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 	return &transactionsgrpc.CreateDepositResponse{
 		Deposit: depositToProto(deposit),
 	}, nil
+}
+
+// resolveOrCreateCustomer resolves an existing customer scoped by the
+// external client_name and phone number, or creates one with the supplied
+// name/address. It runs inside the open deposit transaction: any failure
+// aborts the deposit initiation and rolls back the whole transaction. No
+// customer attribute is fabricated: absent name/address are persisted as
+// SQL NULL.
+func (s *Impl) resolveOrCreateCustomer(ctx context.Context, customerRepo repo.CustomerRepo, clientName string, customerInfo *transactionsgrpc.Customer, phoneNumber string) error {
+	if phoneNumber == "" {
+		return status.Error(codes.InvalidArgument, "customer phone_number is required")
+	}
+
+	existing, err := customerRepo.GetByClientNameAndPhone(ctx, clientName, phoneNumber)
+	switch {
+	case err == nil:
+		s.logger.Info().Str("customer_id", existing.ID.String()).Str("client_name", clientName).Msg("existing customer resolved for deposit")
+		return nil
+	case errors.Is(err, repo.ErrNotFound):
+		// fall through to creation
+	default:
+		s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not look up customer")
+		return status.Error(codes.Internal, "could not resolve customer")
+	}
+
+	created, err := customerRepo.Create(
+		ctx,
+		clientName,
+		nil,
+		phoneNumber,
+		textPtrOrNull(strings.TrimSpace(customerInfo.GetName())),
+		textPtrOrNull(strings.TrimSpace(customerInfo.GetAddress())),
+		sqlc.CustomerStatusCREATED,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, repo.ErrDuplicate):
+			// A concurrent request created the same customer; reuse is safe.
+			existing, getErr := customerRepo.GetByClientNameAndPhone(ctx, clientName, phoneNumber)
+			if getErr != nil {
+				s.logger.Error().Err(getErr).Str("client_name", clientName).Msg("could not re-read customer after duplicate create")
+				return status.Error(codes.Internal, "could not resolve customer")
+			}
+			s.logger.Info().Str("customer_id", existing.ID.String()).Str("client_name", clientName).Msg("customer created concurrently; resolved for deposit")
+			return nil
+		case errors.Is(err, repo.ErrConstraint):
+			return status.Error(codes.FailedPrecondition, "customer reference constraint violated")
+		default:
+			s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not create customer")
+			return status.Error(codes.Internal, "could not create customer")
+		}
+	}
+
+	s.logger.Info().Str("customer_id", created.ID.String()).Str("client_name", clientName).Msg("customer created for deposit")
+	return nil
+}
+
+// textPtrOrNull maps an empty string to nil so absent customer attributes are
+// persisted as SQL NULL rather than empty text.
+func textPtrOrNull(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 // initiatePawapayDeposit calls the PawaPay V2 Initiate Deposit operation.

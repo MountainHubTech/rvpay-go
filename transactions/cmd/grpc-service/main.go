@@ -109,7 +109,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 
 	merchantService := merchants.NewMerchantService(merchantRepo, logger)
 	customerService := customers.NewCustomerService(customerRepo, logger)
-	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, logger, *pawapayClient)
+	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, customerRepo, logger, *pawapayClient)
 	paymentService := payments.NewPaymentService(depositRepo, logger)
 	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
 	healthCheck := health_check.NewHealthService(logger)

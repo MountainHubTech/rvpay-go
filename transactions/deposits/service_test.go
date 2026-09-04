@@ -56,7 +56,13 @@ func beginTx(ctrl *gomock.Controller, tx *fakeTx) (*sqlcmocks.MockQuerier, *repo
 }
 
 func newTestService(depositRepo repo.DepositRepo, txRepo repo.TransactionsRepo, client pawapay_client.Client) *Impl {
-	return NewDepositService(depositRepo, txRepo, zerolog.Nop(), client)
+	return newTestServiceWithCustomers(depositRepo, txRepo, nil, client)
+}
+
+// newTestServiceWithCustomers allows tests to inject a customer repo so the
+// transactional customer step can be exercised and verified.
+func newTestServiceWithCustomers(depositRepo repo.DepositRepo, txRepo repo.TransactionsRepo, customerRepo repo.CustomerRepo, client pawapay_client.Client) *Impl {
+	return NewDepositService(depositRepo, txRepo, customerRepo, zerolog.Nop(), client)
 }
 
 func validCreateRequest() *transactionsgrpc.CreateDepositRequest {

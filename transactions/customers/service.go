@@ -39,14 +39,22 @@ func (s *Impl) CreateCustomer(ctx context.Context, req *transactionsgrpc.CreateC
 		return nil, status.Error(codes.InvalidArgument, "customer request is required")
 	}
 
-	clientID, err := uuid.Parse(req.GetClientId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "client_id must be a valid UUID")
+	// client_name is the external RVPay client name (e.g.
+	// "highlevel-<locationId>"); it is NOT parsed as a UUID.
+	clientName := strings.TrimSpace(req.GetClientName())
+	if clientName == "" {
+		return nil, status.Error(codes.InvalidArgument, "client_name is required")
 	}
 
-	merchantID, err := uuid.Parse(req.GetMerchantId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "merchant_id must be a valid UUID")
+	// merchant_id is an internal RVPay merchant UUID. It is optional: the
+	// external payment flow creates customers without a merchant reference.
+	merchantID := uuid.UUID{}
+	if merchantRaw := strings.TrimSpace(req.GetMerchantId()); merchantRaw != "" {
+		parsed, err := uuid.Parse(merchantRaw)
+		if err != nil {
+			return nil, status.Error(codes.InvalidArgument, "merchant_id must be a valid UUID")
+		}
+		merchantID = parsed
 	}
 
 	phoneNumber := strings.TrimSpace(req.GetPhoneNumber())
@@ -54,10 +62,13 @@ func (s *Impl) CreateCustomer(ctx context.Context, req *transactionsgrpc.CreateC
 		return nil, status.Error(codes.InvalidArgument, "phone_number is required")
 	}
 
+	name := textPtr(strings.TrimSpace(req.GetName()))
+	address := textPtr(strings.TrimSpace(req.GetAddress()))
+
 	// A newly created customer begins in the CREATED lifecycle state.
 	// Merchant existence is enforced by the database foreign key; no
 	// cross-service merchant call is required.
-	customer, err := s.customerRepo.Create(ctx, clientID, merchantID, phoneNumber, sqlc.CustomerStatusCREATED)
+	customer, err := s.customerRepo.Create(ctx, clientName, merchantIDPtr(merchantID), phoneNumber, name, address, sqlc.CustomerStatusCREATED)
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):
@@ -65,16 +76,34 @@ func (s *Impl) CreateCustomer(ctx context.Context, req *transactionsgrpc.CreateC
 		case errors.Is(err, repo.ErrConstraint):
 			return nil, status.Error(codes.NotFound, "referenced merchant not found")
 		default:
-			s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("merchant_id", merchantID.String()).Msg("could not create customer")
+			s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not create customer")
 			return nil, status.Error(codes.Internal, "could not create customer")
 		}
 	}
 
-	s.logger.Info().Str("customer_id", customer.ID.String()).Str("merchant_id", merchantID.String()).Msg("customer created")
+	s.logger.Info().Str("customer_id", customer.ID.String()).Str("client_name", clientName).Msg("customer created")
 
 	return &transactionsgrpc.CreateCustomerResponse{
 		Customer: customerToProto(customer),
 	}, nil
+}
+
+// textPtr maps an empty external string to SQL NULL so absent customer
+// attributes are preserved as NULL in persistence.
+func textPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// merchantIDPtr maps the zero UUID to nil so an absent merchant reference is
+// persisted as SQL NULL.
+func merchantIDPtr(id uuid.UUID) *uuid.UUID {
+	if id == (uuid.UUID{}) {
+		return nil
+	}
+	return &id
 }
 
 // GetCustomer fetches a customer by id.

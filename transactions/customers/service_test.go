@@ -10,6 +10,7 @@ import (
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo/mocks"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
@@ -25,9 +26,9 @@ func TestCreateCustomer(t *testing.T) {
 		code codes.Code
 	}{
 		{name: "missing request", code: codes.InvalidArgument},
-		{name: "invalid client id", req: &transactionsgrpc.CreateCustomerRequest{ClientId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "invalid merchant id", req: &transactionsgrpc.CreateCustomerRequest{ClientId: uuid.New().String(), MerchantId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "empty phone number", req: &transactionsgrpc.CreateCustomerRequest{ClientId: uuid.New().String(), MerchantId: uuid.New().String(), PhoneNumber: ""}, code: codes.InvalidArgument},
+		{name: "missing client name", req: &transactionsgrpc.CreateCustomerRequest{ClientName: "  "}, code: codes.InvalidArgument},
+		{name: "invalid merchant id", req: &transactionsgrpc.CreateCustomerRequest{ClientName: "highlevel-abc", MerchantId: "not-a-uuid"}, code: codes.InvalidArgument},
+		{name: "empty phone number", req: &transactionsgrpc.CreateCustomerRequest{ClientName: "highlevel-abc", MerchantId: uuid.New().String(), PhoneNumber: ""}, code: codes.InvalidArgument},
 	}
 
 	for _, tt := range tests {
@@ -57,23 +58,30 @@ func TestCreateCustomerSuccess(t *testing.T) {
 	customerRepo := mocks.NewMockCustomerRepo(ctrl)
 	service := NewCustomerService(customerRepo, zerolog.Nop())
 
-	clientID := uuid.New()
 	merchantID := uuid.New()
-	customerRepo.EXPECT().Create(gomock.Any(), clientID, merchantID, "+237600000000", sqlc.CustomerStatusCREATED).
-		Return(sqlc.Customer{
-			ID:          uuid.New(),
-			ClientID:    clientID,
-			MerchantID:  merchantID,
-			PhoneNumber: "+237600000000",
-		}, nil)
+	var gotClientName, gotPhone string
+	customerRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.CustomerStatusCREATED).
+		DoAndReturn(func(_ context.Context, clientName string, _ *uuid.UUID, phoneNumber string, _, _ *string, _ sqlc.CustomerStatus) (sqlc.Customer, error) {
+			gotClientName = clientName
+			gotPhone = phoneNumber
+			return sqlc.Customer{
+				ID:          uuid.New(),
+				ClientName:  clientName,
+				MerchantID:  pgtype.UUID{Bytes: merchantID, Valid: true},
+				PhoneNumber: phoneNumber,
+			}, nil
+		})
 
 	resp, err := service.CreateCustomer(context.Background(), &transactionsgrpc.CreateCustomerRequest{
-		ClientId:    clientID.String(),
+		ClientName:  "highlevel-abc",
 		MerchantId:  merchantID.String(),
 		PhoneNumber: "+237600000000",
 	})
 	if err != nil {
 		t.Fatalf("CreateCustomer failed: %v", err)
+	}
+	if gotClientName != "highlevel-abc" || gotPhone != "+237600000000" {
+		t.Fatalf("create args = (%q, %q), want (highlevel-abc, +237600000000)", gotClientName, gotPhone)
 	}
 	if resp.Customer.MerchantId != merchantID.String() {
 		t.Fatalf("merchant id = %s, want %s", resp.Customer.MerchantId, merchantID.String())
@@ -89,11 +97,11 @@ func TestCreateCustomerDuplicate(t *testing.T) {
 	customerRepo := mocks.NewMockCustomerRepo(ctrl)
 	service := NewCustomerService(customerRepo, zerolog.Nop())
 
-	customerRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.CustomerStatusCREATED).
+	customerRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.CustomerStatusCREATED).
 		Return(sqlc.Customer{}, repo.ErrDuplicate)
 
 	_, err := service.CreateCustomer(context.Background(), &transactionsgrpc.CreateCustomerRequest{
-		ClientId:    uuid.New().String(),
+		ClientName:  "highlevel-abc",
 		MerchantId:  uuid.New().String(),
 		PhoneNumber: "+237600000000",
 	})
@@ -111,11 +119,11 @@ func TestCreateCustomerMerchantNotFound(t *testing.T) {
 	customerRepo := mocks.NewMockCustomerRepo(ctrl)
 	service := NewCustomerService(customerRepo, zerolog.Nop())
 
-	customerRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.CustomerStatusCREATED).
+	customerRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), sqlc.CustomerStatusCREATED).
 		Return(sqlc.Customer{}, repo.ErrConstraint)
 
 	_, err := service.CreateCustomer(context.Background(), &transactionsgrpc.CreateCustomerRequest{
-		ClientId:    uuid.New().String(),
+		ClientName:  "highlevel-abc",
 		MerchantId:  uuid.New().String(),
 		PhoneNumber: "+237600000000",
 	})
@@ -137,8 +145,8 @@ func TestGetCustomer(t *testing.T) {
 	customerRepo.EXPECT().GetByID(gomock.Any(), customerID).
 		Return(sqlc.Customer{
 			ID:          customerID,
-			ClientID:    uuid.New(),
-			MerchantID:  uuid.New(),
+			ClientName:  "highlevel-abc",
+			MerchantID:  pgtype.UUID{Bytes: uuid.New(), Valid: true},
 			PhoneNumber: "+237600000000",
 		}, nil)
 
