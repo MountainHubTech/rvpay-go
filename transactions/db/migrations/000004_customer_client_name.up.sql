@@ -31,7 +31,11 @@ ALTER TABLE customers
 
 CREATE INDEX idx_customers_client_name ON customers (client_name);
 
-CREATE INDEX idx_customers_merchant_id ON customers (merchant_id);
+-- idx_customers_merchant_id already exists from 000001 (it is not affected by
+-- the client_id rename or the merchant_id nullability change), so recreate it
+-- idempotently rather than failing on the pre-existing index.
+CREATE INDEX IF NOT EXISTS idx_customers_merchant_id
+    ON customers (merchant_id);
 
 CREATE UNIQUE INDEX uq_customer_client_name_phone
     ON customers (client_name, phone_number);
