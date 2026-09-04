@@ -8,4 +8,11 @@
 - [x] gofmt PASS; go build ./clients/... PASS; go test ./clients/... PASS; go vet ./clients/... PASS; go test ./... PASS
 - [x] Diff scope clean (only clients/providers/highlevel.go + clients/oauth/service_test.go)
 
+## Stage: Server-Connection Mapping Agent — COMPLETE (2026-09-04)
+- [x] directives: agents/server-connection.md consumed in full; dashboard/fetches vs proto contracts verified
+- [x] Mapping: only 2 live requests (POST /v1/public/deposits, GET /v1/public/payments/verify) — both MATCH; 0 dashboard code changes
+- [x] Appends: admindashboard/.clinecheck.md, admindashboard/.project-checkpoint.md, clients/.clinecheck.md, clients/.service-checkpoint.md, transactions/.clinecheck.md, transactions/.service-checkpoint.md
+- [x] go vet + go test ./clients/... ./transactions/... PASS; npm lint env-blocked (incomplete node_modules, pre-existing)
+- [x] Delegated (not implemented): overview snapshot, payouts stats/list (Transactions); sub-accounts list/create (Clients); /me blocked on auth decision
+
 ## Next: Fresh real GHL Marketplace installation test against deployed service
