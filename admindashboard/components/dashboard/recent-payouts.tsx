@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { recentPayouts, type PayoutStatus } from "@/lib/dashboard-data"
+import { type DashboardSnapshot, type PayoutStatus } from "@/lib/dashboard-data"
 
 const statusStyles: Record<PayoutStatus, string> = {
   Paid: "bg-emerald-100 text-emerald-700",
@@ -19,7 +19,7 @@ const statusStyles: Record<PayoutStatus, string> = {
   Failed: "bg-rose-100 text-rose-700",
 }
 
-export function RecentPayouts() {
+export function RecentPayouts({ payouts }: { payouts: DashboardSnapshot["recentPayouts"] }) {
   return (
     <Card>
       <CardHeader>
@@ -45,7 +45,7 @@ export function RecentPayouts() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {recentPayouts.map((payout) => (
+            {payouts.map((payout) => (
               <TableRow key={payout.subAccount}>
                 <TableCell className="font-medium">
                   {payout.subAccount}

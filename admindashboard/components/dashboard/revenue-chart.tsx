@@ -16,7 +16,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart"
-import { revenueOverTime } from "@/lib/dashboard-data"
+import { type DashboardSnapshot } from "@/lib/dashboard-data"
 
 const chartConfig = {
   revenue: {
@@ -34,7 +34,7 @@ const barShades = [
   "#262626",
 ]
 
-export function RevenueChart() {
+export function RevenueChart({ data }: { data: DashboardSnapshot["revenueOverTime"] }) {
   return (
     <Card className="h-full">
       <CardHeader>
@@ -51,7 +51,7 @@ export function RevenueChart() {
       </CardHeader>
       <CardContent>
         <ChartContainer config={chartConfig} className="h-64 w-full">
-          <BarChart data={revenueOverTime} barCategoryGap="24%">
+          <BarChart data={data} barCategoryGap="24%">
             <CartesianGrid vertical={false} stroke="var(--border)" />
             <XAxis
               dataKey="period"
@@ -62,7 +62,7 @@ export function RevenueChart() {
             />
             <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
             <Bar dataKey="revenue" radius={6}>
-              {revenueOverTime.map((entry, index) => (
+              {data.map((entry, index) => (
                 <Cell key={entry.period} fill={barShades[index % barShades.length]} />
               ))}
             </Bar>
