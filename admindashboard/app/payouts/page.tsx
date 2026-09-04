@@ -1,6 +1,7 @@
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { PayoutsOverview } from "@/components/dashboard/payouts-overview"
 import { Topbar } from "@/components/dashboard/topbar"
+import { payoutOverviewRows } from "@/lib/dashboard-data"
 
 export default function PayoutsPage() {
   return (
@@ -11,7 +12,7 @@ export default function PayoutsPage() {
         <Topbar />
 
         <main className="flex-1 bg-muted/30 p-6">
-          <PayoutsOverview />
+          <PayoutsOverview rows={payoutOverviewRows} />
         </main>
       </div>
     </div>

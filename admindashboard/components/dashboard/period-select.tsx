@@ -1,6 +1,5 @@
 "use client"
 
-import { useState } from "react"
 import { ChevronDown } from "lucide-react"
 
 import {
@@ -9,21 +8,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { type DashboardPeriod } from "@/lib/dashboard-data"
 
-const periods = ["Last 7 Days", "Last 30 Days", "Last 90 Days", "This Year"]
+const periods: DashboardPeriod[] = ["Last 7 Days", "Last 30 Days", "Last 90 Days", "This Year"]
 
-export function PeriodSelect() {
-  const [period, setPeriod] = useState(periods[0])
+export function PeriodSelect({ value, onChange }: { value: DashboardPeriod; onChange: (period: DashboardPeriod) => void }) {
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium hover:bg-muted">
-        {period}
+        {value}
         <ChevronDown className="size-4 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         {periods.map((option) => (
-          <DropdownMenuItem key={option} onClick={() => setPeriod(option)}>
+          <DropdownMenuItem key={option} onClick={() => onChange(option)}>
             {option}
           </DropdownMenuItem>
         ))}

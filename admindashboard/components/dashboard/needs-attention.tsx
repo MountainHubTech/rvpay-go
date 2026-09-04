@@ -3,7 +3,7 @@ import { AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import { needsAttention, type AttentionSeverity } from "@/lib/dashboard-data"
+import { type AttentionItem, type AttentionSeverity } from "@/lib/dashboard-data"
 
 const severityStyles: Record<
   AttentionSeverity,
@@ -19,7 +19,7 @@ const severityStyles: Record<
   },
 }
 
-export function NeedsAttention() {
+export function NeedsAttention({ items }: { items: AttentionItem[] }) {
   return (
     <Card className="h-full border-l-4 border-l-rose-400">
       <CardHeader>
@@ -28,11 +28,11 @@ export function NeedsAttention() {
             <AlertTriangle className="size-4 text-rose-500" />
             Needs Attention
           </CardTitle>
-          <Badge variant="outline">{needsAttention.length} items</Badge>
+          <Badge variant="outline">{items.length} items</Badge>
         </div>
       </CardHeader>
       <CardContent className="flex flex-col divide-y">
-        {needsAttention.map((item) => {
+        {items.map((item) => {
           const styles = severityStyles[item.severity]
           return (
             <div key={item.id} className="flex flex-col gap-1.5 py-3 first:pt-0 last:pb-0">

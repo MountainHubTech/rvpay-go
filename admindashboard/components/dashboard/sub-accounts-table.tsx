@@ -1,3 +1,6 @@
+"use client"
+
+import { useState } from "react"
 import { Calendar, ChevronDown, Plus, Search } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -11,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import { subAccounts, type SubAccountStatus } from "@/lib/dashboard-data"
+import { subAccounts, type SubAccount, type SubAccountStatus } from "@/lib/dashboard-data"
 
 const statusStyles: Record<SubAccountStatus, string> = {
   Active: "bg-emerald-100 text-emerald-700",
@@ -19,7 +22,14 @@ const statusStyles: Record<SubAccountStatus, string> = {
   Inactive: "bg-muted text-muted-foreground",
 }
 
-export function SubAccountsTable() {
+export function SubAccountsTable({ accounts = subAccounts }: { accounts?: SubAccount[] }) {
+  const [query, setQuery] = useState("")
+  const [status, setStatus] = useState<SubAccountStatus | "All">("All")
+  const filteredAccounts = accounts.filter((account) => {
+    const matchesQuery = `${account.name} ${account.id} ${account.location}`.toLowerCase().includes(query.toLowerCase())
+    return matchesQuery && (status === "All" || account.status === status)
+  })
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -42,17 +52,19 @@ export function SubAccountsTable() {
           <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
             placeholder="Search by name, ID, or email..."
             className="h-9 w-full rounded-lg border bg-white pl-9 pr-4 text-sm outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
           />
         </div>
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium hover:bg-muted"
-        >
-          Status: All
+        <label className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium">
+          Status:
+          <select value={status} onChange={(event) => setStatus(event.target.value as SubAccountStatus | "All")} className="bg-transparent outline-none">
+            <option>All</option><option>Active</option><option>Restricted</option><option>Inactive</option>
+          </select>
           <ChevronDown className="size-4 text-muted-foreground" />
-        </button>
+        </label>
         <button
           type="button"
           className="flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm font-medium hover:bg-muted"
@@ -74,7 +86,7 @@ export function SubAccountsTable() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {subAccounts.map((account) => {
+            {filteredAccounts.map((account) => {
               const inactive = account.status === "Inactive"
               return (
                 <TableRow key={account.id}>
@@ -126,6 +138,7 @@ export function SubAccountsTable() {
                 </TableRow>
               )
             })}
+            {filteredAccounts.length === 0 && <TableRow><TableCell colSpan={5} className="py-10 text-center text-muted-foreground">No sub-accounts match your filters.</TableCell></TableRow>}
           </TableBody>
         </Table>
       </div>

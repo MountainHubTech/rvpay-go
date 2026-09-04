@@ -99,6 +99,33 @@ export const recentPayouts: Payout[] = [
   { subAccount: "Applemelon", amount: "$9,420.00", status: "Failed", date: "Oct 23, 2023" },
 ]
 
+export type DashboardPeriod = "Last 7 Days" | "Last 30 Days" | "Last 90 Days" | "This Year"
+
+export type DashboardSnapshot = {
+  statCards: StatCard[]
+  revenueOverTime: typeof revenueOverTime
+  needsAttention: AttentionItem[]
+  recentPayouts: Payout[]
+}
+
+export function getDashboardSnapshot(_period: DashboardPeriod): DashboardSnapshot {
+  const snapshot: DashboardSnapshot = {
+    statCards,
+    revenueOverTime,
+    needsAttention,
+    recentPayouts,
+  }
+
+  const snapshots: Record<DashboardPeriod, DashboardSnapshot> = {
+    "Last 7 Days": snapshot,
+    "Last 30 Days": snapshot,
+    "Last 90 Days": snapshot,
+    "This Year": snapshot,
+  }
+
+  return snapshots[_period]
+}
+
 export type SubAccountStatus = "Active" | "Restricted" | "Inactive"
 
 export type SubAccount = {
