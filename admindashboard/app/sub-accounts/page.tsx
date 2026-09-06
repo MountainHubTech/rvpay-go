@@ -5,7 +5,7 @@ import * as React from "react"
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { SubAccountsTable } from "@/components/dashboard/sub-accounts-table"
 import { Topbar } from "@/components/dashboard/topbar"
-import { fetchSubAccounts, type SubAccountListResponse } from "@/lib/api"
+import { describeApiError, fetchSubAccounts, type SubAccountListResponse } from "@/lib/api"
 import { type SubAccount, type SubAccountStatus } from "@/lib/dashboard-data"
 
 // The only status filter values the sub-accounts UI/backend support. Values
@@ -88,7 +88,7 @@ export default function SubAccountsPage() {
       .catch((error: unknown) => {
         if (!cancelled) {
           console.warn("[RVPay] sub-accounts fetch failed:", error)
-          setLoadError("Sub-account data is currently unavailable.")
+          setLoadError(describeApiError(error, "Sub-account data is currently unavailable."))
           setLoading(false)
         }
       })

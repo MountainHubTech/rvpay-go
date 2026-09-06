@@ -21,10 +21,11 @@ type Config struct {
 	APIKey string `conf:"env:PAWAPAY_API_KEY"`
 
 	// CORSAllowedOrigins is the comma-separated allowlist of browser origins
-	// permitted to call the HTTP gateway cross-origin. The default is the
-	// RVPay production admin dashboard, which loads the payment checkout in
-	// an iframe and calls the public deposit endpoint from the browser.
-	CORSAllowedOrigins string `conf:"env:HTTP_CORS_ALLOWED_ORIGINS,default:https://admindashboard.rvpay.xyz"`
+	// permitted to call the HTTP gateway cross-origin. The defaults are the
+	// RVPay admin dashboard (which loads the payment checkout in an iframe
+	// and calls the public deposit endpoint from the browser) and the local
+	// development dashboard. Override via HTTP_CORS_ALLOWED_ORIGINS.
+	CORSAllowedOrigins string `conf:"env:HTTP_CORS_ALLOWED_ORIGINS,default:https://admindashboard.rvpay.xyz,http://localhost:3000"`
 
 	DB DBConfig
 }

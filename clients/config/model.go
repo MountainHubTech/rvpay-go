@@ -25,6 +25,13 @@ type Config struct {
 	HighLevel HighLevelConfig
 
 	TransactionsAddr string `conf:"env:TRANSACTIONS_GRPC_ADDR"`
+
+	// CORSAllowedOrigins is the comma-separated allowlist of browser origins
+	// permitted to call the HTTP gateway cross-origin. The defaults are the
+	// RVPay admin dashboard (which reads the sub-accounts listing from the
+	// browser) and the local development dashboard. Override via
+	// HTTP_CORS_ALLOWED_ORIGINS.
+	CORSAllowedOrigins string `conf:"env:HTTP_CORS_ALLOWED_ORIGINS,default:https://admindashboard.rvpay.xyz,http://localhost:3000"`
 }
 
 // DBConfig holds database configuration.

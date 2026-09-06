@@ -10,6 +10,7 @@ import { RevenueChart } from "@/components/dashboard/revenue-chart"
 import { StatCards } from "@/components/dashboard/stat-cards"
 import { Topbar } from "@/components/dashboard/topbar"
 import {
+  describeApiError,
   fetchOverviewSnapshot,
   periodToWire,
   type OverviewSnapshotResponse,
@@ -99,6 +100,7 @@ export function DashboardHome() {
       .catch((error: unknown) => {
         if (!cancelled) {
           console.warn("[RVPay] overview snapshot fetch failed:", error)
+          setLoadError(describeApiError(error, "Overview data is currently unavailable."))
           setLoadError("Overview data is currently unavailable.")
           setLoading(false)
         }

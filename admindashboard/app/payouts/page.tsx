@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { PayoutsOverview } from "@/components/dashboard/payouts-overview"
 import { Topbar } from "@/components/dashboard/topbar"
 import {
+  describeApiError,
   fetchPayoutOverviewStats,
   fetchPayouts,
   type PayoutListResponse,
@@ -107,7 +108,7 @@ export default function PayoutsPage() {
       .catch((error: unknown) => {
         if (!cancelled) {
           console.warn("[RVPay] payouts fetch failed:", error)
-          setLoadError("Payout data is currently unavailable.")
+          setLoadError(describeApiError(error, "Payout data is currently unavailable."))
           setLoading(false)
         }
       })
