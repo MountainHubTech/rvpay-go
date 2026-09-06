@@ -6,7 +6,18 @@ import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { SubAccountsTable } from "@/components/dashboard/sub-accounts-table"
 import { Topbar } from "@/components/dashboard/topbar"
 import { fetchSubAccounts, type SubAccountListResponse } from "@/lib/api"
-import type { SubAccount } from "@/lib/dashboard-data"
+import { type SubAccount, type SubAccountStatus } from "@/lib/dashboard-data"
+
+// The only status filter values the sub-accounts UI/backend support. Values
+// coming from generic strings (e.g. query parameters) are validated against
+// this list; anything unknown/malformed falls back to "All".
+const SUB_ACCOUNT_STATUSES = ["Active", "Restricted", "Inactive"] as const
+
+export function parseSubAccountStatus(value: string): SubAccountStatus | "All" {
+  return (SUB_ACCOUNT_STATUSES as readonly string[]).includes(value)
+    ? (value as SubAccountStatus)
+    : "All"
+}
 
 // Map the proto sub-account status enum to the dashboard-facing label.
 function statusLabel(status: string): SubAccount["status"] {
@@ -44,7 +55,9 @@ function rowsFromResponse(response: SubAccountListResponse): SubAccount[] {
 
 export default function SubAccountsPage() {
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState<string>("All")
+  const [status, setStatus] = React.useState<SubAccountStatus | "All">(
+    parseSubAccountStatus("All")
+  )
   const [page, setPage] = React.useState(1)
   const pageSize = 20
 
@@ -106,7 +119,7 @@ export default function SubAccountsPage() {
               setPage(1)
             }}
             onStatusChange={(next) => {
-              setStatus(next)
+              setStatus(parseSubAccountStatus(next))
               setPage(1)
             }}
           />

@@ -257,7 +257,7 @@ export function PayoutsOverview({
             type="button"
             aria-label="Previous page"
             disabled={page === 1}
-            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            onClick={() => setPage(Math.max(1, page - 1))}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ChevronLeft className="size-4" />
@@ -279,7 +279,7 @@ export function PayoutsOverview({
             type="button"
             aria-label="Next page"
             disabled={page >= pageCount}
-            onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            onClick={() => setPage(Math.min(pageCount, page + 1))}
             className="flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ChevronRight className="size-4" />

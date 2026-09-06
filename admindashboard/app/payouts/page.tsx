@@ -11,7 +11,22 @@ import {
   type PayoutListResponse,
   type PayoutStatsResponse,
 } from "@/lib/api"
-import type { PayoutOverviewRow, PayoutOverviewStat } from "@/lib/dashboard-data"
+import type {
+  PayoutOverviewRow,
+  PayoutOverviewStat,
+  PayoutOverviewStatus,
+} from "@/lib/dashboard-data"
+
+// The only status filter values the payouts UI/backend support. Values coming
+// from generic strings (e.g. query parameters) are validated against this list;
+// anything unknown/malformed falls back to "All" instead of being cast blindly.
+const PAYOUT_STATUSES = ["Failed", "In Transit", "Cleared", "Pending"] as const
+
+function parsePayoutStatus(value: string): PayoutOverviewStatus | "All" {
+  return (PAYOUT_STATUSES as readonly string[]).includes(value)
+    ? (value as PayoutOverviewStatus)
+    : "All"
+}
 
 // Map server stats to the dashboard stat-card shape. Icon/metaTone are
 // derived by position (pending, cleared, failed); the failed card carries the
@@ -45,7 +60,9 @@ function rowsFromResponse(response: PayoutListResponse): PayoutOverviewRow[] {
 
 export default function PayoutsPage() {
   const [query, setQuery] = React.useState("")
-  const [status, setStatus] = React.useState<string>("All")
+  const [status, setStatus] = React.useState<PayoutOverviewStatus | "All">(
+    parsePayoutStatus("All")
+  )
   const [page, setPage] = React.useState(1)
   const pageSize = 20
 
@@ -125,7 +142,7 @@ export default function PayoutsPage() {
               setPage(1)
             }}
             onStatusChange={(next) => {
-              setStatus(next)
+              setStatus(parsePayoutStatus(next))
               setPage(1)
             }}
             onPageChange={setPage}
