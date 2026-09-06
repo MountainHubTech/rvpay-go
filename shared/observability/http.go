@@ -41,6 +41,7 @@ func AccessLog(logger zerolog.Logger) func(http.Handler) http.Handler {
 				Str("request_id", reqID).
 				Str("method", r.Method).
 				Str("path", r.URL.Path).
+				Str("query", r.URL.RawQuery).
 				Int("status", ww.status).
 				Int64("duration_ms", time.Since(start).Milliseconds()).
 				Msg("http request")

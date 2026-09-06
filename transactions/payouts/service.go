@@ -12,6 +12,7 @@ import (
 	pawapaypayouts "github.com/I-Frostbyte/pawapay_client/payouts"
 	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/I-Frostbyte/rvpay-go/shared/observability"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
@@ -205,48 +206,122 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 // GetPayoutOverviewStats returns the payout metrics rendered on the Admin
 // Dashboard payouts page. Values come from the payout table; no metrics are
 // fabricated.
-func (s *Impl) GetPayoutOverviewStats(ctx context.Context, _ *transactionsgrpc.GetPayoutOverviewStatsRequest) (*transactionsgrpc.GetPayoutOverviewStatsResponse, error) {
+func (s *Impl) GetPayoutOverviewStats(ctx context.Context, _ *transactionsgrpc.GetPayoutOverviewStatsRequest) (resp *transactionsgrpc.GetPayoutOverviewStatsResponse, err error) {
+	start := time.Now()
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/payouts/overview/stats").
+		Str("method", "GET").
+		Str("operation", "GetPayoutOverviewStats").
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/payouts/overview/stats").
+				Str("operation", "GetPayoutOverviewStats").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/payouts/overview/stats").
+			Str("operation", "GetPayoutOverviewStats").
+			Str("grpc_code", "OK").
+			Int("stats_count", len(resp.GetStats())).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
 	pendingCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusREQUESTED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count pending payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.CountByStatus(REQUESTED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count pending payouts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	processingCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusPROCESSING)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count processing payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.CountByStatus(PROCESSING)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count processing payouts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	clearedCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusCOMPLETED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count cleared payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.CountByStatus(COMPLETED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count cleared payouts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	failedCount, err := s.payoutRepo.CountByStatus(ctx, sqlc.PayoutStatusFAILED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count failed payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.CountByStatus(FAILED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count failed payouts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
+	s.logger.Debug().
+		Str("operation", "GetPayoutOverviewStats").
+		Str("repository", "PayoutRepo.CountByStatus").
+		Int("pending_rows", int(pendingCount)).
+		Int("processing_rows", int(processingCount)).
+		Int("cleared_rows", int(clearedCount)).
+		Int("failed_rows", int(failedCount)).
+		Msg("repository count queries completed")
 
 	pendingAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusREQUESTED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not sum pending payout amounts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.SumAmountByStatus(REQUESTED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not sum pending payout amounts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	processingAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusPROCESSING)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not sum processing payout amounts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.SumAmountByStatus(PROCESSING)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not sum processing payout amounts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	clearedAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusCOMPLETED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not sum cleared payout amounts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.SumAmountByStatus(COMPLETED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not sum cleared payout amounts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
 	failedAmount, err := s.payoutRepo.SumAmountByStatus(ctx, sqlc.PayoutStatusFAILED)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not sum failed payout amounts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetPayoutOverviewStats").
+			Str("repository", "PayoutRepo.SumAmountByStatus(FAILED)").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not sum failed payout amounts")
 		return nil, status.Error(codes.Internal, "could not load payout stats")
 	}
+	s.logger.Debug().
+		Str("operation", "GetPayoutOverviewStats").
+		Str("repository", "PayoutRepo.SumAmountByStatus").
+		Msg("repository sum queries completed")
 
 	pendingTotal := addNumeric(numericOrZero(pendingAmount), numericOrZero(processingAmount))
 	clearedTotal := numericOrZero(clearedAmount)
@@ -265,10 +340,50 @@ func (s *Impl) GetPayoutOverviewStats(ctx context.Context, _ *transactionsgrpc.G
 
 // ListPayouts returns a paginated, searchable, status-filtered list of payouts
 // for the Admin Dashboard payouts page.
-func (s *Impl) ListPayouts(ctx context.Context, req *transactionsgrpc.ListPayoutsRequest) (*transactionsgrpc.ListPayoutsResponse, error) {
+func (s *Impl) ListPayouts(ctx context.Context, req *transactionsgrpc.ListPayoutsRequest) (resp *transactionsgrpc.ListPayoutsResponse, err error) {
+	start := time.Now()
 	if req == nil {
 		req = &transactionsgrpc.ListPayoutsRequest{}
 	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/payouts").
+		Str("method", "GET").
+		Str("operation", "ListPayouts").
+		Str("search", req.GetSearch()).
+		Str("status", req.GetStatus()).
+		Int("page", int(req.GetPage())).
+		Int("page_size", int(req.GetPageSize())).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/payouts").
+				Str("operation", "ListPayouts").
+				Str("search", req.GetSearch()).
+				Str("status", req.GetStatus()).
+				Int("page", int(req.GetPage())).
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/payouts").
+			Str("operation", "ListPayouts").
+			Str("grpc_code", "OK").
+			Int("rows_returned", len(resp.GetRows())).
+			Int64("total", resp.GetTotal()).
+			Int("page", int(resp.GetPage())).
+			Int("page_size", int(resp.GetPageSize())).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
 	page := req.GetPage()
 	if page < 1 {
 		page = 1
@@ -284,12 +399,35 @@ func (s *Impl) ListPayouts(ctx context.Context, req *transactionsgrpc.ListPayout
 
 	payouts, err := s.payoutRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), pageSize, offset)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not list payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "ListPayouts").
+			Str("repository", "PayoutRepo.ListFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not list payouts")
 		return nil, status.Error(codes.Internal, "could not list payouts")
+	}
+	if len(payouts) == 0 {
+		s.logger.Info().
+			Str("operation", "ListPayouts").
+			Str("repository", "PayoutRepo.ListFiltered").
+			Str("search", req.GetSearch()).
+			Str("status", req.GetStatus()).
+			Int("rows_returned", 0).
+			Msg("dashboard payout query returned no rows")
+	} else {
+		s.logger.Debug().
+			Str("operation", "ListPayouts").
+			Str("repository", "PayoutRepo.ListFiltered").
+			Int("rows_returned", len(payouts)).
+			Msg("repository query completed")
 	}
 	total, err := s.payoutRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus())
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "ListPayouts").
+			Str("repository", "PayoutRepo.CountFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count payouts")
 		return nil, status.Error(codes.Internal, "could not list payouts")
 	}
 

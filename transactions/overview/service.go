@@ -9,6 +9,7 @@ import (
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/I-Frostbyte/rvpay-go/shared/observability"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
@@ -57,31 +58,98 @@ func periodToSince(period string) time.Time {
 // payouts drive recent-payout rows. active_sub_accounts and needs_attention
 // are not populated here: see the response field comments and
 // dashboard-setup.md for the cross-service gaps.
-func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.GetOverviewSnapshotRequest) (*transactionsgrpc.GetOverviewSnapshotResponse, error) {
+func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.GetOverviewSnapshotRequest) (resp *transactionsgrpc.GetOverviewSnapshotResponse, err error) {
+	start := time.Now()
 	if req == nil {
 		req = &transactionsgrpc.GetOverviewSnapshotRequest{}
 	}
-	since := periodToSince(req.GetPeriod())
+	period := req.GetPeriod()
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/overview/snapshot").
+		Str("method", "GET").
+		Str("operation", "GetOverviewSnapshot").
+		Str("period", period).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/overview/snapshot").
+				Str("operation", "GetOverviewSnapshot").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/overview/snapshot").
+			Str("operation", "GetOverviewSnapshot").
+			Str("grpc_code", "OK").
+			Int64("total_revenue", resp.GetTotalRevenue()).
+			Str("revenue_currency", resp.GetRevenueCurrency()).
+			Int64("transaction_volume", resp.GetTransactionVolume()).
+			Int("revenue_points_count", len(resp.GetRevenueOverTime())).
+			Int("recent_payouts_count", len(resp.GetRecentPayouts())).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
+	since := periodToSince(period)
 
 	revenue, err := s.depositRepo.SumAmountInWindow(ctx, since)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not sum deposit revenue")
+		s.logger.Error().Err(err).
+			Str("operation", "GetOverviewSnapshot").
+			Str("repository", "DepositRepo.SumAmountInWindow").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not sum deposit revenue")
 		return nil, status.Error(codes.Internal, "could not load overview snapshot")
 	}
+	s.logger.Debug().Str("operation", "GetOverviewSnapshot").Str("repository", "DepositRepo.SumAmountInWindow").Msg("repository query completed")
+
 	volume, err := s.depositRepo.CountInWindow(ctx, since)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not count deposit volume")
+		s.logger.Error().Err(err).
+			Str("operation", "GetOverviewSnapshot").
+			Str("repository", "DepositRepo.CountInWindow").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count deposit volume")
 		return nil, status.Error(codes.Internal, "could not load overview snapshot")
 	}
+	s.logger.Debug().Str("operation", "GetOverviewSnapshot").Str("repository", "DepositRepo.CountInWindow").Int64("rows_returned", volume).Msg("repository query completed")
+
 	buckets, err := s.depositRepo.RevenueOverTimeInWindow(ctx, since)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not load revenue over time")
+		s.logger.Error().Err(err).
+			Str("operation", "GetOverviewSnapshot").
+			Str("repository", "DepositRepo.RevenueOverTimeInWindow").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not load revenue over time")
 		return nil, status.Error(codes.Internal, "could not load overview snapshot")
 	}
+	if len(buckets) == 0 {
+		s.logger.Info().Str("operation", "GetOverviewSnapshot").Str("repository", "DepositRepo.RevenueOverTimeInWindow").Int("rows_returned", 0).Msg("dashboard revenue-over-time query returned no rows")
+	} else {
+		s.logger.Debug().Str("operation", "GetOverviewSnapshot").Str("repository", "DepositRepo.RevenueOverTimeInWindow").Int("rows_returned", len(buckets)).Msg("repository query completed")
+	}
+
 	recentPayouts, err := s.payoutRepo.ListFiltered(ctx, "", "", 5, 0)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("could not load recent payouts")
+		s.logger.Error().Err(err).
+			Str("operation", "GetOverviewSnapshot").
+			Str("repository", "PayoutRepo.ListFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not load recent payouts")
 		return nil, status.Error(codes.Internal, "could not load overview snapshot")
+	}
+	if len(recentPayouts) == 0 {
+		s.logger.Info().Str("operation", "GetOverviewSnapshot").Str("repository", "PayoutRepo.ListFiltered").Int("rows_returned", 0).Msg("dashboard recent-payouts query returned no rows")
+	} else {
+		s.logger.Debug().Str("operation", "GetOverviewSnapshot").Str("repository", "PayoutRepo.ListFiltered").Int("rows_returned", len(recentPayouts)).Msg("repository query completed")
 	}
 
 	revenueF, _ := revenue.Float64Value()
