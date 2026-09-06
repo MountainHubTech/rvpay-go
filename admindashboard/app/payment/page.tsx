@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { getTransactionsBaseUrl } from "@/lib/environments";
 import { cn } from "@/lib/utils";
 
 type Provider = {
@@ -412,7 +413,7 @@ const chargeId = paymentContext.chargeId;
     }
 
     const response = await fetch(
-      `https://api.rvpay.xyz/v1/public/payments/verify?${params.toString()}`,
+      `${getTransactionsBaseUrl()}/v1/public/payments/verify?${params.toString()}`,
       { method: "GET" }
     );
 
@@ -526,7 +527,7 @@ const chargeId = paymentContext.chargeId;
       provider,
     };
 
-    const response = await fetch("https://api.rvpay.xyz/v1/public/deposits", {
+    const response = await fetch(`${getTransactionsBaseUrl()}/v1/public/deposits`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -1,13 +1,15 @@
 // Server connection layer for the RVPAY Admin Dashboard.
 //
 // All requests target the existing Transactions (overview, payouts) and
-// Clients (sub-accounts) grpc-gateway endpoints. The API base URL follows the
-// existing convention (hardcoded, same as app/payment/page.tsx).
+// Clients (sub-accounts) grpc-gateway endpoints. Base URLs come from the
+// centralized environment configuration (lib/environments.ts) and are
+// resolved PER REQUEST, so the environment selected on the Settings page
+// takes effect on the next request without a rebuild or reload.
 //
 // No data is fabricated: fields the backend documents as cross-service gaps
 // are surfaced as "—" by the calling pages, never invented.
 
-export const API_BASE = "https://api.rvpay.xyz";
+import { getClientsBaseUrl, getTransactionsBaseUrl } from "@/lib/environments"
 
 export type OverviewPeriod = "7d" | "30d" | "90d" | "ytd";
 
@@ -63,24 +65,30 @@ export type SubAccountListResponse = {
   pageSize: number;
 };
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, { method: "GET" });
+async function getJson<T>(path: string, baseUrl: string): Promise<T> {
+  const response = await fetch(`${baseUrl}${path}`, { method: "GET" });
   if (!response.ok) {
     throw new Error(`Request failed (${response.status}): ${path}`);
   }
   return response.json() as Promise<T>;
 }
 
+// Transactions-service endpoints (overview snapshot, payout stats, payout
+// list): resolved against the selected environment's transactionsBaseUrl.
 export function fetchOverviewSnapshot(
   period: OverviewPeriod
 ): Promise<OverviewSnapshotResponse> {
   return getJson(
-    `/v1/public/overview/snapshot?period=${encodeURIComponent(period)}`
+    `/v1/public/overview/snapshot?period=${encodeURIComponent(period)}`,
+    getTransactionsBaseUrl()
   );
 }
 
 export function fetchPayoutOverviewStats(): Promise<PayoutStatsResponse> {
-  return getJson(`/v1/public/payouts/overview/stats`);
+  return getJson(
+    `/v1/public/payouts/overview/stats`,
+    getTransactionsBaseUrl()
+  );
 }
 
 export function fetchPayouts(params: {
@@ -94,7 +102,7 @@ export function fetchPayouts(params: {
   if (params.status) query.set("status", params.status);
   query.set("page", String(params.page ?? 1));
   query.set("pageSize", String(params.pageSize ?? 20));
-  return getJson(`/v1/public/payouts?${query.toString()}`);
+  return getJson(`/v1/public/payouts?${query.toString()}`, getTransactionsBaseUrl());
 }
 
 export function fetchSubAccounts(params: {
@@ -112,7 +120,10 @@ export function fetchSubAccounts(params: {
   if (params.order) query.set("order", params.order);
   query.set("page", String(params.page ?? 1));
   query.set("pageSize", String(params.pageSize ?? 20));
-  return getJson(`/v1/public/sub-accounts?${query.toString()}`);
+  // Clients-service endpoint: resolved against the selected environment's
+  // clientsBaseUrl (independent from the transactionsBaseUrl — Local uses
+  // :8080 for Clients and :8081 for Transactions).
+  return getJson(`/v1/public/sub-accounts?${query.toString()}`, getClientsBaseUrl());
 }
 
 // DashboardPeriod (UI label) → overview period wire value.

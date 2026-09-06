@@ -195,7 +195,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 
 	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
-		httpPort = "8080"
+		httpPort = "8081"
 	}
 	httpServer := &http.Server{
 		Addr:    ":" + httpPort,
