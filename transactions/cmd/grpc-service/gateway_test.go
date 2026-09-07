@@ -13,6 +13,7 @@ import (
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
 	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -90,7 +91,7 @@ func newTransactionsGateway(t *testing.T, merchant *fakeMerchantService, deposit
 	if len(corsOrigins) == 0 {
 		corsOrigins = []string{"https://admindashboard.rvpay.xyz"}
 	}
-	httpMux.Handle("/", commonobservability.CORS(corsOrigins, gatewayMux))
+	httpMux.Handle("/", commonobservability.CORS(zerolog.Nop(), corsOrigins, gatewayMux))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

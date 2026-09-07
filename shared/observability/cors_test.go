@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"github.com/rs/zerolog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +20,7 @@ func (h *corsTestHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 func TestCORS_AllowedOriginReceivesAllowOrigin(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"http://localhost:3000", "https://admindashboard.rvpay.xyz"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000", "https://admindashboard.rvpay.xyz"}, handler))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/sub-accounts?page=1&pageSize=20", nil)
@@ -50,7 +51,7 @@ func TestCORS_AllowedOriginReceivesAllowOrigin(t *testing.T) {
 
 func TestCORS_DisallowedOriginGetsNoCORSHeaders(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"http://localhost:3000"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000"}, handler))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/sub-accounts", nil)
@@ -79,7 +80,7 @@ func TestCORS_DisallowedOriginGetsNoCORSHeaders(t *testing.T) {
 }
 func TestCORS_PreflightAnsweredAtTransportLayer(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"http://localhost:3000"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000"}, handler))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
@@ -117,7 +118,7 @@ func TestCORS_PreflightAnsweredAtTransportLayer(t *testing.T) {
 
 func TestCORS_PreflightFromUnapprovedOriginNotAuthorized(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"http://localhost:3000"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000"}, handler))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodOptions, srv.URL+"/v1/public/deposits", nil)
@@ -140,7 +141,7 @@ func TestCORS_PreflightFromUnapprovedOriginNotAuthorized(t *testing.T) {
 
 func TestCORS_AllowedOriginPostCarriesAllowOrigin(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"https://admindashboard.rvpay.xyz"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"https://admindashboard.rvpay.xyz"}, handler))
 	defer srv.Close()
 
 	req, err := http.NewRequest(http.MethodPost, srv.URL+"/v1/public/deposits", strings.NewReader("{}"))
@@ -166,7 +167,7 @@ func TestCORS_AllowedOriginPostCarriesAllowOrigin(t *testing.T) {
 
 func TestCORS_RequestWithoutOriginPassesThrough(t *testing.T) {
 	handler := &corsTestHandler{}
-	srv := httptest.NewServer(CORS([]string{"http://localhost:3000"}, handler))
+	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000"}, handler))
 	defer srv.Close()
 
 	resp, err := http.Get(srv.URL + "/healthz")
@@ -205,4 +206,53 @@ func containsToken(value, token string) bool {
 		}
 	}
 	return false
+}
+
+// Regression tests for the runtime CORS configuration resolution: the running
+// services previously loaded a stale HTTP_CORS_ALLOWED_ORIGINS value without
+// the local Dashboard origin, so browsers got 200 responses they could not
+// read. ResolveAllowedOrigins must always include the local dev origin and
+// fall back to the documented defaults when the configuration is empty.
+func TestResolveAllowedOrigins_EmptyFallsBackToDefaults(t *testing.T) {
+	got := ResolveAllowedOrigins("")
+	want := DefaultAllowedOrigins()
+	if len(got) != len(want) {
+		t.Fatalf("len = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("origins[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestResolveAllowedOrigins_AlwaysIncludesLocalDevOrigin(t *testing.T) {
+	// A stale config listing only the deployed origin must still gain the
+	// local development origin.
+	got := ResolveAllowedOrigins("https://admindashboard.rvpay.xyz")
+	found := false
+	for _, origin := range got {
+		if origin == LocalDevOrigin {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("ResolveAllowedOrigins = %v, want it to include %q", got, LocalDevOrigin)
+	}
+	if len(got) != 2 || got[0] != "https://admindashboard.rvpay.xyz" {
+		t.Errorf("ResolveAllowedOrigins = %v, want configured origin first", got)
+	}
+}
+
+func TestResolveAllowedOrigins_DoesNotDuplicateLocalDevOrigin(t *testing.T) {
+	got := ResolveAllowedOrigins("http://localhost:3000,https://admindashboard.rvpay.xyz")
+	count := 0
+	for _, origin := range got {
+		if origin == LocalDevOrigin {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("LocalDevOrigin appears %d times in %v, want exactly 1", count, got)
+	}
 }

@@ -172,11 +172,13 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 
 	httpMux := http.NewServeMux()
 	// CORS: the gateway serves browser clients (the RVPay Admin Dashboard,
-	// including its payment checkout iframe). Only origins on the configured
-	// allowlist receive CORS headers, and preflight OPTIONS requests are
-	// answered in the shared middleware so the grpc-gateway mux (which has no
-	// OPTIONS route) cannot terminate them with 404/405 and no CORS headers.
-	httpMux.Handle("/", commonobservability.CORS(commonobservability.ParseAllowedOrigins(config.CORSAllowedOrigins), commonobservability.AccessLog(logger)(gatewayMux)))
+	// including its payment checkout iframe). The effective allowlist is
+	// resolved by the shared layer (configured origins + the local dev
+	// origin; documented defaults when the configuration is empty) and
+	// logged at startup so the runtime configuration is provable.
+	corsOrigins := commonobservability.ResolveAllowedOrigins(config.CORSAllowedOrigins)
+	logger.Info().Strs("allowed_origins", corsOrigins).Msg("cors configuration loaded")
+	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, commonobservability.AccessLog(logger)(gatewayMux)))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
