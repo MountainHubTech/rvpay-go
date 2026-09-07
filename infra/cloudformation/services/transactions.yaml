@@ -88,7 +88,7 @@ Resources:
             - ContainerPort: !Ref ContainerPort
               Name: grpc
 
-            - ContainerPort: 8080
+            - ContainerPort: 8081
               Name: http
 
           LogConfiguration:
@@ -200,7 +200,7 @@ Resources:
 
       LoadBalancers:
         - ContainerName: App
-          ContainerPort: 8080
+          ContainerPort: 8081
           TargetGroupArn: !Ref TransactionsTargetGroup
 
       DeploymentConfiguration:
@@ -227,7 +227,7 @@ Resources:
     Properties:
       Name: !Sub "${EnvId}-transactions"
       Protocol: HTTP
-      Port: 8080
+      Port: 8081
       VpcId: !Ref VPC
       TargetType: instance
 
