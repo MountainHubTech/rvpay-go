@@ -194,9 +194,16 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 
+	// The HTTP server listens on a separate port from the gRPC 
+	// server. The gRPC server is used for internal communication 
+	// between services, while the HTTP server is used for 
+	// external communication with clients (e.g., web browsers). 
+	// For now, HTTP server has the same port as the clients 
+	// service because of the TargetGroup. Whenever you're 
+	// testing locally, you can change it to 8081
 	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
-		httpPort = "8081"
+		httpPort = "8080"
 	}
 	httpServer := &http.Server{
 		Addr:    ":" + httpPort,
