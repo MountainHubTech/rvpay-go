@@ -7,9 +7,9 @@ import (
 	"time"
 
 	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/I-Frostbyte/rvpay-go/shared/observability"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
-	"github.com/I-Frostbyte/rvpay-go/shared/observability"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
@@ -66,7 +66,7 @@ func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.Ge
 	period := req.GetPeriod()
 	s.logger.Info().
 		Str("request_id", observability.RequestIDFromContext(ctx)).
-		Str("endpoint", "/v1/public/overview/snapshot").
+		Str("endpoint", "/v1/public/transactions/overview/snapshot").
 		Str("method", "GET").
 		Str("operation", "GetOverviewSnapshot").
 		Str("period", period).
@@ -77,7 +77,7 @@ func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.Ge
 			s.logger.Error().
 				Err(err).
 				Str("request_id", observability.RequestIDFromContext(ctx)).
-				Str("endpoint", "/v1/public/overview/snapshot").
+				Str("endpoint", "/v1/public/transactions/overview/snapshot").
 				Str("operation", "GetOverviewSnapshot").
 				Str("grpc_code", status.Code(err).String()).
 				Int64("duration_ms", time.Since(start).Milliseconds()).
@@ -86,7 +86,7 @@ func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.Ge
 		}
 		s.logger.Info().
 			Str("request_id", observability.RequestIDFromContext(ctx)).
-			Str("endpoint", "/v1/public/overview/snapshot").
+			Str("endpoint", "/v1/public/transactions/overview/snapshot").
 			Str("operation", "GetOverviewSnapshot").
 			Str("grpc_code", "OK").
 			Int64("total_revenue", resp.GetTotalRevenue()).
@@ -188,10 +188,10 @@ func (s *Impl) GetOverviewSnapshot(ctx context.Context, req *transactionsgrpc.Ge
 		ActiveSubAccounts: 0,
 		// pending_payouts: 0 here; the payouts overview stats endpoint owns
 		// accurate pending derivation. Left 0 to avoid double-counting.
-		PendingPayouts:   0,
-		NeedsAttention:   nil,
-		RevenueOverTime:  revenueOverTime,
-		RecentPayouts:    rows,
+		PendingPayouts:  0,
+		NeedsAttention:  nil,
+		RevenueOverTime: revenueOverTime,
+		RecentPayouts:   rows,
 	}, nil
 }
 

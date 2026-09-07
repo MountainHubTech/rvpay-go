@@ -182,7 +182,7 @@ export function fetchOverviewSnapshot(
 ): Promise<OverviewSnapshotResponse> {
   return getJson(
     "transactions",
-    `/v1/public/overview/snapshot?period=${encodeURIComponent(period)}`,
+    `/v1/public/transactions/overview/snapshot?period=${encodeURIComponent(period)}`,
     getTransactionsBaseUrl()
   );
 }
@@ -226,8 +226,9 @@ export function fetchSubAccounts(params: {
   query.set("pageSize", String(params.pageSize ?? 20));
   // Clients-service endpoint: resolved against the selected environment's
   // clientsBaseUrl (independent from the transactionsBaseUrl — Local uses
-  // :8080 for Clients and :8081 for Transactions).
-  return getJson("clients", `/v1/public/sub-accounts?${query.toString()}`, getClientsBaseUrl());
+  // :8080 for Clients and :8081 for Transactions). The route lives under the
+  // permitted /v1/public/clients* ALB prefix.
+  return getJson("clients", `/v1/public/clients/sub-accounts?${query.toString()}`, getClientsBaseUrl());
 }
 
 // Lightweight reachability probe used by the Settings "Test Connection"

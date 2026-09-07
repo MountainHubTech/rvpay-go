@@ -1169,7 +1169,7 @@ func RegisterDashboardOverviewServiceHandlerServer(ctx context.Context, mux *run
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot", runtime.WithHTTPPathPattern("/v1/public/overview/snapshot"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot", runtime.WithHTTPPathPattern("/v1/public/transactions/overview/snapshot"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1935,7 +1935,7 @@ func RegisterDashboardOverviewServiceHandlerClient(ctx context.Context, mux *run
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot", runtime.WithHTTPPathPattern("/v1/public/overview/snapshot"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot", runtime.WithHTTPPathPattern("/v1/public/transactions/overview/snapshot"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1955,7 +1955,7 @@ func RegisterDashboardOverviewServiceHandlerClient(ctx context.Context, mux *run
 }
 
 var (
-	pattern_DashboardOverviewService_GetOverviewSnapshot_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "public", "overview", "snapshot"}, ""))
+	pattern_DashboardOverviewService_GetOverviewSnapshot_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3, 2, 4}, []string{"v1", "public", "transactions", "overview", "snapshot"}, ""))
 )
 
 var (

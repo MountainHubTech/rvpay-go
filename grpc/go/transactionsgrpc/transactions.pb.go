@@ -3523,9 +3523,9 @@ const file_transactions_proto_rawDesc = "" +
 	"\rRequestPayout\x12%.transactionsgrpc.CreatePayoutRequest\x1a&.transactionsgrpc.CreatePayoutResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/payouts\x12|\n" +
 	"\tGetPayout\x12\".transactionsgrpc.GetPayoutRequest\x1a#.transactionsgrpc.GetPayoutResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/payouts/{payout_id}\x12\xa6\x01\n" +
 	"\x16GetPayoutOverviewStats\x12/.transactionsgrpc.GetPayoutOverviewStatsRequest\x1a0.transactionsgrpc.GetPayoutOverviewStatsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/public/payouts/overview/stats\x12v\n" +
-	"\vListPayouts\x12$.transactionsgrpc.ListPayoutsRequest\x1a%.transactionsgrpc.ListPayoutsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/public/payouts2\xb5\x01\n" +
-	"\x18DashboardOverviewService\x12\x98\x01\n" +
-	"\x13GetOverviewSnapshot\x12,.transactionsgrpc.GetOverviewSnapshotRequest\x1a-.transactionsgrpc.GetOverviewSnapshotResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/public/overview/snapshot2\x99\x01\n" +
+	"\vListPayouts\x12$.transactionsgrpc.ListPayoutsRequest\x1a%.transactionsgrpc.ListPayoutsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/public/payouts2\xc2\x01\n" +
+	"\x18DashboardOverviewService\x12\xa5\x01\n" +
+	"\x13GetOverviewSnapshot\x12,.transactionsgrpc.GetOverviewSnapshotRequest\x1a-.transactionsgrpc.GetOverviewSnapshotResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/public/transactions/overview/snapshot2\x99\x01\n" +
 	"\rHealthService\x12\x87\x01\n" +
 	"\vHealthCheck\x12$.transactionsgrpc.HealthCheckRequest\x1a%.transactionsgrpc.HealthCheckResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/public/transactions/healthcheckB:Z8github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
 

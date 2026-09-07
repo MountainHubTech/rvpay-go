@@ -2633,7 +2633,7 @@ const file_clients_proto_rawDesc = "" +
 	"\x1eSUB_ACCOUNT_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19SUB_ACCOUNT_STATUS_ACTIVE\x10\x01\x12!\n" +
 	"\x1dSUB_ACCOUNT_STATUS_RESTRICTED\x10\x02\x12\x1f\n" +
-	"\x1bSUB_ACCOUNT_STATUS_INACTIVE\x10\x032\xe7\a\n" +
+	"\x1bSUB_ACCOUNT_STATUS_INACTIVE\x10\x032\xf0\a\n" +
 	"\x0eClientsService\x12r\n" +
 	"\fCreateClient\x12 .clientsgrpc.CreateClientRequest\x1a!.clientsgrpc.CreateClientResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/clients\x12w\n" +
 	"\fUpdateClient\x12 .clientsgrpc.UpdateClientRequest\x1a!.clientsgrpc.UpdateClientResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*2\x17/v1/public/clients/{id}\x12t\n" +
@@ -2641,8 +2641,8 @@ const file_clients_proto_rawDesc = "" +
 	"\tGetClient\x12\x1d.clientsgrpc.GetClientRequest\x1a\x1e.clientsgrpc.GetClientResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/public/clients/{id}\x12l\n" +
 	"\vListClients\x12\x1f.clientsgrpc.ListClientsRequest\x1a .clientsgrpc.ListClientsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/public/clients\x12\x86\x01\n" +
 	"\x0eActivateClient\x12\".clientsgrpc.ActivateClientRequest\x1a#.clientsgrpc.ActivateClientResponse\"+\x82\xd3\xe4\x93\x02%:\x01*\" /v1/public/clients/{id}:activate\x12\x8e\x01\n" +
-	"\x10DeactivateClient\x12$.clientsgrpc.DeactivateClientRequest\x1a%.clientsgrpc.DeactivateClientResponse\"-\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/public/clients/{id}:deactivate\x12}\n" +
-	"\x0fListSubAccounts\x12#.clientsgrpc.ListSubAccountsRequest\x1a$.clientsgrpc.ListSubAccountsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/public/sub-accounts2\x93\x04\n" +
+	"\x10DeactivateClient\x12$.clientsgrpc.DeactivateClientRequest\x1a%.clientsgrpc.DeactivateClientResponse\"-\x82\xd3\xe4\x93\x02':\x01*\"\"/v1/public/clients/{id}:deactivate\x12\x85\x01\n" +
+	"\x0fListSubAccounts\x12#.clientsgrpc.ListSubAccountsRequest\x1a$.clientsgrpc.ListSubAccountsResponse\"'\x82\xd3\xe4\x93\x02!\x12\x1f/v1/public/clients/sub-accounts2\x93\x04\n" +
 	"\x10PlatformsService\x12t\n" +
 	"\rListPlatforms\x12!.clientsgrpc.ListPlatformsRequest\x1a\".clientsgrpc.ListPlatformsResponse\"\x1c\x82\xd3\xe4\x93\x02\x16\x12\x14/v1/public/platforms\x12s\n" +
 	"\vGetPlatform\x12\x1f.clientsgrpc.GetPlatformRequest\x1a .clientsgrpc.GetPlatformResponse\"!\x82\xd3\xe4\x93\x02\x1b\x12\x19/v1/public/platforms/{id}\x12\x86\x01\n" +

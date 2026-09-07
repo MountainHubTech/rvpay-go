@@ -40,6 +40,17 @@ func (f *fakeClientsService) GetClient(_ context.Context, req *clientsgrpc.GetCl
 	}, nil
 }
 
+func (f *fakeClientsService) ListSubAccounts(_ context.Context, req *clientsgrpc.ListSubAccountsRequest) (*clientsgrpc.ListSubAccountsResponse, error) {
+	return &clientsgrpc.ListSubAccountsResponse{
+		Rows: []*clientsgrpc.SubAccountRow{
+			{Id: "sub-1", Name: "Acme Store", Location: "loc_1", Initials: "AS", Status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE},
+		},
+		Total:    1,
+		Page:     req.GetPage(),
+		PageSize: req.GetPageSize(),
+	}, nil
+}
+
 // newClientsGateway constructs the exact gateway wiring used by
 // clients/cmd/grpc-service/main.go: a grpc-gateway runtime.ServeMux with the
 // generated RegisterClientsServiceHandlerServer, mounted behind the root HTTP
@@ -105,6 +116,50 @@ func TestGateway_ClientsRoute_JSONMapping(t *testing.T) {
 	}
 	if got := client["createdAt"]; got != "2026-08-01T00:00:00Z" {
 		t.Errorf("client.createdAt = %v, want %q", got, "2026-08-01T00:00:00Z")
+	}
+}
+
+func TestGateway_SubAccountsRoute(t *testing.T) {
+	// Proves the Dashboard route GET /v1/public/clients/sub-accounts reaches
+	// the ListSubAccounts RPC (permitted /v1/public/clients* ALB prefix).
+	srv := newClientsGateway(t, &fakeClientsService{})
+
+	resp, err := http.Get(srv.URL + "/v1/public/clients/sub-accounts?page=1&pageSize=20")
+	if err != nil {
+		t.Fatalf("GET /v1/public/clients/sub-accounts: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	rows, ok := body["rows"].([]interface{})
+	if !ok || len(rows) != 1 {
+		t.Fatalf("expected one sub-account row, got %v", body["rows"])
+	}
+	// int64 fields encode as JSON strings in protojson (grpc-gateway default).
+	if got := body["total"]; got != "1" {
+		t.Errorf("total = %v, want \"1\"", got)
+	}
+}
+
+func TestGateway_SubAccountsRoute_NotOnOldPath(t *testing.T) {
+	// The old /v1/public/sub-accounts route must no longer be registered.
+	srv := newClientsGateway(t, &fakeClientsService{})
+
+	resp, err := http.Get(srv.URL + "/v1/public/sub-accounts")
+	if err != nil {
+		t.Fatalf("GET old sub-accounts path: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("old route /v1/public/sub-accounts unexpectedly returned %d", resp.StatusCode)
 	}
 }
 

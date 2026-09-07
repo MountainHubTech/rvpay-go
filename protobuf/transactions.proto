@@ -593,11 +593,12 @@ message HealthCheckResponse { string status = 1; }
 // Dashboard overview page, served by the Transactions service.
 service DashboardOverviewService {
   // GetOverviewSnapshot returns all information rendered by the Overview
-  // page for the requested period.
+  // page for the requested period. The route lives under the permitted
+  // /v1/public/transactions* ALB prefix.
   rpc GetOverviewSnapshot(GetOverviewSnapshotRequest)
       returns (GetOverviewSnapshotResponse) {
     option (google.api.http) = {
-      get : "/v1/public/overview/snapshot"
+      get : "/v1/public/transactions/overview/snapshot"
     };
   }
 }

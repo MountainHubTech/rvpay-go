@@ -23,7 +23,7 @@ func TestCORS_AllowedOriginReceivesAllowOrigin(t *testing.T) {
 	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000", "https://admindashboard.rvpay.xyz"}, handler))
 	defer srv.Close()
 
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/sub-accounts?page=1&pageSize=20", nil)
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/clients/sub-accounts?page=1&pageSize=20", nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestCORS_DisallowedOriginGetsNoCORSHeaders(t *testing.T) {
 	srv := httptest.NewServer(CORS(zerolog.Nop(), []string{"http://localhost:3000"}, handler))
 	defer srv.Close()
 
-	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/sub-accounts", nil)
+	req, err := http.NewRequest(http.MethodGet, srv.URL+"/v1/public/clients/sub-accounts", nil)
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}

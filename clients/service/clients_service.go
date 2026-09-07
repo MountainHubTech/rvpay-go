@@ -234,7 +234,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 	}
 	s.logger.Info().
 		Str("request_id", observability.RequestIDFromContext(ctx)).
-		Str("endpoint", "/v1/public/sub-accounts").
+		Str("endpoint", "/v1/public/clients/sub-accounts").
 		Str("method", "GET").
 		Str("operation", "ListSubAccounts").
 		Str("search", req.GetSearch()).
@@ -250,7 +250,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 			s.logger.Error().
 				Err(err).
 				Str("request_id", observability.RequestIDFromContext(ctx)).
-				Str("endpoint", "/v1/public/sub-accounts").
+				Str("endpoint", "/v1/public/clients/sub-accounts").
 				Str("operation", "ListSubAccounts").
 				Str("search", req.GetSearch()).
 				Str("status", req.GetStatus()).
@@ -262,7 +262,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 		}
 		s.logger.Info().
 			Str("request_id", observability.RequestIDFromContext(ctx)).
-			Str("endpoint", "/v1/public/sub-accounts").
+			Str("endpoint", "/v1/public/clients/sub-accounts").
 			Str("operation", "ListSubAccounts").
 			Str("grpc_code", "OK").
 			Int("rows_returned", len(resp.GetRows())).

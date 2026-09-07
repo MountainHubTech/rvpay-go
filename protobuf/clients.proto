@@ -365,7 +365,7 @@ service ClientsService {
   // cross-service gaps until a cross-service capability is wired up.
   rpc ListSubAccounts(ListSubAccountsRequest) returns (ListSubAccountsResponse) {
     option (google.api.http) = {
-      get : "/v1/public/sub-accounts"
+      get : "/v1/public/clients/sub-accounts"
     };
   }
 }

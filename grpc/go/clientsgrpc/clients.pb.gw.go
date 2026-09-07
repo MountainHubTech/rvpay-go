@@ -1245,7 +1245,7 @@ func RegisterClientsServiceHandlerServer(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/clientsgrpc.ClientsService/ListSubAccounts", runtime.WithHTTPPathPattern("/v1/public/sub-accounts"))
+		annotatedContext, err = runtime.AnnotateIncomingContext(ctx, mux, req, "/clientsgrpc.ClientsService/ListSubAccounts", runtime.WithHTTPPathPattern("/v1/public/clients/sub-accounts"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1818,7 +1818,7 @@ func RegisterClientsServiceHandlerClient(ctx context.Context, mux *runtime.Serve
 		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
 		var err error
 		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/clientsgrpc.ClientsService/ListSubAccounts", runtime.WithHTTPPathPattern("/v1/public/sub-accounts"))
+		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/clientsgrpc.ClientsService/ListSubAccounts", runtime.WithHTTPPathPattern("/v1/public/clients/sub-accounts"))
 		if err != nil {
 			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
 			return
@@ -1852,7 +1852,7 @@ var (
 
 	pattern_ClientsService_DeactivateClient_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 1, 0, 4, 1, 5, 3}, []string{"v1", "public", "clients", "id"}, "deactivate"))
 
-	pattern_ClientsService_ListSubAccounts_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2}, []string{"v1", "public", "sub-accounts"}, ""))
+	pattern_ClientsService_ListSubAccounts_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 2, 1, 2, 2, 2, 3}, []string{"v1", "public", "clients", "sub-accounts"}, ""))
 )
 
 var (

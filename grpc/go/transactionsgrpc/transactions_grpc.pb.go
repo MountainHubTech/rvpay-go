@@ -1090,7 +1090,8 @@ const (
 // Dashboard overview page, served by the Transactions service.
 type DashboardOverviewServiceClient interface {
 	// GetOverviewSnapshot returns all information rendered by the Overview
-	// page for the requested period.
+	// page for the requested period. The route lives under the permitted
+	// /v1/public/transactions* ALB prefix.
 	GetOverviewSnapshot(ctx context.Context, in *GetOverviewSnapshotRequest, opts ...grpc.CallOption) (*GetOverviewSnapshotResponse, error)
 }
 
@@ -1120,7 +1121,8 @@ func (c *dashboardOverviewServiceClient) GetOverviewSnapshot(ctx context.Context
 // Dashboard overview page, served by the Transactions service.
 type DashboardOverviewServiceServer interface {
 	// GetOverviewSnapshot returns all information rendered by the Overview
-	// page for the requested period.
+	// page for the requested period. The route lives under the permitted
+	// /v1/public/transactions* ALB prefix.
 	GetOverviewSnapshot(context.Context, *GetOverviewSnapshotRequest) (*GetOverviewSnapshotResponse, error)
 	mustEmbedUnimplementedDashboardOverviewServiceServer()
 }

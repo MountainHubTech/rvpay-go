@@ -443,3 +443,85 @@ func TestGateway_PawaPayDepositCallback_Post(t *testing.T) {
 		t.Fatalf("failure_code = %q, want empty", got)
 	}
 }
+
+// fakeOverviewService implements transactionsgrpc.DashboardOverviewServiceServer
+// for the overview-route gateway test.
+type fakeOverviewService struct {
+	transactionsgrpc.UnimplementedDashboardOverviewServiceServer
+}
+
+func (f *fakeOverviewService) GetOverviewSnapshot(_ context.Context, _ *transactionsgrpc.GetOverviewSnapshotRequest) (*transactionsgrpc.GetOverviewSnapshotResponse, error) {
+	return &transactionsgrpc.GetOverviewSnapshotResponse{
+		TotalRevenue:      25,
+		RevenueCurrency:   "XAF",
+		TransactionVolume: 2,
+		RevenueOverTime:   []*transactionsgrpc.RevenueBucket{{PeriodLabel: "Day 1", Revenue: 25}},
+		RecentPayouts:     []*transactionsgrpc.OverviewPayoutRow{{SubAccount: "Acme", Amount: "XAF 1000", Status: "Paid", Date: "Sep 07, 2026"}},
+	}, nil
+}
+
+func TestGateway_OverviewSnapshotRoute(t *testing.T) {
+	// Proves the Dashboard route GET /v1/public/transactions/overview/snapshot
+	// reaches the GetOverviewSnapshot RPC (permitted /v1/public/transactions*
+	// ALB prefix).
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	gatewayMux := runtime.NewServeMux()
+	if err := transactionsgrpc.RegisterDashboardOverviewServiceHandlerServer(ctx, gatewayMux, &fakeOverviewService{}); err != nil {
+		t.Fatalf("register overview grpc-gateway handler: %v", err)
+	}
+
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", gatewayMux)
+	srv := httptest.NewServer(httpMux)
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1/public/transactions/overview/snapshot?period=7d")
+	if err != nil {
+		t.Fatalf("GET /v1/public/transactions/overview/snapshot: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	// int64 fields encode as JSON strings in protojson (grpc-gateway default).
+	if got := body["totalRevenue"]; got != "25" {
+		t.Errorf("totalRevenue = %v, want \"25\"", got)
+	}
+	if got := body["transactionVolume"]; got != "2" {
+		t.Errorf("transactionVolume = %v, want \"2\"", got)
+	}
+}
+
+func TestGateway_OverviewSnapshotRoute_NotOnOldPath(t *testing.T) {
+	// The old /v1/public/overview/snapshot route must no longer be registered.
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	gatewayMux := runtime.NewServeMux()
+	if err := transactionsgrpc.RegisterDashboardOverviewServiceHandlerServer(ctx, gatewayMux, &fakeOverviewService{}); err != nil {
+		t.Fatalf("register overview grpc-gateway handler: %v", err)
+	}
+
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", gatewayMux)
+	srv := httptest.NewServer(httpMux)
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/v1/public/overview/snapshot")
+	if err != nil {
+		t.Fatalf("GET old overview path: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("old route /v1/public/overview/snapshot unexpectedly returned %d", resp.StatusCode)
+	}
+}
