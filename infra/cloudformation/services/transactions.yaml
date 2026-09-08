@@ -55,6 +55,9 @@ Parameters:
     Type: String
     Description: ARN of the PawaPay Secrets Manager secret.
 
+  ClientsGrpcAddr:
+    Type: String
+
 Resources:
   AppDatabaseSecret:
     Type: AWS::SecretsManager::Secret
@@ -113,6 +116,9 @@ Resources:
 
             - Name: DB_TLS_DISABLED
               Value: "false"
+
+            - Name: CLIENTS_GRPC_ADDR
+              Value: !Ref ClientsGrpcAddr
 
           Secrets:
             - Name: DB_NAME
