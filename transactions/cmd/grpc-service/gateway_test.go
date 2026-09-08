@@ -243,7 +243,7 @@ func TestGateway_CORSPreflight_AllowedOrigin(t *testing.T) {
 	}
 	req.Header.Set("Origin", "https://admindashboard.rvpay.xyz")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	req.Header.Set("Access-Control-Request-Headers", "content-type")
+	req.Header.Set("Access-Control-Request-Headers", "authorization, content-type")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -260,8 +260,8 @@ func TestGateway_CORSPreflight_AllowedOrigin(t *testing.T) {
 	if got := resp.Header.Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
 		t.Errorf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
 	}
-	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "Content-Type" {
-		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type")
+	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "Content-Type, Authorization" {
+		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type, Authorization")
 	}
 }
 

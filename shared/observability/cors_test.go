@@ -89,7 +89,9 @@ func TestCORS_PreflightAnsweredAtTransportLayer(t *testing.T) {
 	}
 	req.Header.Set("Origin", "http://localhost:3000")
 	req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-	req.Header.Set("Access-Control-Request-Headers", "Content-Type")
+	// Reproduce the authenticated Dashboard preflight: the browser advertises
+	// the Authorization bearer header alongside Content-Type.
+	req.Header.Set("Access-Control-Request-Headers", "authorization, content-type")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -106,8 +108,8 @@ func TestCORS_PreflightAnsweredAtTransportLayer(t *testing.T) {
 	if got := resp.Header.Get("Access-Control-Allow-Methods"); got != "GET, POST, OPTIONS" {
 		t.Errorf("Access-Control-Allow-Methods = %q, want %q", got, "GET, POST, OPTIONS")
 	}
-	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "Content-Type" {
-		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type")
+	if got := resp.Header.Get("Access-Control-Allow-Headers"); got != "Content-Type, Authorization" {
+		t.Errorf("Access-Control-Allow-Headers = %q, want %q", got, "Content-Type, Authorization")
 	}
 	// Critical: preflight must NOT enter business logic / repository /
 	// payment processing. The wrapped handler represents all of those.

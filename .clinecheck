@@ -7,7 +7,8 @@
 - [x] ALB rule respected: /v1/admin not routable → endpoints RETAIN /v1/public* prefixes with transport-layer middleware protection (§21 alternative); no ALB/infra edits
 - [x] Dashboard: lib/auth.tsx (AuthProvider/AuthGuard), /sign-in page, api.ts Bearer + 401 single-flight refresh, sidebar real identity + sign-out; sessionStorage tokens, never logged
 - [x] go build/vet/test ./clients/... ./transactions/... ./shared/... PASS; npm run build PASS (type-check clean); docs/checkpoints appended in all services
-- [x] Future hardening documented: sign-in rate limiting, validation cache/TTL, password rotation
+- [x] Correlation fix: shared/observability/cors.go Allow-Headers now "Content-Type, Authorization"; root cause of dashboard TypeError after auth = CORS allowed only Content-Type preflight while authenticated requests carry Authorization; single shared middleware fixes BOTH Clients:8080 and Transactions:8081; middleware order CORS→AdminAuth correct; preflight 204 transport-layer (no token needed); no env override for headers (origins only)
+- [x] Regression: cors_test.go + transactions gateway_test preflight now send "authorization, content-type" and assert Allow-Headers "Content-Type, Authorization"; go build/vet PASS; go test ./clients/... ./transactions/... ./shared/... 22 pkgs ok, 0 failures
 
 ## Prior: Server-Connection Implementation — COMPLETE (2026-09-04) | HighLevel OAuth v3 — COMPLETE
 ## Next: deploy env (ADMIN_* + CLIENTS_GRPC_ADDR), migration 000005 on live DBs, restart services, live sign-in + protected-route verification

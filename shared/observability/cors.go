@@ -102,11 +102,12 @@ func CORS(logger zerolog.Logger, allowedOrigins []string, next http.Handler) htt
 
 				// Preflight: answer before the wrapped handler sees the
 				// request. Methods cover every Dashboard call (GET reads,
-				// POST /v1/public/deposits); the Dashboard sends only
-				// Content-Type on its POSTs.
+				// POST /v1/public/deposits). Headers must permit the
+				// Authorization bearer header that authenticated Dashboard
+				// requests carry, alongside Content-Type on its POSTs.
 				if r.Method == http.MethodOptions && r.Header.Get("Access-Control-Request-Method") != "" {
 					w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-					w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+					w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 					w.WriteHeader(http.StatusNoContent)
 					return
 				}
