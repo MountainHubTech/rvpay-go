@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"errors"
+	"net/mail"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
 	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
@@ -65,8 +68,8 @@ func translateAuthError(err error) error {
 		return status.Error(codes.Unauthenticated, "invalid email or password")
 	case errors.Is(err, ErrInvalidToken):
 		return status.Error(codes.Unauthenticated, "invalid or expired token")
-	case errors.Is(err, ErrEmailExists):
-		return status.Error(codes.AlreadyExists, "administrator already exists")
+	case errors.Is(err, ErrEmailExists), errors.Is(err, repo.ErrDuplicate):
+		return status.Error(codes.AlreadyExists, "user already exists")
 	default:
 		return status.Error(codes.Internal, "internal error")
 	}
@@ -189,6 +192,160 @@ func (s *Service) SignOut(ctx context.Context, req *clientsgrpc.SignOutRequest) 
 
 	s.logger.Info().Str("user_id", record.UserID.String()).Msg("administrator signed out")
 	return &clientsgrpc.SignOutResponse{}, nil
+}
+
+// CreateUser implements AuthService.CreateUser. It is a gRPC-only
+// provisioning method (no HTTP binding, no gateway route): the first
+// administrator is created after deployment by calling it directly over
+// gRPC. The plaintext password is hashed with Argon2id and never stored,
+// logged, or returned. A unique-constraint failure surfaces as AlreadyExists
+// without echoing the offending email beyond what the caller already sent.
+func (s *Service) CreateUser(ctx context.Context, req *clientsgrpc.CreateUserRequest) (*clientsgrpc.CreateUserResponse, error) {
+	if req.GetName() == "" || req.GetEmail() == "" || req.GetPassword() == "" {
+		return nil, status.Error(codes.InvalidArgument, "name, email and password are required")
+	}
+	if err := validateEmail(req.GetEmail()); err != nil {
+		return nil, err
+	}
+	if len(req.GetPassword()) < 8 {
+		return nil, status.Error(codes.InvalidArgument, "password must be at least 8 characters")
+	}
+	role := sqlc.UserRole(req.GetUserRole())
+	if role != UserRoleUser && role != UserRoleAdmin {
+		return nil, status.Errorf(codes.InvalidArgument, "user_role must be %s or %s", UserRoleUser, UserRoleAdmin)
+	}
+
+	// Fail cleanly before hashing when the email is taken; the unique
+	// constraint remains the authoritative backstop (ErrDuplicate maps to
+	// the same AlreadyExists code, so a race cannot leak extra detail).
+	if _, err := s.userRepo.GetByEmail(ctx, req.GetEmail()); err == nil {
+		return nil, translateAuthError(ErrEmailExists)
+	} else if !errors.Is(err, repo.ErrNotFound) {
+		return nil, translateAuthError(err)
+	}
+
+	// Argon2id with a random per-user salt: the same plaintext never
+	// produces the same stored hash for different users.
+	passwordHash, err := HashPassword(req.GetPassword())
+	if err != nil {
+		return nil, translateAuthError(err)
+	}
+
+	// The insert is the transaction boundary: success is only reported
+	// after the users row has been committed.
+	user, err := s.userRepo.Create(ctx, req.GetName(), req.GetEmail(), passwordHash, role)
+	if err != nil {
+		return nil, translateAuthError(err)
+	}
+
+	s.logger.Info().Str("user_id", user.ID.String()).Str("user_role", string(user.UserRole)).Msg("user created")
+	return &clientsgrpc.CreateUserResponse{
+		User: &clientsgrpc.AdminUser{
+			Id:       user.ID.String(),
+			Name:     user.Name,
+			Email:    user.Email,
+			UserRole: string(user.UserRole),
+		},
+	}, nil
+}
+
+// UpdateUser implements AuthService.UpdateUser. Only name, email and
+// password are mutable; the user's role is intentionally immutable. Empty
+// request fields mean "unchanged" and never re-hash or overwrite existing
+// values. Changing the password invalidates the persisted refresh mapping
+// and deletes all access-token rows for the user so no pre-existing
+// credential survives a credential change. No password or token material is
+// ever logged or returned.
+func (s *Service) UpdateUser(ctx context.Context, req *clientsgrpc.UpdateUserRequest) (*clientsgrpc.UpdateUserResponse, error) {
+	if req.GetId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "user id is required")
+	}
+	userID, err := uuid.Parse(req.GetId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "user id is required")
+	}
+
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "user not found")
+		}
+		return nil, translateAuthError(err)
+	}
+
+	name := user.Name
+	if req.GetName() != "" {
+		name = req.GetName()
+	}
+	email := user.Email
+	if req.GetEmail() != "" {
+		if err := validateEmail(req.GetEmail()); err != nil {
+			return nil, err
+		}
+		email = req.GetEmail()
+	}
+
+	if email != user.Email {
+		// Reject moving this account onto an email owned by another user;
+		// the unique constraint backstops a concurrent change.
+		other, err := s.userRepo.GetByEmail(ctx, email)
+		if err == nil && other.ID != user.ID {
+			return nil, translateAuthError(ErrEmailExists)
+		} else if err != nil && !errors.Is(err, repo.ErrNotFound) {
+			return nil, translateAuthError(err)
+		}
+	}
+
+	if req.GetPassword() != "" {
+		if len(req.GetPassword()) < 8 {
+			return nil, status.Error(codes.InvalidArgument, "password must be at least 8 characters")
+		}
+		passwordHash, err := HashPassword(req.GetPassword())
+		if err != nil {
+			return nil, translateAuthError(err)
+		}
+		if _, err := s.userRepo.UpdatePasswordHash(ctx, user.ID, passwordHash); err != nil {
+			return nil, translateAuthError(err)
+		}
+		// Refresh tokens are credentials: a password change must not leave
+		// the old refresh token usable. Existing access tokens are deleted
+		// with it so the caller must re-authenticate with the new password.
+		if _, err := s.accessTokenRepo.DeleteByUserID(ctx, user.ID); err != nil {
+			return nil, translateAuthError(err)
+		}
+		if err := s.userRepo.ClearRefreshTokenHash(ctx, user.ID); err != nil {
+			return nil, translateAuthError(err)
+		}
+		s.logger.Info().Str("user_id", user.ID.String()).Msg("user password changed; sessions invalidated")
+	}
+
+	// Only persist name/email when something actually changed so the row
+	// (and updated_at) is not rewritten unnecessarily.
+	if name != user.Name || email != user.Email {
+		user, err = s.userRepo.UpdateNameEmail(ctx, user.ID, name, email)
+		if err != nil {
+			return nil, translateAuthError(err)
+		}
+		s.logger.Info().Str("user_id", user.ID.String()).Msg("user updated")
+	}
+
+	return &clientsgrpc.UpdateUserResponse{
+		User: &clientsgrpc.AdminUser{
+			Id:       user.ID.String(),
+			Name:     user.Name,
+			Email:    user.Email,
+			UserRole: string(user.UserRole),
+		},
+	}, nil
+}
+
+// validateEmail enforces a syntactically valid, non-empty email address.
+func validateEmail(email string) error {
+	address, err := mail.ParseAddress(email)
+	if err != nil || address.Address != email {
+		return status.Error(codes.InvalidArgument, "a valid email address is required")
+	}
+	return nil
 }
 
 // ValidateAccessToken implements the INTERNAL AuthService.ValidateAccessToken

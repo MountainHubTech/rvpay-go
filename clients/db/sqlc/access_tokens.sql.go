@@ -57,6 +57,18 @@ func (q *Queries) DeleteAccessTokenByTokenHash(ctx context.Context, tokenHash st
 	return err
 }
 
+const deleteAccessTokensByUserID = `-- name: DeleteAccessTokensByUserID :execrows
+DELETE FROM access_tokens WHERE user_id = $1
+`
+
+func (q *Queries) DeleteAccessTokensByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteAccessTokensByUserID, userID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteExpiredAccessTokens = `-- name: DeleteExpiredAccessTokens :execrows
 DELETE FROM access_tokens WHERE refresh_expires_at <= NOW()
 `
@@ -75,7 +87,7 @@ FROM access_tokens at
 INNER JOIN users u ON u.id = at.user_id
 WHERE at.refresh_token_hash = $1
   AND at.refresh_expires_at > NOW()
-  AND u.user_role = 'admin'
+  AND u.user_role = 'USER_ROLE_ADMIN'
 ORDER BY at.created_at DESC
 LIMIT 1
 `
@@ -102,7 +114,7 @@ FROM access_tokens at
 INNER JOIN users u ON u.id = at.user_id
 WHERE at.token_hash = $1
   AND at.expires_at > NOW()
-  AND u.user_role = 'admin'
+  AND u.user_role = 'USER_ROLE_ADMIN'
 `
 
 func (q *Queries) GetAccessTokenByTokenHash(ctx context.Context, tokenHash string) (AccessToken, error) {

@@ -97,6 +97,66 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const updateUserNameEmail = `-- name: UpdateUserNameEmail :one
+UPDATE users
+SET name = $2,
+    email = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, email, password_hash, user_role, refresh_token_hash, created_at, updated_at
+`
+
+type UpdateUserNameEmailParams struct {
+	ID    uuid.UUID `json:"id"`
+	Name  string    `json:"name"`
+	Email string    `json:"email"`
+}
+
+func (q *Queries) UpdateUserNameEmail(ctx context.Context, arg UpdateUserNameEmailParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserNameEmail, arg.ID, arg.Name, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.UserRole,
+		&i.RefreshTokenHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateUserPasswordHash = `-- name: UpdateUserPasswordHash :one
+UPDATE users
+SET password_hash = $2,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, name, email, password_hash, user_role, refresh_token_hash, created_at, updated_at
+`
+
+type UpdateUserPasswordHashParams struct {
+	ID           uuid.UUID `json:"id"`
+	PasswordHash string    `json:"password_hash"`
+}
+
+func (q *Queries) UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserPasswordHash, arg.ID, arg.PasswordHash)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.Email,
+		&i.PasswordHash,
+		&i.UserRole,
+		&i.RefreshTokenHash,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateUserRefreshTokenHash = `-- name: UpdateUserRefreshTokenHash :exec
 UPDATE users
 SET refresh_token_hash = $2,

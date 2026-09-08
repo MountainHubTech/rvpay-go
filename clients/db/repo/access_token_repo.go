@@ -15,6 +15,7 @@ type AccessTokenRepo interface {
 	GetByTokenHash(ctx context.Context, tokenHash string) (sqlc.AccessToken, error)
 	GetByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (sqlc.AccessToken, error)
 	DeleteByTokenHash(ctx context.Context, tokenHash string) error
+	DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteExpired(ctx context.Context) (int64, error)
 }
 
@@ -61,6 +62,16 @@ func (r *accessTokenRepo) GetByRefreshTokenHash(ctx context.Context, refreshToke
 func (r *accessTokenRepo) DeleteByTokenHash(ctx context.Context, tokenHash string) error {
 	err := r.q.DeleteAccessTokenByTokenHash(ctx, tokenHash)
 	return wrapError(err)
+}
+
+// DeleteByUserID removes every access-token row for a user. It is used when
+// a password changes so no pre-existing session credential survives.
+func (r *accessTokenRepo) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
+	rows, err := r.q.DeleteAccessTokensByUserID(ctx, userID)
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return rows, nil
 }
 
 func (r *accessTokenRepo) DeleteExpired(ctx context.Context) (int64, error) {

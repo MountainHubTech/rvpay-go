@@ -30,6 +30,7 @@ type Querier interface {
 	CreateWebhookEvent(ctx context.Context, arg CreateWebhookEventParams) (WebhookEvent, error)
 	CreateWebhookSubscription(ctx context.Context, arg CreateWebhookSubscriptionParams) (WebhookSubscription, error)
 	DeleteAccessTokenByTokenHash(ctx context.Context, tokenHash string) error
+	DeleteAccessTokensByUserID(ctx context.Context, userID uuid.UUID) (int64, error)
 	DeleteClient(ctx context.Context, id uuid.UUID) (int64, error)
 	DeleteExpiredAccessTokens(ctx context.Context) (int64, error)
 	DeleteExpiredOAuthStates(ctx context.Context) (int64, error)
@@ -79,6 +80,8 @@ type Querier interface {
 	UpdateOAuthToken(ctx context.Context, arg UpdateOAuthTokenParams) (OauthToken, error)
 	UpdatePaymentProviderConfig(ctx context.Context, arg UpdatePaymentProviderConfigParams) (PaymentProviderConfig, error)
 	UpdatePlatform(ctx context.Context, arg UpdatePlatformParams) (Platform, error)
+	UpdateUserNameEmail(ctx context.Context, arg UpdateUserNameEmailParams) (User, error)
+	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) (User, error)
 	UpdateUserRefreshTokenHash(ctx context.Context, arg UpdateUserRefreshTokenHashParams) error
 	UpdateWebhookSubscriptionLastDelivery(ctx context.Context, arg UpdateWebhookSubscriptionLastDeliveryParams) (WebhookSubscription, error)
 	UpdateWebhookSubscriptionStatus(ctx context.Context, arg UpdateWebhookSubscriptionStatusParams) (WebhookSubscription, error)

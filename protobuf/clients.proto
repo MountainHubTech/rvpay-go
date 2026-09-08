@@ -614,6 +614,49 @@ message ValidateAccessTokenResponse {
   string user_role = 3;
 }
 
+// CreateUserRequest provisions a new database-managed user. It is a
+// gRPC-only administration method: it intentionally has NO HTTP binding and
+// never appears in the grpc-gateway route inventory, so the first
+// administrator is created after deployment via a direct gRPC request.
+message CreateUserRequest {
+  // name is the display name of the user.
+  string name = 1;
+  // email is the sign-in email address (unique across users).
+  string email = 2;
+  // password is the plaintext password input; it is Argon2id-hashed before
+  // storage and is never logged, persisted in plaintext, or echoed back.
+  string password = 3;
+  // user_role must be USER_ROLE_USER or USER_ROLE_ADMIN.
+  string user_role = 4;
+}
+
+// CreateUserResponse returns the created user's safe identity fields only.
+message CreateUserResponse {
+  // user is the created user (never carries password or token material).
+  AdminUser user = 1;
+}
+
+// UpdateUserRequest modifies an existing user's name, email and password.
+// user_role is intentionally immutable through this method. Empty fields are
+// treated as "not supplied" and left unchanged. gRPC-only: no HTTP binding.
+message UpdateUserRequest {
+  // id is the unique identifier of the user to update.
+  string id = 1;
+  // name is the updated display name (empty = unchanged).
+  string name = 2;
+  // email is the updated sign-in email (empty = unchanged).
+  string email = 3;
+  // password is the new plaintext password (empty = unchanged); it is
+  // Argon2id-hashed before storage and never logged or echoed back.
+  string password = 4;
+}
+
+// UpdateUserResponse returns the updated user's safe identity fields only.
+message UpdateUserResponse {
+  // user is the updated user (never carries password or token material).
+  AdminUser user = 1;
+}
+
 // AuthService provides minimal, strongly secured administrator
 // authentication: sign-in, refresh rotation and sign-out, plus the internal
 // access-token validation RPC used by the other services' admin middleware.
@@ -648,4 +691,17 @@ service AuthService {
   // exactly one service (Clients).
   rpc ValidateAccessToken(ValidateAccessTokenRequest)
       returns (ValidateAccessTokenResponse) {}
+
+  // CreateUser provisions a new database-managed user (USER_ROLE_USER or
+  // USER_ROLE_ADMIN). It is a gRPC-only provisioning/administration method:
+  // it deliberately has NO HTTP annotation, is never routed by grpc-gateway,
+  // and therefore is never reachable over the ALB/HTTP boundary. The first
+  // administrator is created after deployment by calling this method
+  // directly over gRPC (e.g. Postman/gRPC or grpcurl).
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {}
+
+  // UpdateUser changes an existing user's name, email and password. The
+  // user's role is immutable here. gRPC-only: no HTTP annotation and no
+  // grpc-gateway route.
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
 }

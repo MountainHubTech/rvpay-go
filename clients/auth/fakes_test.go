@@ -76,6 +76,34 @@ func (f *fakeUserRepo) GetByID(ctx context.Context, userID uuid.UUID) (sqlc.User
 	return sqlc.User{}, repo.ErrNotFound
 }
 
+func (f *fakeUserRepo) UpdateNameEmail(ctx context.Context, userID uuid.UUID, name, email string) (sqlc.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for key, user := range f.users {
+		if user.ID == userID {
+			delete(f.users, key)
+			user.Name = name
+			user.Email = email
+			f.users[email] = user
+			return user, nil
+		}
+	}
+	return sqlc.User{}, repo.ErrNotFound
+}
+
+func (f *fakeUserRepo) UpdatePasswordHash(ctx context.Context, userID uuid.UUID, passwordHash string) (sqlc.User, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for key, user := range f.users {
+		if user.ID == userID {
+			user.PasswordHash = passwordHash
+			f.users[key] = user
+			return user, nil
+		}
+	}
+	return sqlc.User{}, repo.ErrNotFound
+}
+
 func (f *fakeUserRepo) UpdateRefreshTokenHash(ctx context.Context, userID uuid.UUID, refreshTokenHash string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -170,6 +198,22 @@ func (f *fakeAccessTokenRepo) DeleteByTokenHash(ctx context.Context, tokenHash s
 	delete(f.rows, tokenHash)
 	delete(f.byRef, row.refreshTokenHash)
 	return nil
+}
+
+// DeleteByUserID mirrors the SQL semantics: every access-token row of the
+// user is removed, which also removes their refresh mappings.
+func (f *fakeAccessTokenRepo) DeleteByUserID(ctx context.Context, userID uuid.UUID) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var deleted int64
+	for tokenHash, row := range f.rows {
+		if row.userID == userID {
+			delete(f.rows, tokenHash)
+			delete(f.byRef, row.refreshTokenHash)
+			deleted++
+		}
+	}
+	return deleted, nil
 }
 
 func (f *fakeAccessTokenRepo) DeleteExpired(ctx context.Context) (int64, error) {

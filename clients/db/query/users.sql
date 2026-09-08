@@ -20,3 +20,18 @@ UPDATE users
 SET refresh_token_hash = '',
     updated_at = NOW()
 WHERE id = $1;
+
+-- name: UpdateUserNameEmail :one
+UPDATE users
+SET name = $2,
+    email = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: UpdateUserPasswordHash :one
+UPDATE users
+SET password_hash = $2,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;

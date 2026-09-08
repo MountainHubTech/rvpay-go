@@ -2990,6 +2990,251 @@ func (x *ValidateAccessTokenResponse) GetUserRole() string {
 	return ""
 }
 
+// CreateUserRequest provisions a new database-managed user. It is a
+// gRPC-only administration method: it intentionally has NO HTTP binding and
+// never appears in the grpc-gateway route inventory, so the first
+// administrator is created after deployment via a direct gRPC request.
+type CreateUserRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// name is the display name of the user.
+	Name string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	// email is the sign-in email address (unique across users).
+	Email string `protobuf:"bytes,2,opt,name=email,proto3" json:"email,omitempty"`
+	// password is the plaintext password input; it is Argon2id-hashed before
+	// storage and is never logged, persisted in plaintext, or echoed back.
+	Password string `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`
+	// user_role must be USER_ROLE_USER or USER_ROLE_ADMIN.
+	UserRole      string `protobuf:"bytes,4,opt,name=user_role,json=userRole,proto3" json:"user_role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUserRequest) Reset() {
+	*x = CreateUserRequest{}
+	mi := &file_clients_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUserRequest) ProtoMessage() {}
+
+func (x *CreateUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUserRequest.ProtoReflect.Descriptor instead.
+func (*CreateUserRequest) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *CreateUserRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+func (x *CreateUserRequest) GetUserRole() string {
+	if x != nil {
+		return x.UserRole
+	}
+	return ""
+}
+
+// CreateUserResponse returns the created user's safe identity fields only.
+type CreateUserResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// user is the created user (never carries password or token material).
+	User          *AdminUser `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CreateUserResponse) Reset() {
+	*x = CreateUserResponse{}
+	mi := &file_clients_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CreateUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CreateUserResponse) ProtoMessage() {}
+
+func (x *CreateUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CreateUserResponse.ProtoReflect.Descriptor instead.
+func (*CreateUserResponse) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *CreateUserResponse) GetUser() *AdminUser {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
+// UpdateUserRequest modifies an existing user's name, email and password.
+// user_role is intentionally immutable through this method. Empty fields are
+// treated as "not supplied" and left unchanged. gRPC-only: no HTTP binding.
+type UpdateUserRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// id is the unique identifier of the user to update.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// name is the updated display name (empty = unchanged).
+	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	// email is the updated sign-in email (empty = unchanged).
+	Email string `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"`
+	// password is the new plaintext password (empty = unchanged); it is
+	// Argon2id-hashed before storage and never logged or echoed back.
+	Password      string `protobuf:"bytes,4,opt,name=password,proto3" json:"password,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateUserRequest) Reset() {
+	*x = UpdateUserRequest{}
+	mi := &file_clients_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateUserRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateUserRequest) ProtoMessage() {}
+
+func (x *UpdateUserRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateUserRequest.ProtoReflect.Descriptor instead.
+func (*UpdateUserRequest) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *UpdateUserRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *UpdateUserRequest) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *UpdateUserRequest) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+func (x *UpdateUserRequest) GetPassword() string {
+	if x != nil {
+		return x.Password
+	}
+	return ""
+}
+
+// UpdateUserResponse returns the updated user's safe identity fields only.
+type UpdateUserResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// user is the updated user (never carries password or token material).
+	User          *AdminUser `protobuf:"bytes,1,opt,name=user,proto3" json:"user,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpdateUserResponse) Reset() {
+	*x = UpdateUserResponse{}
+	mi := &file_clients_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpdateUserResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpdateUserResponse) ProtoMessage() {}
+
+func (x *UpdateUserResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_clients_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpdateUserResponse.ProtoReflect.Descriptor instead.
+func (*UpdateUserResponse) Descriptor() ([]byte, []int) {
+	return file_clients_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *UpdateUserResponse) GetUser() *AdminUser {
+	if x != nil {
+		return x.User
+	}
+	return nil
+}
+
 var File_clients_proto protoreflect.FileDescriptor
 
 const file_clients_proto_rawDesc = "" +
@@ -3174,7 +3419,21 @@ const file_clients_proto_rawDesc = "" +
 	"\x1bValidateAccessTokenResponse\x12\x14\n" +
 	"\x05valid\x18\x01 \x01(\bR\x05valid\x12\x17\n" +
 	"\auser_id\x18\x02 \x01(\tR\x06userId\x12\x1b\n" +
-	"\tuser_role\x18\x03 \x01(\tR\buserRole*\x99\x01\n" +
+	"\tuser_role\x18\x03 \x01(\tR\buserRole\"v\n" +
+	"\x11CreateUserRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
+	"\x05email\x18\x02 \x01(\tR\x05email\x12\x1a\n" +
+	"\bpassword\x18\x03 \x01(\tR\bpassword\x12\x1b\n" +
+	"\tuser_role\x18\x04 \x01(\tR\buserRole\"@\n" +
+	"\x12CreateUserResponse\x12*\n" +
+	"\x04user\x18\x01 \x01(\v2\x16.clientsgrpc.AdminUserR\x04user\"i\n" +
+	"\x11UpdateUserRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\x12\x1a\n" +
+	"\bpassword\x18\x04 \x01(\tR\bpassword\"@\n" +
+	"\x12UpdateUserResponse\x12*\n" +
+	"\x04user\x18\x01 \x01(\v2\x16.clientsgrpc.AdminUserR\x04user*\x99\x01\n" +
 	"\x10SubAccountStatus\x12\"\n" +
 	"\x1eSUB_ACCOUNT_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19SUB_ACCOUNT_STATUS_ACTIVE\x10\x01\x12!\n" +
@@ -3203,12 +3462,16 @@ const file_clients_proto_rawDesc = "" +
 	"\x15DisconnectIntegration\x12).clientsgrpc.DisconnectIntegrationRequest\x1a*.clientsgrpc.DisconnectIntegrationResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/public/integrations/{id}:disconnect\x12\x8a\x01\n" +
 	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync2\x89\x01\n" +
 	"\rHealthService\x12x\n" +
-	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/clients/healthcheck2\xc4\x03\n" +
+	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/clients/healthcheck2\xe6\x04\n" +
 	"\vAuthService\x12e\n" +
 	"\x06SignIn\x12\x1a.clientsgrpc.SignInRequest\x1a\x1b.clientsgrpc.SignInResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/auth/sign-in\x12w\n" +
 	"\fRefreshToken\x12 .clientsgrpc.RefreshTokenRequest\x1a!.clientsgrpc.RefreshTokenResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/auth/refresh\x12i\n" +
 	"\aSignOut\x12\x1b.clientsgrpc.SignOutRequest\x1a\x1c.clientsgrpc.SignOutResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/public/auth/sign-out\x12j\n" +
-	"\x13ValidateAccessToken\x12'.clientsgrpc.ValidateAccessTokenRequest\x1a(.clientsgrpc.ValidateAccessTokenResponse\"\x00B5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
+	"\x13ValidateAccessToken\x12'.clientsgrpc.ValidateAccessTokenRequest\x1a(.clientsgrpc.ValidateAccessTokenResponse\"\x00\x12O\n" +
+	"\n" +
+	"CreateUser\x12\x1e.clientsgrpc.CreateUserRequest\x1a\x1f.clientsgrpc.CreateUserResponse\"\x00\x12O\n" +
+	"\n" +
+	"UpdateUser\x12\x1e.clientsgrpc.UpdateUserRequest\x1a\x1f.clientsgrpc.UpdateUserResponse\"\x00B5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
 var (
 	file_clients_proto_rawDescOnce sync.Once
@@ -3223,7 +3486,7 @@ func file_clients_proto_rawDescGZIP() []byte {
 }
 
 var file_clients_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
-var file_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 53)
+var file_clients_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_clients_proto_goTypes = []any{
 	(SubAccountStatus)(0),                 // 0: clientsgrpc.SubAccountStatus
 	(*Client)(nil),                        // 1: clientsgrpc.Client
@@ -3279,108 +3542,118 @@ var file_clients_proto_goTypes = []any{
 	(*SignOutResponse)(nil),               // 51: clientsgrpc.SignOutResponse
 	(*ValidateAccessTokenRequest)(nil),    // 52: clientsgrpc.ValidateAccessTokenRequest
 	(*ValidateAccessTokenResponse)(nil),   // 53: clientsgrpc.ValidateAccessTokenResponse
-	(commongrpc.ClientStatus)(0),          // 54: commongrpc.ClientStatus
-	(*timestamppb.Timestamp)(nil),         // 55: google.protobuf.Timestamp
-	(*commongrpc.PaginationRequest)(nil),  // 56: commongrpc.PaginationRequest
-	(*commongrpc.PaginationResponse)(nil), // 57: commongrpc.PaginationResponse
-	(commongrpc.PlatformStatus)(0),        // 58: commongrpc.PlatformStatus
-	(commongrpc.ProviderCapability)(0),    // 59: commongrpc.ProviderCapability
-	(commongrpc.IntegrationStatus)(0),     // 60: commongrpc.IntegrationStatus
+	(*CreateUserRequest)(nil),             // 54: clientsgrpc.CreateUserRequest
+	(*CreateUserResponse)(nil),            // 55: clientsgrpc.CreateUserResponse
+	(*UpdateUserRequest)(nil),             // 56: clientsgrpc.UpdateUserRequest
+	(*UpdateUserResponse)(nil),            // 57: clientsgrpc.UpdateUserResponse
+	(commongrpc.ClientStatus)(0),          // 58: commongrpc.ClientStatus
+	(*timestamppb.Timestamp)(nil),         // 59: google.protobuf.Timestamp
+	(*commongrpc.PaginationRequest)(nil),  // 60: commongrpc.PaginationRequest
+	(*commongrpc.PaginationResponse)(nil), // 61: commongrpc.PaginationResponse
+	(commongrpc.PlatformStatus)(0),        // 62: commongrpc.PlatformStatus
+	(commongrpc.ProviderCapability)(0),    // 63: commongrpc.ProviderCapability
+	(commongrpc.IntegrationStatus)(0),     // 64: commongrpc.IntegrationStatus
 }
 var file_clients_proto_depIdxs = []int32{
-	54, // 0: clientsgrpc.Client.status:type_name -> commongrpc.ClientStatus
-	55, // 1: clientsgrpc.Client.created_at:type_name -> google.protobuf.Timestamp
-	55, // 2: clientsgrpc.Client.updated_at:type_name -> google.protobuf.Timestamp
+	58, // 0: clientsgrpc.Client.status:type_name -> commongrpc.ClientStatus
+	59, // 1: clientsgrpc.Client.created_at:type_name -> google.protobuf.Timestamp
+	59, // 2: clientsgrpc.Client.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: clientsgrpc.CreateClientResponse.client:type_name -> clientsgrpc.Client
 	1,  // 4: clientsgrpc.UpdateClientResponse.client:type_name -> clientsgrpc.Client
 	1,  // 5: clientsgrpc.GetClientResponse.client:type_name -> clientsgrpc.Client
-	56, // 6: clientsgrpc.ListClientsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	60, // 6: clientsgrpc.ListClientsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	1,  // 7: clientsgrpc.ListClientsResponse.clients:type_name -> clientsgrpc.Client
-	57, // 8: clientsgrpc.ListClientsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	61, // 8: clientsgrpc.ListClientsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	1,  // 9: clientsgrpc.ActivateClientResponse.client:type_name -> clientsgrpc.Client
 	1,  // 10: clientsgrpc.DeactivateClientResponse.client:type_name -> clientsgrpc.Client
-	58, // 11: clientsgrpc.Platform.status:type_name -> commongrpc.PlatformStatus
-	59, // 12: clientsgrpc.Platform.capabilities:type_name -> commongrpc.ProviderCapability
-	55, // 13: clientsgrpc.Platform.created_at:type_name -> google.protobuf.Timestamp
-	55, // 14: clientsgrpc.Platform.updated_at:type_name -> google.protobuf.Timestamp
-	56, // 15: clientsgrpc.ListPlatformsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	62, // 11: clientsgrpc.Platform.status:type_name -> commongrpc.PlatformStatus
+	63, // 12: clientsgrpc.Platform.capabilities:type_name -> commongrpc.ProviderCapability
+	59, // 13: clientsgrpc.Platform.created_at:type_name -> google.protobuf.Timestamp
+	59, // 14: clientsgrpc.Platform.updated_at:type_name -> google.protobuf.Timestamp
+	60, // 15: clientsgrpc.ListPlatformsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	16, // 16: clientsgrpc.ListPlatformsResponse.platforms:type_name -> clientsgrpc.Platform
-	57, // 17: clientsgrpc.ListPlatformsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	61, // 17: clientsgrpc.ListPlatformsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	16, // 18: clientsgrpc.GetPlatformResponse.platform:type_name -> clientsgrpc.Platform
 	16, // 19: clientsgrpc.EnablePlatformResponse.platform:type_name -> clientsgrpc.Platform
 	16, // 20: clientsgrpc.DisablePlatformResponse.platform:type_name -> clientsgrpc.Platform
-	60, // 21: clientsgrpc.Integration.status:type_name -> commongrpc.IntegrationStatus
-	55, // 22: clientsgrpc.Integration.installed_at:type_name -> google.protobuf.Timestamp
-	55, // 23: clientsgrpc.Integration.last_sync_at:type_name -> google.protobuf.Timestamp
-	55, // 24: clientsgrpc.Integration.created_at:type_name -> google.protobuf.Timestamp
-	55, // 25: clientsgrpc.Integration.updated_at:type_name -> google.protobuf.Timestamp
+	64, // 21: clientsgrpc.Integration.status:type_name -> commongrpc.IntegrationStatus
+	59, // 22: clientsgrpc.Integration.installed_at:type_name -> google.protobuf.Timestamp
+	59, // 23: clientsgrpc.Integration.last_sync_at:type_name -> google.protobuf.Timestamp
+	59, // 24: clientsgrpc.Integration.created_at:type_name -> google.protobuf.Timestamp
+	59, // 25: clientsgrpc.Integration.updated_at:type_name -> google.protobuf.Timestamp
 	25, // 26: clientsgrpc.InstallIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	25, // 27: clientsgrpc.GetIntegrationResponse.integration:type_name -> clientsgrpc.Integration
-	56, // 28: clientsgrpc.ListIntegrationsRequest.pagination:type_name -> commongrpc.PaginationRequest
+	60, // 28: clientsgrpc.ListIntegrationsRequest.pagination:type_name -> commongrpc.PaginationRequest
 	25, // 29: clientsgrpc.ListIntegrationsResponse.integrations:type_name -> clientsgrpc.Integration
-	57, // 30: clientsgrpc.ListIntegrationsResponse.pagination:type_name -> commongrpc.PaginationResponse
+	61, // 30: clientsgrpc.ListIntegrationsResponse.pagination:type_name -> commongrpc.PaginationResponse
 	25, // 31: clientsgrpc.ReconnectIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	25, // 32: clientsgrpc.DisconnectIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	25, // 33: clientsgrpc.SyncIntegrationResponse.integration:type_name -> clientsgrpc.Integration
 	0,  // 34: clientsgrpc.SubAccountRow.status:type_name -> clientsgrpc.SubAccountStatus
 	41, // 35: clientsgrpc.ListSubAccountsResponse.rows:type_name -> clientsgrpc.SubAccountRow
 	45, // 36: clientsgrpc.SignInResponse.user:type_name -> clientsgrpc.AdminUser
-	55, // 37: clientsgrpc.SignInResponse.access_token_expires_at:type_name -> google.protobuf.Timestamp
+	59, // 37: clientsgrpc.SignInResponse.access_token_expires_at:type_name -> google.protobuf.Timestamp
 	45, // 38: clientsgrpc.RefreshTokenResponse.user:type_name -> clientsgrpc.AdminUser
-	55, // 39: clientsgrpc.RefreshTokenResponse.access_token_expires_at:type_name -> google.protobuf.Timestamp
-	2,  // 40: clientsgrpc.ClientsService.CreateClient:input_type -> clientsgrpc.CreateClientRequest
-	4,  // 41: clientsgrpc.ClientsService.UpdateClient:input_type -> clientsgrpc.UpdateClientRequest
-	6,  // 42: clientsgrpc.ClientsService.DeleteClient:input_type -> clientsgrpc.DeleteClientRequest
-	8,  // 43: clientsgrpc.ClientsService.GetClient:input_type -> clientsgrpc.GetClientRequest
-	10, // 44: clientsgrpc.ClientsService.ListClients:input_type -> clientsgrpc.ListClientsRequest
-	12, // 45: clientsgrpc.ClientsService.ActivateClient:input_type -> clientsgrpc.ActivateClientRequest
-	14, // 46: clientsgrpc.ClientsService.DeactivateClient:input_type -> clientsgrpc.DeactivateClientRequest
-	40, // 47: clientsgrpc.ClientsService.ListSubAccounts:input_type -> clientsgrpc.ListSubAccountsRequest
-	17, // 48: clientsgrpc.PlatformsService.ListPlatforms:input_type -> clientsgrpc.ListPlatformsRequest
-	19, // 49: clientsgrpc.PlatformsService.GetPlatform:input_type -> clientsgrpc.GetPlatformRequest
-	21, // 50: clientsgrpc.PlatformsService.EnablePlatform:input_type -> clientsgrpc.EnablePlatformRequest
-	23, // 51: clientsgrpc.PlatformsService.DisablePlatform:input_type -> clientsgrpc.DisablePlatformRequest
-	26, // 52: clientsgrpc.IntegrationsService.InstallIntegration:input_type -> clientsgrpc.InstallIntegrationRequest
-	28, // 53: clientsgrpc.IntegrationsService.UninstallIntegration:input_type -> clientsgrpc.UninstallIntegrationRequest
-	30, // 54: clientsgrpc.IntegrationsService.GetIntegration:input_type -> clientsgrpc.GetIntegrationRequest
-	32, // 55: clientsgrpc.IntegrationsService.ListIntegrations:input_type -> clientsgrpc.ListIntegrationsRequest
-	34, // 56: clientsgrpc.IntegrationsService.ReconnectIntegration:input_type -> clientsgrpc.ReconnectIntegrationRequest
-	36, // 57: clientsgrpc.IntegrationsService.DisconnectIntegration:input_type -> clientsgrpc.DisconnectIntegrationRequest
-	38, // 58: clientsgrpc.IntegrationsService.SyncIntegration:input_type -> clientsgrpc.SyncIntegrationRequest
-	43, // 59: clientsgrpc.HealthService.HealthCheck:input_type -> clientsgrpc.HealthCheckRequest
-	46, // 60: clientsgrpc.AuthService.SignIn:input_type -> clientsgrpc.SignInRequest
-	48, // 61: clientsgrpc.AuthService.RefreshToken:input_type -> clientsgrpc.RefreshTokenRequest
-	50, // 62: clientsgrpc.AuthService.SignOut:input_type -> clientsgrpc.SignOutRequest
-	52, // 63: clientsgrpc.AuthService.ValidateAccessToken:input_type -> clientsgrpc.ValidateAccessTokenRequest
-	3,  // 64: clientsgrpc.ClientsService.CreateClient:output_type -> clientsgrpc.CreateClientResponse
-	5,  // 65: clientsgrpc.ClientsService.UpdateClient:output_type -> clientsgrpc.UpdateClientResponse
-	7,  // 66: clientsgrpc.ClientsService.DeleteClient:output_type -> clientsgrpc.DeleteClientResponse
-	9,  // 67: clientsgrpc.ClientsService.GetClient:output_type -> clientsgrpc.GetClientResponse
-	11, // 68: clientsgrpc.ClientsService.ListClients:output_type -> clientsgrpc.ListClientsResponse
-	13, // 69: clientsgrpc.ClientsService.ActivateClient:output_type -> clientsgrpc.ActivateClientResponse
-	15, // 70: clientsgrpc.ClientsService.DeactivateClient:output_type -> clientsgrpc.DeactivateClientResponse
-	42, // 71: clientsgrpc.ClientsService.ListSubAccounts:output_type -> clientsgrpc.ListSubAccountsResponse
-	18, // 72: clientsgrpc.PlatformsService.ListPlatforms:output_type -> clientsgrpc.ListPlatformsResponse
-	20, // 73: clientsgrpc.PlatformsService.GetPlatform:output_type -> clientsgrpc.GetPlatformResponse
-	22, // 74: clientsgrpc.PlatformsService.EnablePlatform:output_type -> clientsgrpc.EnablePlatformResponse
-	24, // 75: clientsgrpc.PlatformsService.DisablePlatform:output_type -> clientsgrpc.DisablePlatformResponse
-	27, // 76: clientsgrpc.IntegrationsService.InstallIntegration:output_type -> clientsgrpc.InstallIntegrationResponse
-	29, // 77: clientsgrpc.IntegrationsService.UninstallIntegration:output_type -> clientsgrpc.UninstallIntegrationResponse
-	31, // 78: clientsgrpc.IntegrationsService.GetIntegration:output_type -> clientsgrpc.GetIntegrationResponse
-	33, // 79: clientsgrpc.IntegrationsService.ListIntegrations:output_type -> clientsgrpc.ListIntegrationsResponse
-	35, // 80: clientsgrpc.IntegrationsService.ReconnectIntegration:output_type -> clientsgrpc.ReconnectIntegrationResponse
-	37, // 81: clientsgrpc.IntegrationsService.DisconnectIntegration:output_type -> clientsgrpc.DisconnectIntegrationResponse
-	39, // 82: clientsgrpc.IntegrationsService.SyncIntegration:output_type -> clientsgrpc.SyncIntegrationResponse
-	44, // 83: clientsgrpc.HealthService.HealthCheck:output_type -> clientsgrpc.HealthCheckResponse
-	47, // 84: clientsgrpc.AuthService.SignIn:output_type -> clientsgrpc.SignInResponse
-	49, // 85: clientsgrpc.AuthService.RefreshToken:output_type -> clientsgrpc.RefreshTokenResponse
-	51, // 86: clientsgrpc.AuthService.SignOut:output_type -> clientsgrpc.SignOutResponse
-	53, // 87: clientsgrpc.AuthService.ValidateAccessToken:output_type -> clientsgrpc.ValidateAccessTokenResponse
-	64, // [64:88] is the sub-list for method output_type
-	40, // [40:64] is the sub-list for method input_type
-	40, // [40:40] is the sub-list for extension type_name
-	40, // [40:40] is the sub-list for extension extendee
-	0,  // [0:40] is the sub-list for field type_name
+	59, // 39: clientsgrpc.RefreshTokenResponse.access_token_expires_at:type_name -> google.protobuf.Timestamp
+	45, // 40: clientsgrpc.CreateUserResponse.user:type_name -> clientsgrpc.AdminUser
+	45, // 41: clientsgrpc.UpdateUserResponse.user:type_name -> clientsgrpc.AdminUser
+	2,  // 42: clientsgrpc.ClientsService.CreateClient:input_type -> clientsgrpc.CreateClientRequest
+	4,  // 43: clientsgrpc.ClientsService.UpdateClient:input_type -> clientsgrpc.UpdateClientRequest
+	6,  // 44: clientsgrpc.ClientsService.DeleteClient:input_type -> clientsgrpc.DeleteClientRequest
+	8,  // 45: clientsgrpc.ClientsService.GetClient:input_type -> clientsgrpc.GetClientRequest
+	10, // 46: clientsgrpc.ClientsService.ListClients:input_type -> clientsgrpc.ListClientsRequest
+	12, // 47: clientsgrpc.ClientsService.ActivateClient:input_type -> clientsgrpc.ActivateClientRequest
+	14, // 48: clientsgrpc.ClientsService.DeactivateClient:input_type -> clientsgrpc.DeactivateClientRequest
+	40, // 49: clientsgrpc.ClientsService.ListSubAccounts:input_type -> clientsgrpc.ListSubAccountsRequest
+	17, // 50: clientsgrpc.PlatformsService.ListPlatforms:input_type -> clientsgrpc.ListPlatformsRequest
+	19, // 51: clientsgrpc.PlatformsService.GetPlatform:input_type -> clientsgrpc.GetPlatformRequest
+	21, // 52: clientsgrpc.PlatformsService.EnablePlatform:input_type -> clientsgrpc.EnablePlatformRequest
+	23, // 53: clientsgrpc.PlatformsService.DisablePlatform:input_type -> clientsgrpc.DisablePlatformRequest
+	26, // 54: clientsgrpc.IntegrationsService.InstallIntegration:input_type -> clientsgrpc.InstallIntegrationRequest
+	28, // 55: clientsgrpc.IntegrationsService.UninstallIntegration:input_type -> clientsgrpc.UninstallIntegrationRequest
+	30, // 56: clientsgrpc.IntegrationsService.GetIntegration:input_type -> clientsgrpc.GetIntegrationRequest
+	32, // 57: clientsgrpc.IntegrationsService.ListIntegrations:input_type -> clientsgrpc.ListIntegrationsRequest
+	34, // 58: clientsgrpc.IntegrationsService.ReconnectIntegration:input_type -> clientsgrpc.ReconnectIntegrationRequest
+	36, // 59: clientsgrpc.IntegrationsService.DisconnectIntegration:input_type -> clientsgrpc.DisconnectIntegrationRequest
+	38, // 60: clientsgrpc.IntegrationsService.SyncIntegration:input_type -> clientsgrpc.SyncIntegrationRequest
+	43, // 61: clientsgrpc.HealthService.HealthCheck:input_type -> clientsgrpc.HealthCheckRequest
+	46, // 62: clientsgrpc.AuthService.SignIn:input_type -> clientsgrpc.SignInRequest
+	48, // 63: clientsgrpc.AuthService.RefreshToken:input_type -> clientsgrpc.RefreshTokenRequest
+	50, // 64: clientsgrpc.AuthService.SignOut:input_type -> clientsgrpc.SignOutRequest
+	52, // 65: clientsgrpc.AuthService.ValidateAccessToken:input_type -> clientsgrpc.ValidateAccessTokenRequest
+	54, // 66: clientsgrpc.AuthService.CreateUser:input_type -> clientsgrpc.CreateUserRequest
+	56, // 67: clientsgrpc.AuthService.UpdateUser:input_type -> clientsgrpc.UpdateUserRequest
+	3,  // 68: clientsgrpc.ClientsService.CreateClient:output_type -> clientsgrpc.CreateClientResponse
+	5,  // 69: clientsgrpc.ClientsService.UpdateClient:output_type -> clientsgrpc.UpdateClientResponse
+	7,  // 70: clientsgrpc.ClientsService.DeleteClient:output_type -> clientsgrpc.DeleteClientResponse
+	9,  // 71: clientsgrpc.ClientsService.GetClient:output_type -> clientsgrpc.GetClientResponse
+	11, // 72: clientsgrpc.ClientsService.ListClients:output_type -> clientsgrpc.ListClientsResponse
+	13, // 73: clientsgrpc.ClientsService.ActivateClient:output_type -> clientsgrpc.ActivateClientResponse
+	15, // 74: clientsgrpc.ClientsService.DeactivateClient:output_type -> clientsgrpc.DeactivateClientResponse
+	42, // 75: clientsgrpc.ClientsService.ListSubAccounts:output_type -> clientsgrpc.ListSubAccountsResponse
+	18, // 76: clientsgrpc.PlatformsService.ListPlatforms:output_type -> clientsgrpc.ListPlatformsResponse
+	20, // 77: clientsgrpc.PlatformsService.GetPlatform:output_type -> clientsgrpc.GetPlatformResponse
+	22, // 78: clientsgrpc.PlatformsService.EnablePlatform:output_type -> clientsgrpc.EnablePlatformResponse
+	24, // 79: clientsgrpc.PlatformsService.DisablePlatform:output_type -> clientsgrpc.DisablePlatformResponse
+	27, // 80: clientsgrpc.IntegrationsService.InstallIntegration:output_type -> clientsgrpc.InstallIntegrationResponse
+	29, // 81: clientsgrpc.IntegrationsService.UninstallIntegration:output_type -> clientsgrpc.UninstallIntegrationResponse
+	31, // 82: clientsgrpc.IntegrationsService.GetIntegration:output_type -> clientsgrpc.GetIntegrationResponse
+	33, // 83: clientsgrpc.IntegrationsService.ListIntegrations:output_type -> clientsgrpc.ListIntegrationsResponse
+	35, // 84: clientsgrpc.IntegrationsService.ReconnectIntegration:output_type -> clientsgrpc.ReconnectIntegrationResponse
+	37, // 85: clientsgrpc.IntegrationsService.DisconnectIntegration:output_type -> clientsgrpc.DisconnectIntegrationResponse
+	39, // 86: clientsgrpc.IntegrationsService.SyncIntegration:output_type -> clientsgrpc.SyncIntegrationResponse
+	44, // 87: clientsgrpc.HealthService.HealthCheck:output_type -> clientsgrpc.HealthCheckResponse
+	47, // 88: clientsgrpc.AuthService.SignIn:output_type -> clientsgrpc.SignInResponse
+	49, // 89: clientsgrpc.AuthService.RefreshToken:output_type -> clientsgrpc.RefreshTokenResponse
+	51, // 90: clientsgrpc.AuthService.SignOut:output_type -> clientsgrpc.SignOutResponse
+	53, // 91: clientsgrpc.AuthService.ValidateAccessToken:output_type -> clientsgrpc.ValidateAccessTokenResponse
+	55, // 92: clientsgrpc.AuthService.CreateUser:output_type -> clientsgrpc.CreateUserResponse
+	57, // 93: clientsgrpc.AuthService.UpdateUser:output_type -> clientsgrpc.UpdateUserResponse
+	68, // [68:94] is the sub-list for method output_type
+	42, // [42:68] is the sub-list for method input_type
+	42, // [42:42] is the sub-list for extension type_name
+	42, // [42:42] is the sub-list for extension extendee
+	0,  // [0:42] is the sub-list for field type_name
 }
 
 func init() { file_clients_proto_init() }
@@ -3394,7 +3667,7 @@ func file_clients_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_clients_proto_rawDesc), len(file_clients_proto_rawDesc)),
 			NumEnums:      1,
-			NumMessages:   53,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   5,
 		},
