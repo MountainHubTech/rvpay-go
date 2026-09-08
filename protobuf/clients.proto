@@ -363,7 +363,8 @@ service ClientsService {
   // populated here: they require Transactions-owned data the Clients service
   // cannot read directly. They are documented in dashboard-setup.md as
   // cross-service gaps until a cross-service capability is wired up.
-  rpc ListSubAccounts(ListSubAccountsRequest) returns (ListSubAccountsResponse) {
+  rpc ListSubAccounts(ListSubAccountsRequest)
+      returns (ListSubAccountsResponse) {
     option (google.api.http) = {
       get : "/v1/public/clients/sub-accounts"
     };
@@ -700,9 +701,9 @@ service AuthService {
   // directly over gRPC (e.g. Postman/gRPC or grpcurl).
   rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
     option (google.api.http) = {
-      post: "/v1/public/clients/users"
-      body: "*"
-    }
+      post : "/v1/public/clients/users"
+      body : "*"
+    };
   }
 
   // UpdateUser changes an existing user's name, email and password. The
