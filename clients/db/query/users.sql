@@ -9,9 +9,6 @@ SELECT * FROM users WHERE email = $1;
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
--- name: CountUsers :one
-SELECT COUNT(*) FROM users;
-
 -- name: UpdateUserRefreshTokenHash :exec
 UPDATE users
 SET refresh_token_hash = $2,

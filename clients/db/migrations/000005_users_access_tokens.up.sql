@@ -1,3 +1,12 @@
+-- user_role mirrors the USER_ROLE_USER / USER_ROLE_ADMIN model. Following the
+-- project's PostgreSQL enum convention (client_status, integration_status,
+-- webhook_subscription_status), the type carries the full role names so both
+-- roles are explicitly representable and no additional roles can exist.
+CREATE TYPE user_role AS ENUM (
+    'USER_ROLE_USER',
+    'USER_ROLE_ADMIN'
+);
+
 CREATE TABLE users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -7,7 +16,7 @@ CREATE TABLE users (
 
     password_hash TEXT NOT NULL,
 
-    user_role TEXT NOT NULL DEFAULT 'admin' CHECK (user_role IN ('admin')),
+    user_role user_role NOT NULL DEFAULT 'USER_ROLE_USER',
 
     refresh_token_hash TEXT NOT NULL DEFAULT '',
 

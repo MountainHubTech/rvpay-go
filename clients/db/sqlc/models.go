@@ -101,6 +101,48 @@ func (ns NullIntegrationStatus) Value() (driver.Value, error) {
 	return string(ns.IntegrationStatus), nil
 }
 
+type UserRole string
+
+const (
+	UserRoleUSERROLEUSER  UserRole = "USER_ROLE_USER"
+	UserRoleUSERROLEADMIN UserRole = "USER_ROLE_ADMIN"
+)
+
+func (e *UserRole) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = UserRole(s)
+	case string:
+		*e = UserRole(s)
+	default:
+		return fmt.Errorf("unsupported scan type for UserRole: %T", src)
+	}
+	return nil
+}
+
+type NullUserRole struct {
+	UserRole UserRole `json:"user_role"`
+	Valid    bool     `json:"valid"` // Valid is true if UserRole is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullUserRole) Scan(value interface{}) error {
+	if value == nil {
+		ns.UserRole, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.UserRole.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullUserRole) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.UserRole), nil
+}
+
 type WebhookSubscriptionStatus string
 
 const (
@@ -238,7 +280,7 @@ type User struct {
 	Name             string    `json:"name"`
 	Email            string    `json:"email"`
 	PasswordHash     string    `json:"password_hash"`
-	UserRole         string    `json:"user_role"`
+	UserRole         UserRole  `json:"user_role"`
 	RefreshTokenHash string    `json:"refresh_token_hash"`
 	CreatedAt        time.Time `json:"created_at"`
 	UpdatedAt        time.Time `json:"updated_at"`

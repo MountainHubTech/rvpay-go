@@ -7,12 +7,13 @@ import (
 	"github.com/google/uuid"
 )
 
-// UserRepo provides persistence operations for administrator records.
+// UserRepo provides persistence operations for database-managed users.
+// Users (including administrators) are created directly in the database by
+// the operator; the authentication service only reads and updates them.
 type UserRepo interface {
-	Create(ctx context.Context, name, email, passwordHash, userRole string) (sqlc.User, error)
+	Create(ctx context.Context, name, email string, passwordHash string, userRole sqlc.UserRole) (sqlc.User, error)
 	GetByEmail(ctx context.Context, email string) (sqlc.User, error)
 	GetByID(ctx context.Context, userID uuid.UUID) (sqlc.User, error)
-	Count(ctx context.Context) (int64, error)
 	UpdateRefreshTokenHash(ctx context.Context, userID uuid.UUID, refreshTokenHash string) error
 	ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error
 }
@@ -26,7 +27,7 @@ func NewUserRepo(q sqlc.Querier) UserRepo {
 	return &userRepo{q: q}
 }
 
-func (r *userRepo) Create(ctx context.Context, name, email, passwordHash, userRole string) (sqlc.User, error) {
+func (r *userRepo) Create(ctx context.Context, name, email string, passwordHash string, userRole sqlc.UserRole) (sqlc.User, error) {
 	record, err := r.q.CreateUser(ctx, sqlc.CreateUserParams{
 		Name:         name,
 		Email:        email,
@@ -53,14 +54,6 @@ func (r *userRepo) GetByID(ctx context.Context, userID uuid.UUID) (sqlc.User, er
 		return sqlc.User{}, wrapNotFound(err)
 	}
 	return record, nil
-}
-
-func (r *userRepo) Count(ctx context.Context) (int64, error) {
-	count, err := r.q.CountUsers(ctx)
-	if err != nil {
-		return 0, wrapError(err)
-	}
-	return count, nil
 }
 
 func (r *userRepo) UpdateRefreshTokenHash(ctx context.Context, userID uuid.UUID, refreshTokenHash string) error {

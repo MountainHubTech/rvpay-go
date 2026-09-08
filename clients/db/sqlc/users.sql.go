@@ -23,17 +23,6 @@ func (q *Queries) ClearUserRefreshTokenHash(ctx context.Context, id uuid.UUID) e
 	return err
 }
 
-const countUsers = `-- name: CountUsers :one
-SELECT COUNT(*) FROM users
-`
-
-func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countUsers)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
-}
-
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (name, email, password_hash, user_role)
 VALUES ($1, $2, $3, $4)
@@ -41,10 +30,10 @@ RETURNING id, name, email, password_hash, user_role, refresh_token_hash, created
 `
 
 type CreateUserParams struct {
-	Name         string `json:"name"`
-	Email        string `json:"email"`
-	PasswordHash string `json:"password_hash"`
-	UserRole     string `json:"user_role"`
+	Name         string   `json:"name"`
+	Email        string   `json:"email"`
+	PasswordHash string   `json:"password_hash"`
+	UserRole     UserRole `json:"user_role"`
 }
 
 func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {

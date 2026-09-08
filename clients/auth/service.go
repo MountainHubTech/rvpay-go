@@ -14,10 +14,14 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// UserRole is the single role the backend enforces for authorization. Hiding
-// UI affordances is never authorization; every protected endpoint checks it
-// server-side.
-const UserRole = "admin"
+// User roles. The users table is the single source of truth; multiple users
+// with the admin role are supported naturally, and user-role users must never
+// authenticate to admin-protected endpoints. Hiding UI affordances is never
+// authorization; every protected endpoint checks the role server-side.
+const (
+	UserRoleUser  = sqlc.UserRoleUSERROLEUSER
+	UserRoleAdmin = sqlc.UserRoleUSERROLEADMIN
+)
 
 // Settings holds the tunable authentication parameters. They come from
 // environment configuration, never hard-coded.
@@ -30,7 +34,9 @@ type Settings struct {
 }
 
 // Service implements the administrator authentication flow: sign-in, refresh
-// rotation, sign-out, token validation and the env-seeded bootstrap admin.
+// rotation, sign-out and token validation. Administrator accounts are
+// database-managed users; the service never seeds or selects an
+// administrator from environment variables.
 type Service struct {
 	clientsgrpc.UnimplementedAuthServiceServer
 	userRepo        repo.UserRepo
@@ -67,8 +73,10 @@ func translateAuthError(err error) error {
 }
 
 // SignIn implements AuthService.SignIn. It verifies the argon2id password
-// hash, then issues a fresh opaque token pair; only SHA-256 hashes of the
-// tokens are persisted.
+// hash against the database-managed user, enforces the admin role, then
+// issues a fresh opaque token pair; only SHA-256 hashes of the tokens are
+// persisted. There is no special case for any configured or bootstrap
+// administrator: authentication is entirely database/user based.
 func (s *Service) SignIn(ctx context.Context, req *clientsgrpc.SignInRequest) (*clientsgrpc.SignInResponse, error) {
 	if req.GetEmail() == "" || req.GetPassword() == "" {
 		return nil, status.Error(codes.InvalidArgument, "email and password are required")
@@ -80,12 +88,17 @@ func (s *Service) SignIn(ctx context.Context, req *clientsgrpc.SignInRequest) (*
 			// Same response shape and code as a wrong password: no user
 			// enumeration. A dummy verification keeps timing roughly equal.
 			VerifyPassword(req.GetPassword(), ArgonEncodedPrefix+"v=19$m=1024,t=1,p=1$c2FsdA$ZmFrZQ")
-			return nil, ErrInvalidCredentials
+			return nil, translateAuthError(ErrInvalidCredentials)
 		}
 		return nil, translateAuthError(err)
 	}
 	if !VerifyPassword(req.GetPassword(), user.PasswordHash) {
-		return nil, ErrInvalidCredentials
+		return nil, translateAuthError(ErrInvalidCredentials)
+	}
+	// USER_ROLE_USER accounts must not authenticate to the admin flow. The
+	// failure is identical to a wrong password: still no enumeration.
+	if user.UserRole != UserRoleAdmin {
+		return nil, translateAuthError(ErrInvalidCredentials)
 	}
 
 	resp, err := s.issueTokens(ctx, user)
@@ -109,7 +122,7 @@ func (s *Service) RefreshToken(ctx context.Context, req *clientsgrpc.RefreshToke
 	record, err := s.accessTokenRepo.GetByRefreshTokenHash(ctx, hash)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return nil, ErrInvalidToken
+			return nil, translateAuthError(ErrInvalidToken)
 		}
 		return nil, translateAuthError(err)
 	}
@@ -117,12 +130,12 @@ func (s *Service) RefreshToken(ctx context.Context, req *clientsgrpc.RefreshToke
 	user, err := s.userRepo.GetByID(ctx, record.UserID)
 	if err != nil {
 		if errors.Is(err, repo.ErrNotFound) {
-			return nil, ErrInvalidToken
+			return nil, translateAuthError(ErrInvalidToken)
 		}
 		return nil, translateAuthError(err)
 	}
-	if user.UserRole != UserRole {
-		return nil, ErrInvalidToken
+	if user.UserRole != UserRoleAdmin {
+		return nil, translateAuthError(ErrInvalidToken)
 	}
 
 	// Rotate: the presented refresh token is single-use. Deleting the row
@@ -198,36 +211,8 @@ func (s *Service) ValidateAccessToken(ctx context.Context, req *clientsgrpc.Vali
 	return &clientsgrpc.ValidateAccessTokenResponse{
 		Valid:    true,
 		UserId:   record.UserID.String(),
-		UserRole: UserRole,
+		UserRole: string(UserRoleAdmin),
 	}, nil
-}
-
-// BootstrapAdmin seeds the first administrator from environment
-// configuration when no user exists yet. It is idempotent: it only acts on
-// an empty users table and never overwrites an existing administrator.
-func (s *Service) BootstrapAdmin(ctx context.Context, name, email, password string) error {
-	count, err := s.userRepo.Count(ctx)
-	if err != nil {
-		return err
-	}
-	if count > 0 {
-		return nil
-	}
-	if name == "" || email == "" || password == "" {
-		s.logger.Warn().Msg("no administrators exist and ADMIN_NAME/ADMIN_EMAIL/ADMIN_PASSWORD are not fully configured; admin sign-in is unavailable until configured")
-		return nil
-	}
-
-	hash, err := HashPassword(password)
-	if err != nil {
-		return err
-	}
-	user, err := s.userRepo.Create(ctx, name, email, hash, UserRole)
-	if err != nil {
-		return err
-	}
-	s.logger.Info().Str("user_id", user.ID.String()).Msg("bootstrap administrator created")
-	return nil
 }
 
 // issueTokens creates a fresh access/refresh pair for the user. Only the
@@ -258,7 +243,7 @@ func (s *Service) issueTokens(ctx context.Context, user sqlc.User) (*clientsgrpc
 			Id:       user.ID.String(),
 			Name:     user.Name,
 			Email:    user.Email,
-			UserRole: user.UserRole,
+			UserRole: string(user.UserRole),
 		},
 		AccessToken:          accessToken,
 		RefreshToken:         refreshToken,

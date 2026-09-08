@@ -34,28 +34,14 @@ type Config struct {
 	// HTTP_CORS_ALLOWED_ORIGINS.
 	CORSAllowedOrigins string `conf:"env:HTTP_CORS_ALLOWED_ORIGINS,default:https://admindashboard.rvpay.xyz,http://localhost:3000"`
 
-	// AdminAuth holds the minimal administrator authentication settings.
-	// Tokens are opaque, random, and stored only as SHA-256 hashes; the
-	// bootstrap administrator is seeded from environment configuration on
-	// first start (never hard-coded).
-	AdminAuth AdminAuthConfig
+	// Auth holds the authentication-infrastructure settings. Administrator
+	// accounts are DATABASE-MANAGED USERS created directly by the operator;
+	// no administrator credentials are ever configured via environment.
+	Auth AuthConfig
 }
 
-// AdminAuthConfig configures the minimal administrator authentication flow.
-type AdminAuthConfig struct {
-	// AdminName is the display name of the seeded bootstrap administrator
-	// (ADMIN_NAME).
-	AdminName string `conf:"env:ADMIN_NAME,default:RVPay Administrator"`
-
-	// AdminEmail is the sign-in email of the seeded bootstrap administrator
-	// (ADMIN_EMAIL).
-	AdminEmail string `conf:"env:ADMIN_EMAIL"`
-
-	// AdminPassword is the sign-in password of the seeded bootstrap
-	// administrator (ADMIN_PASSWORD). It is used once at seed time and is
-	// never persisted in plaintext.
-	AdminPassword string `conf:"env:ADMIN_PASSWORD,mask"`
-
+// AuthConfig configures the token lifetimes for the authentication flow.
+type AuthConfig struct {
 	// AccessTokenTTL is how long issued access tokens remain valid
 	// (ACCESS_TOKEN_TTL). Default: 1 hour.
 	AccessTokenTTL time.Duration `conf:"env:ACCESS_TOKEN_TTL,default:1h"`

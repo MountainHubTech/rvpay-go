@@ -18,7 +18,6 @@ type Querier interface {
 	CountIntegrationsByClient(ctx context.Context, clientID uuid.UUID) (int64, error)
 	CountPlatforms(ctx context.Context) (int64, error)
 	CountSubAccountsFiltered(ctx context.Context, arg CountSubAccountsFilteredParams) (int64, error)
-	CountUsers(ctx context.Context) (int64, error)
 	CountWebhookSubscriptionsByIntegrationID(ctx context.Context, integrationID uuid.UUID) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (AccessToken, error)
 	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)

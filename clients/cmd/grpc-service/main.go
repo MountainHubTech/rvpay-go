@@ -103,19 +103,12 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	userRepo := repo.NewUserRepo(clientsRepo.Do())
 	accessTokenRepo := repo.NewAccessTokenRepo(clientsRepo.Do())
 
-	// Minimal administrator authentication. The bootstrap administrator is
-	// seeded from environment configuration on first start (idempotent —
-	// only when the users table is empty); tokens are opaque and stored
-	// hashed.
+	// Minimal administrator authentication against database-managed users.
 	authSettings := auth.Settings{
-		AccessTokenTTL:  cfg.AdminAuth.AccessTokenTTL,
-		RefreshTokenTTL: cfg.AdminAuth.RefreshTokenTTL,
+		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
+		RefreshTokenTTL: cfg.Auth.RefreshTokenTTL,
 	}
 	authService := auth.NewService(userRepo, accessTokenRepo, authSettings, logger)
-	if err := authService.BootstrapAdmin(ctx, cfg.AdminAuth.AdminName, cfg.AdminAuth.AdminEmail, cfg.AdminAuth.AdminPassword); err != nil {
-		logger.Err(err).Msg("failed to bootstrap administrator")
-		return fmt.Errorf("bootstrap administrator: %w", err)
-	}
 
 	providerRegistry := providers.NewProviderRegistry()
 	// The HighLevel Custom Payment Provider client makes authenticated outbound
