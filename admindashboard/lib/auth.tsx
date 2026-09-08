@@ -30,15 +30,14 @@ type StoredSession = {
 
 export const SESSION_STORAGE_KEY = "rvpay-dashboard-auth"
 
-// readSession reads the stored session for this browser tab. Safe during SSR
-// (sessionStorage is only touched when it exists).
-export function readSession(): StoredSession | null {
-  if (typeof window === "undefined") {
-    return null
-  }
+// readSession reads the stored session for this browser tab with a STABLE
+// identity per stored value (required for useSyncExternalStore snapshots).
+// Safe during SSR (sessionStorage is only touched when it exists).
+let cachedRaw: string | null = null
+let cachedSession: StoredSession | null = null
+
+function parseSession(raw: string): StoredSession | null {
   try {
-    const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY)
-    if (!raw) return null
     const parsed = JSON.parse(raw) as Partial<StoredSession>
     if (
       typeof parsed.accessToken !== "string" ||
@@ -54,10 +53,49 @@ export function readSession(): StoredSession | null {
   }
 }
 
+export function readSession(): StoredSession | null {
+  if (typeof window === "undefined") {
+    return null
+  }
+  const raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY)
+  if (raw === cachedRaw) {
+    return cachedSession
+  }
+  cachedRaw = raw
+  cachedSession = raw === null ? null : parseSession(raw)
+  return cachedSession
+}
+
+// External-store plumbing: subscribers are notified whenever the session
+// changes (local writes, cross-tab storage events). React subscribes via
+// useSyncExternalStore — no effect ever calls setState (react-hooks
+// set-state-in-effect rule).
+const listeners = new Set<() => void>()
+
+function notify(): void {
+  for (const listener of listeners) {
+    listener()
+  }
+}
+
+export function subscribeToSession(listener: () => void): () => void {
+  listeners.add(listener)
+  window.addEventListener("storage", listener)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener("storage", listener)
+  }
+}
+
+function getServerSnapshot(): StoredSession | null {
+  return null
+}
+
 export function writeSession(session: StoredSession): void {
   if (typeof window === "undefined") return
   try {
     window.sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+    notify()
   } catch {
     // Storage unavailable (private mode); the in-memory session still works.
   }
@@ -67,6 +105,7 @@ export function clearSession(): void {
   if (typeof window === "undefined") return
   try {
     window.sessionStorage.removeItem(SESSION_STORAGE_KEY)
+    notify()
   } catch {
     // Storage unavailable; nothing to clear.
   }
@@ -99,7 +138,6 @@ export function dropSession(): void {
 
 type AuthContextValue = {
   user: AdminUser | null
-  loading: boolean
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
 }
@@ -107,26 +145,25 @@ type AuthContextValue = {
 const AuthContext = React.createContext<AuthContextValue | null>(null)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = React.useState<AdminUser | null>(null)
-  const [loading, setLoading] = React.useState(true)
-
-  React.useEffect(() => {
-    setUser(readSession()?.user ?? null)
-    setLoading(false)
-  }, [])
+  // The session is an EXTERNAL STORE (sessionStorage + subscribers), read
+  // with useSyncExternalStore: SSR-safe and never setState-in-effect.
+  const session = React.useSyncExternalStore(
+    subscribeToSession,
+    readSession,
+    getServerSnapshot
+  )
+  const user = session?.user ?? null
 
   const signIn = React.useCallback(async (email: string, password: string) => {
     // Imported lazily to keep this module's dependency on the API layer
     // one-directional (api.ts imports session storage helpers from here).
     const { signInRequest } = await import("@/lib/api")
     const response = await signInRequest(email, password)
-    const session: StoredSession = {
+    writeSession({
       accessToken: response.accessToken,
       refreshToken: response.refreshToken,
       user: response.user,
-    }
-    writeSession(session)
-    setUser(session.user)
+    })
   }, [])
 
   const signOut = React.useCallback(async () => {
@@ -138,12 +175,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // cleanup happens regardless.
     }
     dropSession()
-    setUser(null)
   }, [])
 
   const value = React.useMemo<AuthContextValue>(
-    () => ({ user, loading, signIn, signOut }),
-    [user, loading, signIn, signOut]
+    () => ({ user, signIn, signOut }),
+    [user, signIn, signOut]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -159,18 +195,20 @@ export function useAuth(): AuthContextValue {
 
 // AuthGuard blocks protected pages until an administrator is signed in.
 // Server middleware enforces authorization; this guard only prevents
-// rendering protected UI for unauthenticated browsers.
+// rendering protected UI for unauthenticated browsers. During SSR/hydration
+// the session snapshot is null, so the placeholder renders first and the
+// client store resolves immediately after.
 export function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth()
+  const { user } = useAuth()
   const router = useRouter()
 
   React.useEffect(() => {
-    if (!loading && !user) {
+    if (!user) {
       router.replace("/sign-in")
     }
-  }, [loading, user, router])
+  }, [user, router])
 
-  if (loading || !user) {
+  if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <p className="text-sm text-muted-foreground">Checking session…</p>

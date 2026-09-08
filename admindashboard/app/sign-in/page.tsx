@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth"
 import { describeApiError } from "@/lib/api"
 
 export default function SignInPage() {
-  const { user, loading, signIn } = useAuth()
+  const { user, signIn } = useAuth()
   const router = useRouter()
 
   const [email, setEmail] = React.useState("")
@@ -19,10 +19,10 @@ export default function SignInPage() {
   const [error, setError] = React.useState<string | null>(null)
 
   React.useEffect(() => {
-    if (!loading && user) {
+    if (user) {
       router.replace("/")
     }
-  }, [loading, user, router])
+  }, [user, router])
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
