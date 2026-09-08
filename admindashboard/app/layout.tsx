@@ -17,13 +17,17 @@ export const metadata: Metadata = {
   description: "Admin dashboard for monitoring payments infrastructure.",
 };
 
+import { AuthProvider } from "@/lib/auth";
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <AuthProvider>{children}</AuthProvider>
+      </body>
     </html>
   );
 }

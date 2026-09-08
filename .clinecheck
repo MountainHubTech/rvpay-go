@@ -1,12 +1,13 @@
 # RVPay Go — Stage Checkpoint
 
-## Stage: Server-Connection Implementation — COMPLETE (2026-09-04)
-- [x] Customer transactional flow: migration 000004 (client_id→client_name + name/address), proto customer=9, resolve-or-create inside deposit tx, ACCEPTED-only commit, 9 rollback tests
-- [x] Dashboard LIVE endpoints: POST /v1/public/deposits(+customer), GET /v1/public/payments/verify, GET /v1/public/overview/snapshot, GET /v1/public/payouts/overview/stats, GET /v1/public/payouts, GET /v1/public/sub-accounts (all v1/public convention)
-- [x] Dashboard wired: lib/api.ts (NEW), dashboard-home, payouts page/overview, sub-accounts page/table fetch live; gaps render "—" (no fabrication)
-- [x] .dashboard-setup.md LIVE/FUTURE classified; all 6 checkpoint files appended; clients + transactions mocks/test-doubles updated
-- [x] go build/vet/test ./clients/... ./transactions/... PASS; gofmt clean (CRLF baseline preserved); dashboard tsc/next build env-blocked (incomplete node_modules — pre-existing)
-- [x] FUTURE documented: POST /sub-accounts (UI inert), payouts export/detail, transactions/disputes/settings pages, GET /me (auth-blocked)
+## Stage: Minimal Secure Admin Authentication — COMPLETE (2026-09-08)
+- [x] Clients: migration 000005 users+access_tokens (up/down), sqlc regen, user/access_token repos, clients/auth (argon2id, opaque hashed tokens, refresh rotation, sign-out, env-seeded bootstrap admin)
+- [x] proto AuthService: /v1/public/auth/sign-in|refresh|sign-out + internal ValidateAccessToken; gateway regenerated via protobuf/Makefile
+- [x] Transactions: auth middleware delegates validation to Clients via CLIENTS_GRPC_ADDR; protects overview/snapshot, payouts/stats, payouts list; deposits/payments/callbacks stay PUBLIC (payment-page exemption)
+- [x] ALB rule respected: /v1/admin not routable → endpoints RETAIN /v1/public* prefixes with transport-layer middleware protection (§21 alternative); no ALB/infra edits
+- [x] Dashboard: lib/auth.tsx (AuthProvider/AuthGuard), /sign-in page, api.ts Bearer + 401 single-flight refresh, sidebar real identity + sign-out; sessionStorage tokens, never logged
+- [x] go build/vet/test ./clients/... ./transactions/... ./shared/... PASS; npm run build PASS (type-check clean); docs/checkpoints appended in all services
+- [x] Future hardening documented: sign-in rate limiting, validation cache/TTL, password rotation
 
-## Prior: HighLevel OAuth v3 Migration — COMPLETE | Server-Connection Mapping audit — COMPLETE
-## Next: npm run build in a normal Node env; live GHL install + payment end-to-end test; cross-service gaps (sub-account metrics, needsAttention) when enabled
+## Prior: Server-Connection Implementation — COMPLETE (2026-09-04) | HighLevel OAuth v3 — COMPLETE
+## Next: deploy env (ADMIN_* + CLIENTS_GRPC_ADDR), migration 000005 on live DBs, restart services, live sign-in + protected-route verification

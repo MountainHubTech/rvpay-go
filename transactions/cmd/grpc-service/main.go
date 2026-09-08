@@ -14,6 +14,7 @@ import (
 
 	"github.com/I-Frostbyte/pawapay_client"
 	"github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/I-Frostbyte/rvpay-go/transactions/auth"
 	commondatabase "github.com/I-Frostbyte/rvpay-go/shared/database"
 	commonlogger "github.com/I-Frostbyte/rvpay-go/shared/logger"
 	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
@@ -178,7 +179,25 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// logged at startup so the runtime configuration is provable.
 	corsOrigins := commonobservability.ResolveAllowedOrigins(config.CORSAllowedOrigins)
 	logger.Info().Strs("allowed_origins", corsOrigins).Msg("cors configuration loaded")
-	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, commonobservability.AccessLog(logger)(gatewayMux)))
+
+	// Admin authorization: the Dashboard read endpoints (overview snapshot,
+	// payout stats, payout list) are administrator-only. They RETAIN their
+	// already-permitted /v1/public* ALB prefixes and are protected here at
+	// the transport layer by delegating access-token validation to the
+	// Clients service over the internal ValidateAccessToken RPC. Payment
+	// page (InitiateDeposit, verify, callbacks) and health endpoints stay
+	// public and are never intercepted.
+	validateAccessToken, closeValidator, err := auth.NewValidator(config.ClientsGrpcAddr, logger)
+	if err != nil {
+		return fmt.Errorf("connect to clients service for token validation: %w", err)
+	}
+	defer closeValidator()
+	protectedRoutes := []auth.AdminRoute{
+		{Method: http.MethodGet, Path: "/v1/public/transactions/overview/snapshot"},
+		{Method: http.MethodGet, Path: "/v1/public/payouts/overview/stats"},
+		{Method: http.MethodGet, Path: "/v1/public/payouts"},
+	}
+	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, auth.AdminAuthMiddleware(validateAccessToken, protectedRoutes, logger)(commonobservability.AccessLog(logger)(gatewayMux))))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

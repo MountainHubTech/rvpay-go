@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/I-Frostbyte/rvpay-go/clients/auth"
 	"github.com/I-Frostbyte/rvpay-go/clients/config"
 	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
 	health_check "github.com/I-Frostbyte/rvpay-go/clients/health"
@@ -99,6 +100,22 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	oauthStateRepo := repo.NewOAuthStateRepo(clientsRepo.Do())
 	webhookEventRepo := repo.NewWebhookEventRepo(clientsRepo.Do())
 	paymentProviderConfigRepo := repo.NewPaymentProviderConfigRepo(clientsRepo.Do())
+	userRepo := repo.NewUserRepo(clientsRepo.Do())
+	accessTokenRepo := repo.NewAccessTokenRepo(clientsRepo.Do())
+
+	// Minimal administrator authentication. The bootstrap administrator is
+	// seeded from environment configuration on first start (idempotent —
+	// only when the users table is empty); tokens are opaque and stored
+	// hashed.
+	authSettings := auth.Settings{
+		AccessTokenTTL:  cfg.AdminAuth.AccessTokenTTL,
+		RefreshTokenTTL: cfg.AdminAuth.RefreshTokenTTL,
+	}
+	authService := auth.NewService(userRepo, accessTokenRepo, authSettings, logger)
+	if err := authService.BootstrapAdmin(ctx, cfg.AdminAuth.AdminName, cfg.AdminAuth.AdminEmail, cfg.AdminAuth.AdminPassword); err != nil {
+		logger.Err(err).Msg("failed to bootstrap administrator")
+		return fmt.Errorf("bootstrap administrator: %w", err)
+	}
 
 	providerRegistry := providers.NewProviderRegistry()
 	// The HighLevel Custom Payment Provider client makes authenticated outbound
@@ -200,6 +217,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	clientsgrpc.RegisterClientsServiceServer(grpcServer, clientsService)
 	clientsgrpc.RegisterPlatformsServiceServer(grpcServer, platformsService)
 	clientsgrpc.RegisterIntegrationsServiceServer(grpcServer, integrationsService)
+	clientsgrpc.RegisterAuthServiceServer(grpcServer, authService)
 	clientsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered gRPC services...")
@@ -222,6 +240,9 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	if err := clientsgrpc.RegisterIntegrationsServiceHandlerServer(ctx, gatewayMux, integrationsService); err != nil {
 		return fmt.Errorf("register integrations grpc-gateway handler: %w", err)
 	}
+	if err := clientsgrpc.RegisterAuthServiceHandlerServer(ctx, gatewayMux, authService); err != nil {
+		return fmt.Errorf("register auth grpc-gateway handler: %w", err)
+	}
 	if err := clientsgrpc.RegisterHealthServiceHandlerServer(ctx, gatewayMux, healthCheck); err != nil {
 		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
 	}
@@ -234,7 +255,24 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// and logged at startup so the runtime configuration is provable.
 	corsOrigins := commonobservability.ResolveAllowedOrigins(cfg.CORSAllowedOrigins)
 	logger.Info().Strs("allowed_origins", corsOrigins).Msg("cors configuration loaded")
-	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, commonobservability.AccessLog(logger)(gatewayMux)))
+
+	// Admin authorization: the dashboard sub-accounts listing is an
+	// administrator-only read endpoint. The ALB already routes only
+	// /v1/public* prefixes to this service, so the protected endpoint
+	// RETAINS its permitted prefix and is protected here at the transport
+	// layer (transport-layer protection, independent of the UI). Public
+	// payment-page, health and provider endpoints are never intercepted.
+	protectedRoutes := []auth.AdminRoute{
+		{Method: http.MethodGet, Path: "/v1/public/clients/sub-accounts"},
+	}
+	validateAccessToken := func(ctx context.Context, accessToken string) (bool, error) {
+		resp, err := authService.ValidateAccessToken(ctx, &clientsgrpc.ValidateAccessTokenRequest{AccessToken: accessToken})
+		if err != nil {
+			return false, err
+		}
+		return resp.GetValid(), nil
+	}
+	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, auth.AdminAuthMiddleware(validateAccessToken, protectedRoutes, logger)(commonobservability.AccessLog(logger)(gatewayMux))))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)

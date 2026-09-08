@@ -534,3 +534,118 @@ service HealthService {
     };
   }
 }
+
+// AdminUser is the authenticated administrator identity returned by the
+// authentication endpoints. It never carries password or token material.
+message AdminUser {
+  // id is the unique identifier of the administrator.
+  string id = 1;
+  // name is the display name of the administrator.
+  string name = 2;
+  // email is the sign-in email address.
+  string email = 3;
+  // user_role is the role used by the backend for authorization.
+  string user_role = 4;
+}
+
+// SignInRequest authenticates an administrator with email and password.
+message SignInRequest {
+  // email is the administrator's sign-in email address.
+  string email = 1;
+  // password is the administrator's plaintext password (never logged,
+  // never persisted in plaintext).
+  string password = 2;
+}
+
+// SignInResponse issues a new opaque access/refresh token pair.
+message SignInResponse {
+  // user is the authenticated administrator identity.
+  AdminUser user = 1;
+  // access_token is the opaque bearer token for the Authorization header.
+  string access_token = 2;
+  // refresh_token rotates the access token when it expires.
+  string refresh_token = 3;
+  // access_token_expires_at is when the access token expires.
+  google.protobuf.Timestamp access_token_expires_at = 4;
+}
+
+// RefreshTokenRequest rotates an access token using a refresh token.
+message RefreshTokenRequest {
+  // refresh_token is the refresh token issued at sign-in or the previous
+  // refresh.
+  string refresh_token = 1;
+}
+
+// RefreshTokenResponse issues a rotated token pair.
+message RefreshTokenResponse {
+  // user is the authenticated administrator identity.
+  AdminUser user = 1;
+  // access_token is the new opaque bearer token.
+  string access_token = 2;
+  // refresh_token is the new rotated refresh token.
+  string refresh_token = 3;
+  // access_token_expires_at is when the new access token expires.
+  google.protobuf.Timestamp access_token_expires_at = 4;
+}
+
+// SignOutRequest revokes the caller's token pair.
+message SignOutRequest {
+  // refresh_token identifies the session to revoke; when empty only the
+  // bearer access token is revoked.
+  string refresh_token = 1;
+}
+
+// SignOutResponse confirms the revocation.
+message SignOutResponse {}
+
+// ValidateAccessTokenRequest is the internal service-to-service token check.
+message ValidateAccessTokenRequest {
+  // access_token is the raw bearer token presented by the HTTP caller.
+  string access_token = 1;
+}
+
+// ValidateAccessTokenResponse reports the validation result.
+message ValidateAccessTokenResponse {
+  // valid is true when the token is live, unexpired and admin-backed.
+  bool valid = 1;
+  // user_id is the authenticated administrator's id (when valid).
+  string user_id = 2;
+  // user_role is the authenticated administrator's role (when valid).
+  string user_role = 3;
+}
+
+// AuthService provides minimal, strongly secured administrator
+// authentication: sign-in, refresh rotation and sign-out, plus the internal
+// access-token validation RPC used by the other services' admin middleware.
+service AuthService {
+  // SignIn authenticates an administrator and issues a token pair.
+  rpc SignIn(SignInRequest) returns (SignInResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/sign-in"
+      body : "*"
+    };
+  }
+
+  // RefreshToken rotates the access token using a refresh token.
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/refresh"
+      body : "*"
+    };
+  }
+
+  // SignOut revokes the presented access token (and the session refresh
+  // token when provided).
+  rpc SignOut(SignOutRequest) returns (SignOutResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/sign-out"
+      body : "*"
+    };
+  }
+
+  // ValidateAccessToken is INTERNAL (no HTTP binding): other services'
+  // admin middleware call it over gRPC so access-token state is owned by
+  // exactly one service (Clients).
+  rpc ValidateAccessToken(ValidateAccessTokenRequest)
+      returns (ValidateAccessTokenResponse) {}
+}

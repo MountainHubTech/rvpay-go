@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
+import { AuthGuard } from "@/lib/auth"
 import { PayoutsOverview } from "@/components/dashboard/payouts-overview"
 import { Topbar } from "@/components/dashboard/topbar"
 import {
@@ -119,6 +120,7 @@ export default function PayoutsPage() {
   }, [query, status, page])
 
   return (
+    <AuthGuard>
     <div className="flex min-h-screen">
       <AppSidebar />
 
@@ -151,5 +153,6 @@ export default function PayoutsPage() {
         </main>
       </div>
     </div>
+    </AuthGuard>
   )
 }

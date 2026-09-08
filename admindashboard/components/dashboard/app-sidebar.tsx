@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import {
   LayoutDashboard,
   Users,
@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { useAuth } from "@/lib/auth"
 
 type NavItem = {
   label: string
@@ -32,6 +33,13 @@ const navItems: NavItem[] = [
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, signOut } = useAuth()
+
+  async function handleSignOut() {
+    await signOut()
+    router.replace("/sign-in")
+  }
 
   return (
     <aside className="flex h-full w-56 shrink-0 flex-col border-r bg-white">
@@ -64,14 +72,17 @@ export function AppSidebar() {
       <div className="flex items-center gap-3 border-t px-4 py-4">
         <div className="size-8 shrink-0 rounded-full border bg-muted" />
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">Admin User</p>
+          <p className="truncate text-sm font-medium">
+            {user?.name ?? "Signed out"}
+          </p>
           <p className="truncate text-xs text-muted-foreground">
-            admin@rvpay.com
+            {user?.email ?? ""}
           </p>
         </div>
         <button
           type="button"
           aria-label="Log out"
+          onClick={handleSignOut}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
         >
           <LogOut className="size-4" />

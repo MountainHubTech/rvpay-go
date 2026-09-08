@@ -15,6 +15,13 @@ import {
   getSelectedEnvironment,
   getTransactionsBaseUrl,
 } from "@/lib/environments"
+import {
+  dropSession,
+  getAccessToken,
+  getRefreshToken,
+  setTokens,
+  type AdminUser,
+} from "@/lib/auth"
 
 // Diagnostic logging for the Dashboard ↔ backend connection. Request-start
 // logs are development-only so production consoles stay quiet; failures are
@@ -123,15 +130,39 @@ export type SubAccountListResponse = {
 };
 
 async function getJson<T>(service: ApiService, path: string, baseUrl: string): Promise<T> {
-  const url = `${baseUrl}${path}`
+  return requestJson<T>(service, "GET", `${baseUrl}${path}`, path, baseUrl, false)
+}
+
+// requestJson is the shared transport. It attaches the bearer access token
+// when one is held, and on a 401 attempts a single token refresh and retries
+// once before surfacing the failure. Tokens and Authorization headers are
+// never logged.
+async function requestJson<T>(
+  service: ApiService,
+  method: "GET" | "POST",
+  url: string,
+  path: string,
+  baseUrl: string,
+  isRetry: boolean,
+  body?: unknown
+): Promise<T> {
   const environment = getSelectedEnvironment()
   const environmentLabel = ENVIRONMENTS[environment].label
-  logApiRequest(environmentLabel, service, "GET", url)
+  logApiRequest(environmentLabel, service, method, url)
 
   const startedAt = Date.now()
   let response: Response
   try {
-    response = await fetch(url, { method: "GET" })
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const token = getAccessToken()
+    if (token) {
+      headers.Authorization = `Bearer ${token}`
+    }
+    response = await fetch(url, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
   } catch (error) {
     const errorName = error instanceof Error ? error.name : "UnknownError"
     const message = error instanceof Error ? error.message : String(error)
@@ -148,6 +179,15 @@ async function getJson<T>(service: ApiService, path: string, baseUrl: string): P
     )
   }
   logApiResponse(response.status, Date.now() - startedAt)
+
+  if (response.status === 401 && !isRetry && path !== "/v1/public/auth/sign-in") {
+    // Access token missing/expired: attempt one rotation and retry once.
+    const refreshed = await tryRefresh()
+    if (refreshed) {
+      return requestJson<T>(service, method, url, path, baseUrl, true, body)
+    }
+    dropSession()
+  }
 
   if (!response.ok) {
     throw new ApiRequestError(
@@ -172,6 +212,83 @@ async function getJson<T>(service: ApiService, path: string, baseUrl: string): P
       `${service} returned HTTP ${response.status} but the body was not valid JSON.`,
       response.status
     )
+  }
+}
+
+// tryRefresh rotates the access token using the stored refresh token.
+// Returns true when the session was rotated successfully; on any failure the
+// stored session is dropped so guards route to sign-in.
+let refreshInFlight: Promise<boolean> | null = null
+
+function tryRefresh(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null
+    })
+  }
+  return refreshInFlight
+}
+
+async function performRefresh(): Promise<boolean> {
+  const refreshToken = getRefreshToken()
+  if (!refreshToken) return false
+  const url = `${getClientsBaseUrl()}/v1/public/auth/refresh`
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+    })
+    if (!response.ok) return false
+    const data = (await response.json()) as {
+      user: AdminUser
+      accessToken: string
+      refreshToken: string
+    }
+    if (!data.accessToken || !data.refreshToken) return false
+    setTokens(data.accessToken, data.refreshToken)
+    return true
+  } catch {
+    return false
+  }
+}
+
+// signInRequest authenticates an administrator against the Clients service.
+export type SignInWireResponse = {
+  user: AdminUser
+  accessToken: string
+  refreshToken: string
+  accessTokenExpiresAt: string
+}
+
+export async function signInRequest(email: string, password: string): Promise<SignInWireResponse> {
+  return requestJson<SignInWireResponse>(
+    "clients",
+    "POST",
+    `${getClientsBaseUrl()}/v1/public/auth/sign-in`,
+    "/v1/public/auth/sign-in",
+    getClientsBaseUrl(),
+    false,
+    { email, password }
+  )
+}
+
+// signOutRequest revokes the presented access token server-side. Best-effort
+// from the caller's perspective.
+export async function signOutRequest(): Promise<void> {
+  const refreshToken = getRefreshToken()
+  try {
+    await requestJson<{ [key: string]: never }>(
+      "clients",
+      "POST",
+      `${getClientsBaseUrl()}/v1/public/auth/sign-out`,
+      "/v1/public/auth/sign-out",
+      getClientsBaseUrl(),
+      false,
+      { refreshToken }
+    )
+  } catch {
+    // Sign-out is best-effort: local cleanup always continues.
   }
 }
 

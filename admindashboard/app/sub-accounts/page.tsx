@@ -3,6 +3,7 @@
 import * as React from "react"
 
 import { AppSidebar } from "@/components/dashboard/app-sidebar"
+import { AuthGuard } from "@/lib/auth"
 import { SubAccountsTable } from "@/components/dashboard/sub-accounts-table"
 import { Topbar } from "@/components/dashboard/topbar"
 import { describeApiError, fetchSubAccounts, type SubAccountListResponse } from "@/lib/api"
@@ -99,6 +100,7 @@ export default function SubAccountsPage() {
   }, [query, status, page])
 
   return (
+    <AuthGuard>
     <div className="flex min-h-screen">
       <AppSidebar />
 
@@ -126,5 +128,6 @@ export default function SubAccountsPage() {
         </main>
       </div>
     </div>
+    </AuthGuard>
   )
 }
