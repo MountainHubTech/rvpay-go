@@ -3462,14 +3462,14 @@ const file_clients_proto_rawDesc = "" +
 	"\x15DisconnectIntegration\x12).clientsgrpc.DisconnectIntegrationRequest\x1a*.clientsgrpc.DisconnectIntegrationResponse\"2\x82\xd3\xe4\x93\x02,:\x01*\"'/v1/public/integrations/{id}:disconnect\x12\x8a\x01\n" +
 	"\x0fSyncIntegration\x12#.clientsgrpc.SyncIntegrationRequest\x1a$.clientsgrpc.SyncIntegrationResponse\",\x82\xd3\xe4\x93\x02&:\x01*\"!/v1/public/integrations/{id}:sync2\x89\x01\n" +
 	"\rHealthService\x12x\n" +
-	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/clients/healthcheck2\xe6\x04\n" +
+	"\vHealthCheck\x12\x1f.clientsgrpc.HealthCheckRequest\x1a .clientsgrpc.HealthCheckResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/clients/healthcheck2\x89\x05\n" +
 	"\vAuthService\x12e\n" +
 	"\x06SignIn\x12\x1a.clientsgrpc.SignInRequest\x1a\x1b.clientsgrpc.SignInResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/auth/sign-in\x12w\n" +
 	"\fRefreshToken\x12 .clientsgrpc.RefreshTokenRequest\x1a!.clientsgrpc.RefreshTokenResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/auth/refresh\x12i\n" +
 	"\aSignOut\x12\x1b.clientsgrpc.SignOutRequest\x1a\x1c.clientsgrpc.SignOutResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/public/auth/sign-out\x12j\n" +
-	"\x13ValidateAccessToken\x12'.clientsgrpc.ValidateAccessTokenRequest\x1a(.clientsgrpc.ValidateAccessTokenResponse\"\x00\x12O\n" +
+	"\x13ValidateAccessToken\x12'.clientsgrpc.ValidateAccessTokenRequest\x1a(.clientsgrpc.ValidateAccessTokenResponse\"\x00\x12r\n" +
 	"\n" +
-	"CreateUser\x12\x1e.clientsgrpc.CreateUserRequest\x1a\x1f.clientsgrpc.CreateUserResponse\"\x00\x12O\n" +
+	"CreateUser\x12\x1e.clientsgrpc.CreateUserRequest\x1a\x1f.clientsgrpc.CreateUserResponse\"#\x82\xd3\xe4\x93\x02\x1d:\x01*\"\x18/v1/public/clients/users\x12O\n" +
 	"\n" +
 	"UpdateUser\x12\x1e.clientsgrpc.UpdateUserRequest\x1a\x1f.clientsgrpc.UpdateUserResponse\"\x00B9Z7github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
