@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/I-Frostbyte/rvpay-go/integrations/db/repo/mocks"
-	"github.com/I-Frostbyte/rvpay-go/integrations/db/sqlc"
-	sqlcmocks "github.com/I-Frostbyte/rvpay-go/integrations/db/sqlc/mocks"
+	"github.com/MountainHubTech/rvpay-go/integrations/db/repo/mocks"
+	"github.com/MountainHubTech/rvpay-go/integrations/db/sqlc"
+	sqlcmocks "github.com/MountainHubTech/rvpay-go/integrations/db/sqlc/mocks"
 	"go.uber.org/mock/gomock"
 )
 

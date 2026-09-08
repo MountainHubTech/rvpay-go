@@ -996,7 +996,7 @@ const file_common_proto_rawDesc = "" +
 	"\x12ProviderCapability\x12#\n" +
 	"\x1fPROVIDER_CAPABILITY_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19PROVIDER_CAPABILITY_OAUTH\x10\x01\x12\x1f\n" +
-	"\x1bPROVIDER_CAPABILITY_WEBHOOK\x10\x02B4Z2github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpcb\x06proto3"
+	"\x1bPROVIDER_CAPABILITY_WEBHOOK\x10\x02B8Z6github.com/MountainHubTech/rvpay-go/grpc/go/commongrpcb\x06proto3"
 
 var (
 	file_common_proto_rawDescOnce sync.Once

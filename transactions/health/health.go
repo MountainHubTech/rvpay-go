@@ -3,7 +3,7 @@ package health
 import (
 	"context"
 
-	"github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/rs/zerolog"
 )
 

@@ -186,7 +186,7 @@ Business logic stays in the owning service; see
 ### 1. Clone and initialise submodules
 
 ```bash
-git clone git@github.com:I-Frostbyte/rvpay-go.git
+git clone git@github.com:MountainHubTech/rvpay-go.git
 cd rvpay-go
 git submodule update --init --recursive   # googleapis, needed only for protobuf regeneration
 ```

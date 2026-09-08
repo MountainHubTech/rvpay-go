@@ -1,4 +1,4 @@
-module github.com/I-Frostbyte/rvpay-go
+module github.com/MountainHubTech/rvpay-go
 
 go 1.26.5
 

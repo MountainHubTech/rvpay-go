@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
 	"github.com/rs/zerolog"
 )
 

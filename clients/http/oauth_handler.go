@@ -3,7 +3,7 @@ package http
 import (
 	"net/http"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
+	"github.com/MountainHubTech/rvpay-go/clients/oauth"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

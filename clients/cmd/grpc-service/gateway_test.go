@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

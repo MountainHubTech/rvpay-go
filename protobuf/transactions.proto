@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package transactionsgrpc;
 
-option go_package = "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc";
+option go_package = "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc";
 
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";

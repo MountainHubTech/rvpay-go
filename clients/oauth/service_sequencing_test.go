@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )

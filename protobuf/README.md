@@ -19,7 +19,7 @@ protobuf/
 
 Each service owns one protobuf package (`<service>grpc`); shared types live in
 `commongrpc` (`common.proto`). Every `go_package` option matches the repository
-Go module: `github.com/I-Frostbyte/rvpay-go/grpc/go/<package>`.
+Go module: `github.com/MountainHubTech/rvpay-go/grpc/go/<package>`.
 
 ## Contracts
 
@@ -91,7 +91,7 @@ This runs `clang-format --dry-run --Werror` over the protobuf sources.
 - Add fields rather than renaming/removing deployed fields where compatibility
   matters.
 - The `go_package` option for every contract matches the repository Go module
-  (`github.com/I-Frostbyte/rvpay-go`), so generated code is importable as a
+  (`github.com/MountainHubTech/rvpay-go`), so generated code is importable as a
   standard Go package.
 - Legacy `deposits.proto` and `integrations.proto` remain committed while the
   Deposits and Integrations services are runnable; they are retired with those

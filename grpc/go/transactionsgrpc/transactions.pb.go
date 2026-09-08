@@ -7,7 +7,7 @@
 package transactionsgrpc
 
 import (
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -3527,7 +3527,7 @@ const file_transactions_proto_rawDesc = "" +
 	"\x18DashboardOverviewService\x12\xa5\x01\n" +
 	"\x13GetOverviewSnapshot\x12,.transactionsgrpc.GetOverviewSnapshotRequest\x1a-.transactionsgrpc.GetOverviewSnapshotResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/public/transactions/overview/snapshot2\x99\x01\n" +
 	"\rHealthService\x12\x87\x01\n" +
-	"\vHealthCheck\x12$.transactionsgrpc.HealthCheckRequest\x1a%.transactionsgrpc.HealthCheckResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/public/transactions/healthcheckB:Z8github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
+	"\vHealthCheck\x12$.transactionsgrpc.HealthCheckRequest\x1a%.transactionsgrpc.HealthCheckResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/public/transactions/healthcheckB>Z<github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
 
 var (
 	file_transactions_proto_rawDescOnce sync.Once

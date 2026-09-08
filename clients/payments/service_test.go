@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"

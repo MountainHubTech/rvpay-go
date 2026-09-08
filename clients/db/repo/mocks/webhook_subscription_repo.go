@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	sqlc "github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
+	sqlc "github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
 	uuid "github.com/google/uuid"
 	pgtype "github.com/jackc/pgx/v5/pgtype"
 	gomock "go.uber.org/mock/gomock"

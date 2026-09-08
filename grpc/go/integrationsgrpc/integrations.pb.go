@@ -577,7 +577,7 @@ const file_integrations_proto_rawDesc = "" +
 	"\x11CreateIntegration\x12*.integrationsgrpc.CreateIntegrationRequest\x1a+.integrationsgrpc.CreateIntegrationResponse\"\"\x82\xd3\xe4\x93\x02\x1c:\x01*\"\x17/v1/public/integrations\x12\x89\x01\n" +
 	"\x0eGetIntegration\x12'.integrationsgrpc.GetIntegrationRequest\x1a(.integrationsgrpc.GetIntegrationResponse\"$\x82\xd3\xe4\x93\x02\x1e\x12\x1c/v1/public/integrations/{id}\x12\x92\x01\n" +
 	"\x11DeleteIntegration\x12*.integrationsgrpc.DeleteIntegrationRequest\x1a+.integrationsgrpc.DeleteIntegrationResponse\"$\x82\xd3\xe4\x93\x02\x1e*\x1c/v1/public/integrations/{id}\x12\x92\x01\n" +
-	"\x13ProcessWebhookEvent\x12,.integrationsgrpc.ProcessWebhookEventRequest\x1a-.integrationsgrpc.ProcessWebhookEventResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/public/webhooksB:Z8github.com/I-Frostbyte/rvpay-go/grpc/go/integrationsgrpcb\x06proto3"
+	"\x13ProcessWebhookEvent\x12,.integrationsgrpc.ProcessWebhookEventRequest\x1a-.integrationsgrpc.ProcessWebhookEventResponse\"\x1e\x82\xd3\xe4\x93\x02\x18:\x01*\"\x13/v1/public/webhooksB>Z<github.com/MountainHubTech/rvpay-go/grpc/go/integrationsgrpcb\x06proto3"
 
 var (
 	file_integrations_proto_rawDescOnce sync.Once

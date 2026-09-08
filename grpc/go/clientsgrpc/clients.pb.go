@@ -7,7 +7,7 @@
 package clientsgrpc
 
 import (
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	_ "google.golang.org/genproto/googleapis/api/annotations"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
@@ -3471,7 +3471,7 @@ const file_clients_proto_rawDesc = "" +
 	"\n" +
 	"CreateUser\x12\x1e.clientsgrpc.CreateUserRequest\x1a\x1f.clientsgrpc.CreateUserResponse\"\x00\x12O\n" +
 	"\n" +
-	"UpdateUser\x12\x1e.clientsgrpc.UpdateUserRequest\x1a\x1f.clientsgrpc.UpdateUserResponse\"\x00B5Z3github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
+	"UpdateUser\x12\x1e.clientsgrpc.UpdateUserRequest\x1a\x1f.clientsgrpc.UpdateUserResponse\"\x00B9Z7github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpcb\x06proto3"
 
 var (
 	file_clients_proto_rawDescOnce sync.Once

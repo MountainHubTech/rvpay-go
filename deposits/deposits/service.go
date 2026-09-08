@@ -9,9 +9,9 @@ import (
 
 	"github.com/I-Frostbyte/pawapay_client"
 	pawapaydeposits "github.com/I-Frostbyte/pawapay_client/deposits"
-	"github.com/I-Frostbyte/rvpay-go/deposits/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/deposits/db/sqlc"
-	depositsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/depositsgrpc"
+	"github.com/MountainHubTech/rvpay-go/deposits/db/repo"
+	"github.com/MountainHubTech/rvpay-go/deposits/db/sqlc"
+	depositsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/depositsgrpc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"

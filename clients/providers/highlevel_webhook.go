@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
 	"github.com/rs/zerolog"
 )
 

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/integrations/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/integrations/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/integrations/db/repo"
+	"github.com/MountainHubTech/rvpay-go/integrations/db/sqlc"
 	"github.com/rs/zerolog"
 )
 

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	commonobservability "github.com/MountainHubTech/rvpay-go/shared/observability"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"

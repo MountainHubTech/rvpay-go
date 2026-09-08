@@ -3,7 +3,7 @@ package service
 import (
 	"errors"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

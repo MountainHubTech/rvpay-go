@@ -63,7 +63,7 @@ generation is performed by this document, and no repository files are modified.
 - Internal service communication (e.g. notifying the deposits service) is not
   implemented.
 - `go_package` option in protobufs historically mismatched the Go module
-  (now aligned to `github.com/I-Frostbyte/rvpay-go`).
+  (now aligned to `github.com/MountainHubTech/rvpay-go`).
 
 ### 2.5 Areas Suitable for Reuse
 

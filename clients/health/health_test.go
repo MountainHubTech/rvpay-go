@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	// Replace "yourproject" with your actual Go module name from go.mod
-	"github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
+	"github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
 )
 
 func TestHealthCheck(t *testing.T) {

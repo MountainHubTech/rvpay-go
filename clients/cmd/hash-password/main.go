@@ -19,7 +19,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/auth"
+	"github.com/MountainHubTech/rvpay-go/clients/auth"
 )
 
 func main() {

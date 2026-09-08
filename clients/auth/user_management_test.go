@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )

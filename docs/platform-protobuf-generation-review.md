@@ -48,14 +48,14 @@ All required documents were present and read.
 
 | File | Package | Go Package Option |
 | --- | --- | --- |
-| `deposits.proto` | `depositsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/depositsgrpc` |
-| `integrations.proto` | `integrationsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/integrationsgrpc` |
-| `clients.proto` | `clientsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc` |
-| `transactions.proto` | `transactionsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc` |
-| `common.proto` | `commongrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc` |
+| `deposits.proto` | `depositsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/depositsgrpc` |
+| `integrations.proto` | `integrationsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/integrationsgrpc` |
+| `clients.proto` | `clientsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc` |
+| `transactions.proto` | `transactionsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc` |
+| `common.proto` | `commongrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc` |
 
 All `go_package` options are aligned to the repository Go module
-(`github.com/I-Frostbyte/rvpay-go`) as required by `docs/protobuf-strategy.md`.
+(`github.com/MountainHubTech/rvpay-go`) as required by `docs/protobuf-strategy.md`.
 
 ### Generated output (`grpc/go/`)
 
@@ -115,7 +115,7 @@ generation is intentionally NOT wired into `go:generate` (verified — no
 | Check | Result |
 | --- | --- |
 | Package names (`<service>grpc`, `commongrpc`) | ✅ consistent with strategy |
-| `go_package` options | ✅ all match module `github.com/I-Frostbyte/rvpay-go` |
+| `go_package` options | ✅ all match module `github.com/MountainHubTech/rvpay-go` |
 | Imports resolve locally | ✅ `common.proto` cross-package import works |
 | Imports resolve from googleapis | ✅ `google/api/annotations.proto` present under `third_party/googleapis/` |
 | Standard well-known imports | ✅ `google/protobuf/timestamp.proto` resolves via protoc |

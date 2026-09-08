@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )

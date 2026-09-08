@@ -4,9 +4,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

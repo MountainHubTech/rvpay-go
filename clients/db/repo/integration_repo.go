@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )

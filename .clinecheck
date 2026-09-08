@@ -11,4 +11,10 @@
 - [x] Regression: cors_test.go + transactions gateway_test preflight now send "authorization, content-type" and assert Allow-Headers "Content-Type, Authorization"; go build/vet PASS; go test ./clients/... ./transactions/... ./shared/... 22 pkgs ok, 0 failures
 
 ## Prior: Server-Connection Implementation — COMPLETE (2026-09-04) | HighLevel OAuth v3 — COMPLETE
+## Stage: RVPay module-path migration to MountainHubTech org (2026-09-08)
+- [ ] RVPay module path changed: `github.com/I-Frostbyte/rvpay-go` → `github.com/MountainHubTech/rvpay-go` (repo-wide: go.mod module, all Go imports, protobuf `go_package`, grpc/go + mocks regenerated, render.yaml, README, deploy docs).
+- [ ] PawaPay SDK EXEMPT and untouched: `github.com/I-Frostbyte/pawapay_client` (and `/deposits`, `/payouts` subpackages) remain external deps under the personal account; go.mod/go.sum PawaPay pin unchanged.
+- [ ] Category coverage: go.mod(module line only; go.sum unmodified), all Go sources, protobuf/*.proto, regenerated grpc/go + */db/{sqlc,repo}/mocks via protobuf/Makefile + mockgen directives; Dockerfiles; GitHub Actions workflows (no old path); Makefiles; render.yaml; README + deploy/docs. Historical agent logs that cite the old path left intact.
+- [ ] Transactions Docker build fix: `transactions/auth/middleware.go` imports repo-local `clients/auth`; transactions/Dockerfile now `COPY clients ./clients` so the repo-local package resolves in the build context.
+- [ ] Verification: `go build ./...` PASS; `go vet ./...` PASS; `go test ./transactions/... ./clients/... ./shared/...` + full `./...` PASS; `go mod tidy` introduced unrelated dep churn so was reverted (go.sum stays clean); no active `I-Frostbyte/rvpay-go` references remain outside historical docs.
 ## Next: deploy env (ADMIN_* + CLIENTS_GRPC_ADDR), migration 000005 on live DBs, restart services, live sign-in + protected-route verification

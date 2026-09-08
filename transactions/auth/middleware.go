@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	clientsauth "github.com/I-Frostbyte/rvpay-go/clients/auth"
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
+	clientsauth "github.com/MountainHubTech/rvpay-go/clients/auth"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"

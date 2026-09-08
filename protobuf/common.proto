@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package commongrpc;
 
-option go_package = "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc";
+option go_package = "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc";
 
 import "google/protobuf/timestamp.proto";
 

@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	clientshttp "github.com/I-Frostbyte/rvpay-go/clients/http"
-	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
-	"github.com/I-Frostbyte/rvpay-go/clients/payments"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
-	"github.com/I-Frostbyte/rvpay-go/clients/webhooks"
+	clientshttp "github.com/MountainHubTech/rvpay-go/clients/http"
+	"github.com/MountainHubTech/rvpay-go/clients/oauth"
+	"github.com/MountainHubTech/rvpay-go/clients/payments"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/webhooks"
 	"github.com/rs/zerolog"
 )
 

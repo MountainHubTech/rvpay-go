@@ -3,8 +3,8 @@ package deposits
 import (
 	"testing"
 
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	sqlc "github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	sqlc "github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"time"
