@@ -698,7 +698,12 @@ service AuthService {
   // and therefore is never reachable over the ALB/HTTP boundary. The first
   // administrator is created after deployment by calling this method
   // directly over gRPC (e.g. Postman/gRPC or grpcurl).
-  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {}
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
+    option (google.api.http) = {
+      post: "/v1/public/clients/users"
+      body: "*"
+    }
+  }
 
   // UpdateUser changes an existing user's name, email and password. The
   // user's role is immutable here. gRPC-only: no HTTP annotation and no
