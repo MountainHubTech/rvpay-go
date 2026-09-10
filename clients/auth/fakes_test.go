@@ -6,6 +6,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,6 +120,57 @@ func (f *fakeUserRepo) UpdateRefreshTokenHash(ctx context.Context, userID uuid.U
 
 func (f *fakeUserRepo) ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error {
 	return f.UpdateRefreshTokenHash(ctx, userID, "")
+}
+
+func (f *fakeUserRepo) ListUsers(ctx context.Context, search, role string, limit, offset int32) ([]sqlc.ListUsersRow, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var rows []sqlc.ListUsersRow
+	for _, user := range f.users {
+		if role != "" && string(user.UserRole) != role {
+			continue
+		}
+		if search != "" && !containsFold(user.Name, search) && !containsFold(user.Email, search) {
+			continue
+		}
+		rows = append(rows, sqlc.ListUsersRow{
+			ID:               user.ID,
+			Name:             user.Name,
+			Email:            user.Email,
+			UserRole:         user.UserRole,
+			RefreshTokenHash: user.RefreshTokenHash,
+			CreatedAt:        time.Now(),
+		})
+	}
+	start := int(offset)
+	if start > len(rows) {
+		start = len(rows)
+	}
+	end := start + int(limit)
+	if end > len(rows) {
+		end = len(rows)
+	}
+	return rows[start:end], nil
+}
+
+func (f *fakeUserRepo) CountUsers(ctx context.Context, search, role string) (int64, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var count int64
+	for _, user := range f.users {
+		if role != "" && string(user.UserRole) != role {
+			continue
+		}
+		if search != "" && !containsFold(user.Name, search) && !containsFold(user.Email, search) {
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
 }
 
 type tokenRow struct {

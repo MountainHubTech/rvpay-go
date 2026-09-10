@@ -2,10 +2,13 @@ package overview
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/MountainHubTech/rvpay-go/shared/observability"
@@ -21,6 +24,7 @@ import (
 type Impl struct {
 	depositRepo repo.DepositRepo
 	payoutRepo  repo.PayoutRepo
+	disputeRepo repo.DisputeRepo
 	logger      zerolog.Logger
 
 	transactionsgrpc.UnimplementedDashboardOverviewServiceServer
@@ -30,11 +34,13 @@ type Impl struct {
 func NewOverviewService(
 	depositRepo repo.DepositRepo,
 	payoutRepo repo.PayoutRepo,
+	disputeRepo repo.DisputeRepo,
 	logger zerolog.Logger,
 ) *Impl {
 	return &Impl{
 		depositRepo: depositRepo,
 		payoutRepo:  payoutRepo,
+		disputeRepo: disputeRepo,
 		logger:      logger,
 	}
 }
@@ -301,6 +307,220 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 	}, nil
 }
 
+// GetDisputeStats returns the Needs Response / Under Review counters for the
+// Admin Dashboard disputes page.
+func (s *Impl) GetDisputeStats(ctx context.Context, req *transactionsgrpc.GetDisputeStatsRequest) (resp *transactionsgrpc.GetDisputeStatsResponse, err error) {
+	start := time.Now()
+	if req == nil {
+		req = &transactionsgrpc.GetDisputeStatsRequest{}
+	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/transactions/disputes/stats").
+		Str("method", "GET").
+		Str("operation", "GetDisputeStats").
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/transactions/disputes/stats").
+				Str("operation", "GetDisputeStats").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/transactions/disputes/stats").
+			Str("operation", "GetDisputeStats").
+			Str("grpc_code", "OK").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
+	stats, err := s.disputeRepo.GetStats(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "GetDisputeStats").
+			Str("repository", "DisputeRepo.GetStats").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not get dispute stats")
+		return nil, status.Error(codes.Internal, "could not get dispute stats")
+	}
+
+	return &transactionsgrpc.GetDisputeStatsResponse{
+		NeedsResponse: stats.NeedsResponse,
+		UnderReview:   stats.UnderReview,
+	}, nil
+}
+
+// ListDisputes returns a paginated, searchable, status-filtered list of
+// disputes for the Admin Dashboard disputes page.
+func (s *Impl) ListDisputes(ctx context.Context, req *transactionsgrpc.ListDisputesRequest) (resp *transactionsgrpc.ListDisputesResponse, err error) {
+	start := time.Now()
+	if req == nil {
+		req = &transactionsgrpc.ListDisputesRequest{}
+	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/transactions/disputes").
+		Str("method", "GET").
+		Str("operation", "ListDisputes").
+		Str("search", req.GetSearch()).
+		Str("status", req.GetStatus()).
+		Int("page", int(req.GetPage())).
+		Int("page_size", int(req.GetPageSize())).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/transactions/disputes").
+				Str("operation", "ListDisputes").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/transactions/disputes").
+			Str("operation", "ListDisputes").
+			Str("grpc_code", "OK").
+			Int("rows_returned", len(resp.GetRows())).
+			Int64("total", resp.GetTotal()).
+			Int("page", int(resp.GetPage())).
+			Int("page_size", int(resp.GetPageSize())).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
+	page := req.GetPage()
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.GetPageSize()
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	disputes, err := s.disputeRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), pageSize, offset)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListDisputes").
+			Str("repository", "DisputeRepo.ListFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not list disputes")
+		return nil, status.Error(codes.Internal, "could not list disputes")
+	}
+	total, err := s.disputeRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus())
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListDisputes").
+			Str("repository", "DisputeRepo.CountFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count disputes")
+		return nil, status.Error(codes.Internal, "could not list disputes")
+	}
+
+	rows := make([]*transactionsgrpc.DisputeRow, 0, len(disputes))
+	for _, dispute := range disputes {
+		rows = append(rows, &transactionsgrpc.DisputeRow{
+			Id:         dispute.ID.String(),
+			SubAccount: dispute.ClientName,
+			Type:       dispute.DisputeType,
+			Amount:     disputeAmount(dispute.Amount, dispute.Currency),
+			Status:     disputeStatusLabel(dispute.Status),
+			DateOpened: formatOverviewTime(dispute.OpenedAt),
+			DueIn:      dueInLabel(dispute.DueAt),
+		})
+	}
+
+	return &transactionsgrpc.ListDisputesResponse{
+		Rows:     rows,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// SubmitEvidence submits evidence for a dispute, moving it to UNDER_REVIEW.
+func (s *Impl) SubmitEvidence(ctx context.Context, req *transactionsgrpc.SubmitEvidenceRequest) (resp *transactionsgrpc.SubmitEvidenceResponse, err error) {
+	start := time.Now()
+	if req == nil {
+		req = &transactionsgrpc.SubmitEvidenceRequest{}
+	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/transactions/disputes/evidence").
+		Str("method", "POST").
+		Str("operation", "SubmitEvidence").
+		Str("dispute_id", req.GetId()).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/transactions/disputes/evidence").
+				Str("operation", "SubmitEvidence").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/transactions/disputes/evidence").
+			Str("operation", "SubmitEvidence").
+			Str("grpc_code", "OK").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
+	id, err := uuid.Parse(req.GetId())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "invalid dispute id")
+	}
+
+	dispute, err := s.disputeRepo.SubmitEvidence(ctx, id)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "SubmitEvidence").
+			Str("repository", "DisputeRepo.SubmitEvidence").
+			Str("dispute_id", req.GetId()).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not submit evidence")
+		if errors.Is(err, repo.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "dispute not found")
+		}
+		return nil, status.Error(codes.Internal, "could not submit evidence")
+	}
+
+	return &transactionsgrpc.SubmitEvidenceResponse{
+		Dispute: &transactionsgrpc.DisputeRow{
+			Id:         dispute.ID.String(),
+			SubAccount: dispute.ClientName,
+			Type:       dispute.DisputeType,
+			Amount:     disputeAmount(dispute.Amount, dispute.Currency),
+			Status:     disputeStatusLabel(dispute.Status),
+			DateOpened: formatOverviewTime(dispute.OpenedAt),
+			DueIn:      dueInLabel(dispute.DueAt),
+		},
+	}, nil
+}
+
 // textValue returns s, or the empty string when the pointer is nil.
 func textValue(s *string) string {
 	if s == nil {
@@ -419,4 +639,40 @@ func formatOverviewTime(t time.Time) string {
 
 func bucketLabel(i int) string {
 	return fmt.Sprintf("Day %d", i+1)
+}
+
+// disputeAmount formats a dispute amount with its currency, mirroring the
+// transactions list amount presentation.
+func disputeAmount(amount pgtype.Numeric, currency string) string {
+	return formatOverviewAmount(amount, currency)
+}
+
+// disputeStatusLabel maps a persisted dispute status to the dashboard-facing
+// status string.
+func disputeStatusLabel(status sqlc.DisputeStatus) string {
+	switch status {
+	case sqlc.DisputeStatusNEEDSRESPONSE:
+		return "NEEDS RESPONSE"
+	case sqlc.DisputeStatusUNDERREVIEW:
+		return "Under Review"
+	case sqlc.DisputeStatusRESOLVED:
+		return "RESOLVED"
+	default:
+		return "NEEDS RESPONSE"
+	}
+}
+
+// dueInLabel renders a human-readable "due in N days" label relative to now.
+func dueInLabel(due time.Time) string {
+	if due.IsZero() {
+		return "—"
+	}
+	days := int(due.Sub(time.Now()).Hours() / 24)
+	if days < 0 {
+		return "Overdue"
+	}
+	if days == 0 {
+		return "Due today"
+	}
+	return fmt.Sprintf("Due in %d days", days)
 }

@@ -136,3 +136,59 @@ SET ghl_transaction_id = $2,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: ListDisputesFiltered :many
+SELECT id,
+       deposit_id,
+       client_name,
+       dispute_type,
+       amount,
+       currency,
+       status,
+       opened_at,
+       due_at
+FROM disputes
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::dispute_status)
+ORDER BY opened_at DESC
+LIMIT $3 OFFSET $4;
+
+-- name: CountDisputesFiltered :one
+SELECT COUNT(*)
+FROM disputes
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::dispute_status);
+
+-- name: GetDisputeStats :one
+SELECT COUNT(*) FILTER (WHERE status = 'NEEDS_RESPONSE') AS needs_response,
+       COUNT(*) FILTER (WHERE status = 'UNDER_REVIEW')  AS under_review
+FROM disputes;
+
+-- name: GetDisputeByID :one
+SELECT id,
+       deposit_id,
+       client_name,
+       dispute_type,
+       amount,
+       currency,
+       status,
+       opened_at,
+       due_at,
+       evidence_submitted,
+       resolved_at
+FROM disputes
+WHERE id = $1;
+
+-- name: InsertDispute :one
+INSERT INTO disputes (deposit_id, client_name, dispute_type, amount, currency, status, due_at)
+VALUES ($1, $2, $3, $4, $5, 'NEEDS_RESPONSE'::dispute_status, $6)
+RETURNING *;
+
+-- name: SubmitEvidence :one
+UPDATE disputes
+SET evidence_submitted = true,
+    status = 'UNDER_REVIEW',
+    resolved_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;

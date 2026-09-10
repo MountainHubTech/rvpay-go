@@ -710,4 +710,54 @@ service AuthService {
   // user's role is immutable here. gRPC-only: no HTTP annotation and no
   // grpc-gateway route.
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+
+  // ListUsers returns a paginated list of database-managed users for the
+  // Admin Dashboard Settings team-management page. The route lives under the
+  // permitted /v1/public/clients* ALB prefix and is protected by the admin
+  // middleware. Password and token material are never returned.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/clients/users"
+    };
+  }
+}
+
+// ListUsersRequest requests a paginated user list for the team-management page.
+message ListUsersRequest {
+  // search filters by name or email (case-insensitive).
+  string search = 1;
+  // role filters by user_role. Empty means all.
+  string role = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// UserRow is a single user row for the team-management table. Password and
+// token material are intentionally excluded.
+message UserRow {
+  // id is the unique user identifier.
+  string id = 1;
+  // name is the display name.
+  string name = 2;
+  // email is the sign-in email address.
+  string email = 3;
+  // role is the user's role (USER_ROLE_USER or USER_ROLE_ADMIN).
+  string role = 4;
+  // status reflects whether the user has an active session.
+  string status = 5;
+  // date_joined is the human-readable creation time.
+  string date_joined = 6;
+}
+
+// ListUsersResponse carries a page of users.
+message ListUsersResponse {
+  repeated UserRow rows = 1;
+  // total is the total number of users matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
 }

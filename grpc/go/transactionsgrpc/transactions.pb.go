@@ -3535,6 +3535,444 @@ func (x *ListTransactionsResponse) GetPageSize() int32 {
 	return 0
 }
 
+// GetDisputeStatsRequest requests the disputes page counters.
+type GetDisputeStatsRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDisputeStatsRequest) Reset() {
+	*x = GetDisputeStatsRequest{}
+	mi := &file_transactions_proto_msgTypes[50]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDisputeStatsRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDisputeStatsRequest) ProtoMessage() {}
+
+func (x *GetDisputeStatsRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[50]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDisputeStatsRequest.ProtoReflect.Descriptor instead.
+func (*GetDisputeStatsRequest) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{50}
+}
+
+// GetDisputeStatsResponse carries the Needs Response / Under Review counters.
+type GetDisputeStatsResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// needs_response is the count of disputes awaiting a response.
+	NeedsResponse int64 `protobuf:"varint,1,opt,name=needs_response,json=needsResponse,proto3" json:"needs_response,omitempty"`
+	// under_review is the count of disputes with evidence submitted.
+	UnderReview   int64 `protobuf:"varint,2,opt,name=under_review,json=underReview,proto3" json:"under_review,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GetDisputeStatsResponse) Reset() {
+	*x = GetDisputeStatsResponse{}
+	mi := &file_transactions_proto_msgTypes[51]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetDisputeStatsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetDisputeStatsResponse) ProtoMessage() {}
+
+func (x *GetDisputeStatsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[51]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetDisputeStatsResponse.ProtoReflect.Descriptor instead.
+func (*GetDisputeStatsResponse) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{51}
+}
+
+func (x *GetDisputeStatsResponse) GetNeedsResponse() int64 {
+	if x != nil {
+		return x.NeedsResponse
+	}
+	return 0
+}
+
+func (x *GetDisputeStatsResponse) GetUnderReview() int64 {
+	if x != nil {
+		return x.UnderReview
+	}
+	return 0
+}
+
+// ListDisputesRequest requests a paginated dispute list for the disputes page.
+type ListDisputesRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// search filters by client name (case-insensitive).
+	Search string `protobuf:"bytes,1,opt,name=search,proto3" json:"search,omitempty"`
+	// status filters by dispute status. Empty means all.
+	Status string `protobuf:"bytes,2,opt,name=status,proto3" json:"status,omitempty"`
+	// page is the 1-based page number.
+	Page int32 `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	// page_size is the maximum number of rows per page.
+	PageSize      int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDisputesRequest) Reset() {
+	*x = ListDisputesRequest{}
+	mi := &file_transactions_proto_msgTypes[52]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDisputesRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDisputesRequest) ProtoMessage() {}
+
+func (x *ListDisputesRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[52]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDisputesRequest.ProtoReflect.Descriptor instead.
+func (*ListDisputesRequest) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{52}
+}
+
+func (x *ListDisputesRequest) GetSearch() string {
+	if x != nil {
+		return x.Search
+	}
+	return ""
+}
+
+func (x *ListDisputesRequest) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *ListDisputesRequest) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListDisputesRequest) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+// DisputeRow is a single row of the disputes list.
+type DisputeRow struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// id is the stable dispute identifier.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// sub_account is the RVPay client name the dispute belongs to.
+	SubAccount string `protobuf:"bytes,2,opt,name=sub_account,json=subAccount,proto3" json:"sub_account,omitempty"`
+	// type is the dispute type (e.g. Chargeback, Payout Issue).
+	Type string `protobuf:"bytes,3,opt,name=type,proto3" json:"type,omitempty"`
+	// amount is the human-readable dispute amount.
+	Amount string `protobuf:"bytes,4,opt,name=amount,proto3" json:"amount,omitempty"`
+	// status is the dashboard-facing dispute status.
+	Status string `protobuf:"bytes,5,opt,name=status,proto3" json:"status,omitempty"`
+	// date_opened is the human-readable opening time.
+	DateOpened string `protobuf:"bytes,6,opt,name=date_opened,json=dateOpened,proto3" json:"date_opened,omitempty"`
+	// due_in is a human-readable "due in N days" label.
+	DueIn         string `protobuf:"bytes,7,opt,name=due_in,json=dueIn,proto3" json:"due_in,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisputeRow) Reset() {
+	*x = DisputeRow{}
+	mi := &file_transactions_proto_msgTypes[53]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisputeRow) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisputeRow) ProtoMessage() {}
+
+func (x *DisputeRow) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[53]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisputeRow.ProtoReflect.Descriptor instead.
+func (*DisputeRow) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{53}
+}
+
+func (x *DisputeRow) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetSubAccount() string {
+	if x != nil {
+		return x.SubAccount
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetAmount() string {
+	if x != nil {
+		return x.Amount
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetDateOpened() string {
+	if x != nil {
+		return x.DateOpened
+	}
+	return ""
+}
+
+func (x *DisputeRow) GetDueIn() string {
+	if x != nil {
+		return x.DueIn
+	}
+	return ""
+}
+
+// ListDisputesResponse carries a page of disputes.
+type ListDisputesResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Rows  []*DisputeRow          `protobuf:"bytes,1,rep,name=rows,proto3" json:"rows,omitempty"`
+	// total is the total number of disputes matching the filter.
+	Total int64 `protobuf:"varint,2,opt,name=total,proto3" json:"total,omitempty"`
+	// page is the current 1-based page number.
+	Page int32 `protobuf:"varint,3,opt,name=page,proto3" json:"page,omitempty"`
+	// page_size is the page size in effect.
+	PageSize      int32 `protobuf:"varint,4,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListDisputesResponse) Reset() {
+	*x = ListDisputesResponse{}
+	mi := &file_transactions_proto_msgTypes[54]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListDisputesResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListDisputesResponse) ProtoMessage() {}
+
+func (x *ListDisputesResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[54]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListDisputesResponse.ProtoReflect.Descriptor instead.
+func (*ListDisputesResponse) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{54}
+}
+
+func (x *ListDisputesResponse) GetRows() []*DisputeRow {
+	if x != nil {
+		return x.Rows
+	}
+	return nil
+}
+
+func (x *ListDisputesResponse) GetTotal() int64 {
+	if x != nil {
+		return x.Total
+	}
+	return 0
+}
+
+func (x *ListDisputesResponse) GetPage() int32 {
+	if x != nil {
+		return x.Page
+	}
+	return 0
+}
+
+func (x *ListDisputesResponse) GetPageSize() int32 {
+	if x != nil {
+		return x.PageSize
+	}
+	return 0
+}
+
+// SubmitEvidenceRequest submits evidence for a dispute.
+type SubmitEvidenceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// id is the dispute identifier.
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// notes is free-text evidence notes.
+	Notes         string `protobuf:"bytes,2,opt,name=notes,proto3" json:"notes,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitEvidenceRequest) Reset() {
+	*x = SubmitEvidenceRequest{}
+	mi := &file_transactions_proto_msgTypes[55]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitEvidenceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitEvidenceRequest) ProtoMessage() {}
+
+func (x *SubmitEvidenceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[55]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitEvidenceRequest.ProtoReflect.Descriptor instead.
+func (*SubmitEvidenceRequest) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{55}
+}
+
+func (x *SubmitEvidenceRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *SubmitEvidenceRequest) GetNotes() string {
+	if x != nil {
+		return x.Notes
+	}
+	return ""
+}
+
+// SubmitEvidenceResponse confirms the evidence submission.
+type SubmitEvidenceResponse struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// dispute is the updated dispute.
+	Dispute       *DisputeRow `protobuf:"bytes,1,opt,name=dispute,proto3" json:"dispute,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SubmitEvidenceResponse) Reset() {
+	*x = SubmitEvidenceResponse{}
+	mi := &file_transactions_proto_msgTypes[56]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SubmitEvidenceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SubmitEvidenceResponse) ProtoMessage() {}
+
+func (x *SubmitEvidenceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_transactions_proto_msgTypes[56]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SubmitEvidenceResponse.ProtoReflect.Descriptor instead.
+func (*SubmitEvidenceResponse) Descriptor() ([]byte, []int) {
+	return file_transactions_proto_rawDescGZIP(), []int{56}
+}
+
+func (x *SubmitEvidenceResponse) GetDispute() *DisputeRow {
+	if x != nil {
+		return x.Dispute
+	}
+	return nil
+}
+
 var File_transactions_proto protoreflect.FileDescriptor
 
 const file_transactions_proto_rawDesc = "" +
@@ -3776,7 +4214,37 @@ const file_transactions_proto_rawDesc = "" +
 	"\x04rows\x18\x01 \x03(\v2$.transactionsgrpc.TransactionListRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize*\xa8\x01\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x18\n" +
+	"\x16GetDisputeStatsRequest\"c\n" +
+	"\x17GetDisputeStatsResponse\x12%\n" +
+	"\x0eneeds_response\x18\x01 \x01(\x03R\rneedsResponse\x12!\n" +
+	"\funder_review\x18\x02 \x01(\x03R\vunderReview\"v\n" +
+	"\x13ListDisputesRequest\x12\x16\n" +
+	"\x06search\x18\x01 \x01(\tR\x06search\x12\x16\n" +
+	"\x06status\x18\x02 \x01(\tR\x06status\x12\x12\n" +
+	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xb9\x01\n" +
+	"\n" +
+	"DisputeRow\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1f\n" +
+	"\vsub_account\x18\x02 \x01(\tR\n" +
+	"subAccount\x12\x12\n" +
+	"\x04type\x18\x03 \x01(\tR\x04type\x12\x16\n" +
+	"\x06amount\x18\x04 \x01(\tR\x06amount\x12\x16\n" +
+	"\x06status\x18\x05 \x01(\tR\x06status\x12\x1f\n" +
+	"\vdate_opened\x18\x06 \x01(\tR\n" +
+	"dateOpened\x12\x15\n" +
+	"\x06due_in\x18\a \x01(\tR\x05dueIn\"\x8f\x01\n" +
+	"\x14ListDisputesResponse\x120\n" +
+	"\x04rows\x18\x01 \x03(\v2\x1c.transactionsgrpc.DisputeRowR\x04rows\x12\x14\n" +
+	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
+	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"=\n" +
+	"\x15SubmitEvidenceRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
+	"\x05notes\x18\x02 \x01(\tR\x05notes\"P\n" +
+	"\x16SubmitEvidenceResponse\x126\n" +
+	"\adispute\x18\x01 \x01(\v2\x1c.transactionsgrpc.DisputeRowR\adispute*\xa8\x01\n" +
 	"\x0eMerchantStatus\x12\x1f\n" +
 	"\x1bMERCHANT_STATUS_UNSPECIFIED\x10\x00\x12\x1d\n" +
 	"\x19MERCHANT_STATUS_ONBOARDED\x10\x01\x12\x1a\n" +
@@ -3821,10 +4289,13 @@ const file_transactions_proto_rawDesc = "" +
 	"\rRequestPayout\x12%.transactionsgrpc.CreatePayoutRequest\x1a&.transactionsgrpc.CreatePayoutResponse\"\x1d\x82\xd3\xe4\x93\x02\x17:\x01*\"\x12/v1/public/payouts\x12|\n" +
 	"\tGetPayout\x12\".transactionsgrpc.GetPayoutRequest\x1a#.transactionsgrpc.GetPayoutResponse\"&\x82\xd3\xe4\x93\x02 \x12\x1e/v1/public/payouts/{payout_id}\x12\xa6\x01\n" +
 	"\x16GetPayoutOverviewStats\x12/.transactionsgrpc.GetPayoutOverviewStatsRequest\x1a0.transactionsgrpc.GetPayoutOverviewStatsResponse\")\x82\xd3\xe4\x93\x02#\x12!/v1/public/payouts/overview/stats\x12v\n" +
-	"\vListPayouts\x12$.transactionsgrpc.ListPayoutsRequest\x1a%.transactionsgrpc.ListPayoutsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/public/payouts2\xcf\x02\n" +
+	"\vListPayouts\x12$.transactionsgrpc.ListPayoutsRequest\x1a%.transactionsgrpc.ListPayoutsResponse\"\x1a\x82\xd3\xe4\x93\x02\x14\x12\x12/v1/public/payouts2\x8e\x06\n" +
 	"\x18DashboardOverviewService\x12\xa5\x01\n" +
 	"\x13GetOverviewSnapshot\x12,.transactionsgrpc.GetOverviewSnapshotRequest\x1a-.transactionsgrpc.GetOverviewSnapshotResponse\"1\x82\xd3\xe4\x93\x02+\x12)/v1/public/transactions/overview/snapshot\x12\x8a\x01\n" +
-	"\x10ListTransactions\x12).transactionsgrpc.ListTransactionsRequest\x1a*.transactionsgrpc.ListTransactionsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/public/transactions2\x99\x01\n" +
+	"\x10ListTransactions\x12).transactionsgrpc.ListTransactionsRequest\x1a*.transactionsgrpc.ListTransactionsResponse\"\x1f\x82\xd3\xe4\x93\x02\x19\x12\x17/v1/public/transactions\x12\x96\x01\n" +
+	"\x0fGetDisputeStats\x12(.transactionsgrpc.GetDisputeStatsRequest\x1a).transactionsgrpc.GetDisputeStatsResponse\".\x82\xd3\xe4\x93\x02(\x12&/v1/public/transactions/disputes/stats\x12\x87\x01\n" +
+	"\fListDisputes\x12%.transactionsgrpc.ListDisputesRequest\x1a&.transactionsgrpc.ListDisputesResponse\"(\x82\xd3\xe4\x93\x02\"\x12 /v1/public/transactions/disputes\x12\x99\x01\n" +
+	"\x0eSubmitEvidence\x12'.transactionsgrpc.SubmitEvidenceRequest\x1a(.transactionsgrpc.SubmitEvidenceResponse\"4\x82\xd3\xe4\x93\x02.:\x01*\")/v1/public/transactions/disputes/evidence2\x99\x01\n" +
 	"\rHealthService\x12\x87\x01\n" +
 	"\vHealthCheck\x12$.transactionsgrpc.HealthCheckRequest\x1a%.transactionsgrpc.HealthCheckResponse\"+\x82\xd3\xe4\x93\x02%\x12#/v1/public/transactions/healthcheckB>Z<github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpcb\x06proto3"
 
@@ -3841,7 +4312,7 @@ func file_transactions_proto_rawDescGZIP() []byte {
 }
 
 var file_transactions_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_transactions_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
+var file_transactions_proto_msgTypes = make([]protoimpl.MessageInfo, 57)
 var file_transactions_proto_goTypes = []any{
 	(MerchantStatus)(0),                          // 0: transactionsgrpc.MerchantStatus
 	(CustomerStatus)(0),                          // 1: transactionsgrpc.CustomerStatus
@@ -3897,54 +4368,61 @@ var file_transactions_proto_goTypes = []any{
 	(*ListTransactionsRequest)(nil),              // 51: transactionsgrpc.ListTransactionsRequest
 	(*TransactionListRow)(nil),                   // 52: transactionsgrpc.TransactionListRow
 	(*ListTransactionsResponse)(nil),             // 53: transactionsgrpc.ListTransactionsResponse
-	(*timestamppb.Timestamp)(nil),                // 54: google.protobuf.Timestamp
-	(*commongrpc.Money)(nil),                     // 55: commongrpc.Money
-	(commongrpc.PaymentType)(0),                  // 56: commongrpc.PaymentType
-	(commongrpc.Provider)(0),                     // 57: commongrpc.Provider
-	(*commongrpc.PaginationRequest)(nil),         // 58: commongrpc.PaginationRequest
-	(*commongrpc.PaginationResponse)(nil),        // 59: commongrpc.PaginationResponse
+	(*GetDisputeStatsRequest)(nil),               // 54: transactionsgrpc.GetDisputeStatsRequest
+	(*GetDisputeStatsResponse)(nil),              // 55: transactionsgrpc.GetDisputeStatsResponse
+	(*ListDisputesRequest)(nil),                  // 56: transactionsgrpc.ListDisputesRequest
+	(*DisputeRow)(nil),                           // 57: transactionsgrpc.DisputeRow
+	(*ListDisputesResponse)(nil),                 // 58: transactionsgrpc.ListDisputesResponse
+	(*SubmitEvidenceRequest)(nil),                // 59: transactionsgrpc.SubmitEvidenceRequest
+	(*SubmitEvidenceResponse)(nil),               // 60: transactionsgrpc.SubmitEvidenceResponse
+	(*timestamppb.Timestamp)(nil),                // 61: google.protobuf.Timestamp
+	(*commongrpc.Money)(nil),                     // 62: commongrpc.Money
+	(commongrpc.PaymentType)(0),                  // 63: commongrpc.PaymentType
+	(commongrpc.Provider)(0),                     // 64: commongrpc.Provider
+	(*commongrpc.PaginationRequest)(nil),         // 65: commongrpc.PaginationRequest
+	(*commongrpc.PaginationResponse)(nil),        // 66: commongrpc.PaginationResponse
 }
 var file_transactions_proto_depIdxs = []int32{
 	0,  // 0: transactionsgrpc.Merchant.status:type_name -> transactionsgrpc.MerchantStatus
-	54, // 1: transactionsgrpc.Merchant.created_at:type_name -> google.protobuf.Timestamp
-	54, // 2: transactionsgrpc.Merchant.updated_at:type_name -> google.protobuf.Timestamp
+	61, // 1: transactionsgrpc.Merchant.created_at:type_name -> google.protobuf.Timestamp
+	61, // 2: transactionsgrpc.Merchant.updated_at:type_name -> google.protobuf.Timestamp
 	1,  // 3: transactionsgrpc.Customer.status:type_name -> transactionsgrpc.CustomerStatus
-	54, // 4: transactionsgrpc.Customer.created_at:type_name -> google.protobuf.Timestamp
-	54, // 5: transactionsgrpc.Customer.updated_at:type_name -> google.protobuf.Timestamp
-	55, // 6: transactionsgrpc.Deposit.amount:type_name -> commongrpc.Money
-	56, // 7: transactionsgrpc.Deposit.payment_type:type_name -> commongrpc.PaymentType
-	57, // 8: transactionsgrpc.Deposit.provider:type_name -> commongrpc.Provider
+	61, // 4: transactionsgrpc.Customer.created_at:type_name -> google.protobuf.Timestamp
+	61, // 5: transactionsgrpc.Customer.updated_at:type_name -> google.protobuf.Timestamp
+	62, // 6: transactionsgrpc.Deposit.amount:type_name -> commongrpc.Money
+	63, // 7: transactionsgrpc.Deposit.payment_type:type_name -> commongrpc.PaymentType
+	64, // 8: transactionsgrpc.Deposit.provider:type_name -> commongrpc.Provider
 	2,  // 9: transactionsgrpc.Deposit.status:type_name -> transactionsgrpc.DepositStatus
-	54, // 10: transactionsgrpc.Deposit.initiated_at:type_name -> google.protobuf.Timestamp
-	54, // 11: transactionsgrpc.Deposit.completed_at:type_name -> google.protobuf.Timestamp
-	54, // 12: transactionsgrpc.Deposit.failed_at:type_name -> google.protobuf.Timestamp
-	54, // 13: transactionsgrpc.Deposit.created_at:type_name -> google.protobuf.Timestamp
-	54, // 14: transactionsgrpc.Deposit.updated_at:type_name -> google.protobuf.Timestamp
-	55, // 15: transactionsgrpc.Payout.amount:type_name -> commongrpc.Money
-	57, // 16: transactionsgrpc.Payout.provider:type_name -> commongrpc.Provider
+	61, // 10: transactionsgrpc.Deposit.initiated_at:type_name -> google.protobuf.Timestamp
+	61, // 11: transactionsgrpc.Deposit.completed_at:type_name -> google.protobuf.Timestamp
+	61, // 12: transactionsgrpc.Deposit.failed_at:type_name -> google.protobuf.Timestamp
+	61, // 13: transactionsgrpc.Deposit.created_at:type_name -> google.protobuf.Timestamp
+	61, // 14: transactionsgrpc.Deposit.updated_at:type_name -> google.protobuf.Timestamp
+	62, // 15: transactionsgrpc.Payout.amount:type_name -> commongrpc.Money
+	64, // 16: transactionsgrpc.Payout.provider:type_name -> commongrpc.Provider
 	3,  // 17: transactionsgrpc.Payout.status:type_name -> transactionsgrpc.PayoutStatus
-	54, // 18: transactionsgrpc.Payout.requested_at:type_name -> google.protobuf.Timestamp
-	54, // 19: transactionsgrpc.Payout.completed_at:type_name -> google.protobuf.Timestamp
-	54, // 20: transactionsgrpc.Payout.failed_at:type_name -> google.protobuf.Timestamp
-	54, // 21: transactionsgrpc.Payout.created_at:type_name -> google.protobuf.Timestamp
-	54, // 22: transactionsgrpc.Payout.updated_at:type_name -> google.protobuf.Timestamp
+	61, // 18: transactionsgrpc.Payout.requested_at:type_name -> google.protobuf.Timestamp
+	61, // 19: transactionsgrpc.Payout.completed_at:type_name -> google.protobuf.Timestamp
+	61, // 20: transactionsgrpc.Payout.failed_at:type_name -> google.protobuf.Timestamp
+	61, // 21: transactionsgrpc.Payout.created_at:type_name -> google.protobuf.Timestamp
+	61, // 22: transactionsgrpc.Payout.updated_at:type_name -> google.protobuf.Timestamp
 	4,  // 23: transactionsgrpc.CreateMerchantResponse.merchant:type_name -> transactionsgrpc.Merchant
 	4,  // 24: transactionsgrpc.GetMerchantResponse.merchant:type_name -> transactionsgrpc.Merchant
-	58, // 25: transactionsgrpc.ListMerchantsRequest.page:type_name -> commongrpc.PaginationRequest
+	65, // 25: transactionsgrpc.ListMerchantsRequest.page:type_name -> commongrpc.PaginationRequest
 	4,  // 26: transactionsgrpc.ListMerchantsResponse.merchants:type_name -> transactionsgrpc.Merchant
-	59, // 27: transactionsgrpc.ListMerchantsResponse.page:type_name -> commongrpc.PaginationResponse
+	66, // 27: transactionsgrpc.ListMerchantsResponse.page:type_name -> commongrpc.PaginationResponse
 	5,  // 28: transactionsgrpc.CreateCustomerResponse.customer:type_name -> transactionsgrpc.Customer
 	5,  // 29: transactionsgrpc.GetCustomerResponse.customer:type_name -> transactionsgrpc.Customer
-	55, // 30: transactionsgrpc.CreateDepositRequest.amount:type_name -> commongrpc.Money
-	56, // 31: transactionsgrpc.CreateDepositRequest.payment_type:type_name -> commongrpc.PaymentType
-	57, // 32: transactionsgrpc.CreateDepositRequest.provider:type_name -> commongrpc.Provider
+	62, // 30: transactionsgrpc.CreateDepositRequest.amount:type_name -> commongrpc.Money
+	63, // 31: transactionsgrpc.CreateDepositRequest.payment_type:type_name -> commongrpc.PaymentType
+	64, // 32: transactionsgrpc.CreateDepositRequest.provider:type_name -> commongrpc.Provider
 	5,  // 33: transactionsgrpc.CreateDepositRequest.customer:type_name -> transactionsgrpc.Customer
 	6,  // 34: transactionsgrpc.CreateDepositResponse.deposit:type_name -> transactionsgrpc.Deposit
 	6,  // 35: transactionsgrpc.GetDepositResponse.deposit:type_name -> transactionsgrpc.Deposit
 	6,  // 36: transactionsgrpc.GetDepositByGHLTransactionIDResponse.deposit:type_name -> transactionsgrpc.Deposit
 	29, // 37: transactionsgrpc.ProcessDepositCallbackRequest.failure_reason:type_name -> transactionsgrpc.ProcessDepositCallbackFailureReason
-	55, // 38: transactionsgrpc.CreatePayoutRequest.amount:type_name -> commongrpc.Money
-	57, // 39: transactionsgrpc.CreatePayoutRequest.provider:type_name -> commongrpc.Provider
+	62, // 38: transactionsgrpc.CreatePayoutRequest.amount:type_name -> commongrpc.Money
+	64, // 39: transactionsgrpc.CreatePayoutRequest.provider:type_name -> commongrpc.Provider
 	7,  // 40: transactionsgrpc.CreatePayoutResponse.payout:type_name -> transactionsgrpc.Payout
 	7,  // 41: transactionsgrpc.GetPayoutResponse.payout:type_name -> transactionsgrpc.Payout
 	42, // 42: transactionsgrpc.GetOverviewSnapshotResponse.revenue_over_time:type_name -> transactionsgrpc.RevenueBucket
@@ -3952,51 +4430,59 @@ var file_transactions_proto_depIdxs = []int32{
 	46, // 44: transactionsgrpc.GetPayoutOverviewStatsResponse.stats:type_name -> transactionsgrpc.PayoutStat
 	49, // 45: transactionsgrpc.ListPayoutsResponse.rows:type_name -> transactionsgrpc.PayoutListRow
 	52, // 46: transactionsgrpc.ListTransactionsResponse.rows:type_name -> transactionsgrpc.TransactionListRow
-	8,  // 47: transactionsgrpc.MerchantService.CreateMerchant:input_type -> transactionsgrpc.CreateMerchantRequest
-	10, // 48: transactionsgrpc.MerchantService.GetMerchant:input_type -> transactionsgrpc.GetMerchantRequest
-	12, // 49: transactionsgrpc.MerchantService.ListMerchants:input_type -> transactionsgrpc.ListMerchantsRequest
-	14, // 50: transactionsgrpc.CustomerService.CreateCustomer:input_type -> transactionsgrpc.CreateCustomerRequest
-	16, // 51: transactionsgrpc.CustomerService.GetCustomer:input_type -> transactionsgrpc.GetCustomerRequest
-	18, // 52: transactionsgrpc.DepositService.InitiateDeposit:input_type -> transactionsgrpc.CreateDepositRequest
-	20, // 53: transactionsgrpc.DepositService.GetDeposit:input_type -> transactionsgrpc.GetDepositRequest
-	22, // 54: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:input_type -> transactionsgrpc.GetDepositByGHLTransactionIDRequest
-	24, // 55: transactionsgrpc.PaymentService.VerifyPayment:input_type -> transactionsgrpc.VerifyPaymentRequest
-	26, // 56: transactionsgrpc.PaymentService.ProcessPaymentWebhook:input_type -> transactionsgrpc.ProcessPaymentWebhookRequest
-	28, // 57: transactionsgrpc.PaymentService.ProcessDepositCallback:input_type -> transactionsgrpc.ProcessDepositCallbackRequest
-	31, // 58: transactionsgrpc.PaymentService.ProcessRefundCallback:input_type -> transactionsgrpc.ProcessRefundCallbackRequest
-	33, // 59: transactionsgrpc.PaymentService.ProcessCheckoutCallback:input_type -> transactionsgrpc.ProcessCheckoutCallbackRequest
-	35, // 60: transactionsgrpc.PayoutService.RequestPayout:input_type -> transactionsgrpc.CreatePayoutRequest
-	37, // 61: transactionsgrpc.PayoutService.GetPayout:input_type -> transactionsgrpc.GetPayoutRequest
-	45, // 62: transactionsgrpc.PayoutService.GetPayoutOverviewStats:input_type -> transactionsgrpc.GetPayoutOverviewStatsRequest
-	48, // 63: transactionsgrpc.PayoutService.ListPayouts:input_type -> transactionsgrpc.ListPayoutsRequest
-	41, // 64: transactionsgrpc.DashboardOverviewService.GetOverviewSnapshot:input_type -> transactionsgrpc.GetOverviewSnapshotRequest
-	51, // 65: transactionsgrpc.DashboardOverviewService.ListTransactions:input_type -> transactionsgrpc.ListTransactionsRequest
-	39, // 66: transactionsgrpc.HealthService.HealthCheck:input_type -> transactionsgrpc.HealthCheckRequest
-	9,  // 67: transactionsgrpc.MerchantService.CreateMerchant:output_type -> transactionsgrpc.CreateMerchantResponse
-	11, // 68: transactionsgrpc.MerchantService.GetMerchant:output_type -> transactionsgrpc.GetMerchantResponse
-	13, // 69: transactionsgrpc.MerchantService.ListMerchants:output_type -> transactionsgrpc.ListMerchantsResponse
-	15, // 70: transactionsgrpc.CustomerService.CreateCustomer:output_type -> transactionsgrpc.CreateCustomerResponse
-	17, // 71: transactionsgrpc.CustomerService.GetCustomer:output_type -> transactionsgrpc.GetCustomerResponse
-	19, // 72: transactionsgrpc.DepositService.InitiateDeposit:output_type -> transactionsgrpc.CreateDepositResponse
-	21, // 73: transactionsgrpc.DepositService.GetDeposit:output_type -> transactionsgrpc.GetDepositResponse
-	23, // 74: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:output_type -> transactionsgrpc.GetDepositByGHLTransactionIDResponse
-	25, // 75: transactionsgrpc.PaymentService.VerifyPayment:output_type -> transactionsgrpc.VerifyPaymentResponse
-	27, // 76: transactionsgrpc.PaymentService.ProcessPaymentWebhook:output_type -> transactionsgrpc.ProcessPaymentWebhookResponse
-	30, // 77: transactionsgrpc.PaymentService.ProcessDepositCallback:output_type -> transactionsgrpc.ProcessDepositCallbackResponse
-	32, // 78: transactionsgrpc.PaymentService.ProcessRefundCallback:output_type -> transactionsgrpc.ProcessRefundCallbackResponse
-	34, // 79: transactionsgrpc.PaymentService.ProcessCheckoutCallback:output_type -> transactionsgrpc.ProcessCheckoutCallbackResponse
-	36, // 80: transactionsgrpc.PayoutService.RequestPayout:output_type -> transactionsgrpc.CreatePayoutResponse
-	38, // 81: transactionsgrpc.PayoutService.GetPayout:output_type -> transactionsgrpc.GetPayoutResponse
-	47, // 82: transactionsgrpc.PayoutService.GetPayoutOverviewStats:output_type -> transactionsgrpc.GetPayoutOverviewStatsResponse
-	50, // 83: transactionsgrpc.PayoutService.ListPayouts:output_type -> transactionsgrpc.ListPayoutsResponse
-	44, // 84: transactionsgrpc.DashboardOverviewService.GetOverviewSnapshot:output_type -> transactionsgrpc.GetOverviewSnapshotResponse
-	53, // 85: transactionsgrpc.DashboardOverviewService.ListTransactions:output_type -> transactionsgrpc.ListTransactionsResponse
-	40, // 86: transactionsgrpc.HealthService.HealthCheck:output_type -> transactionsgrpc.HealthCheckResponse
-	67, // [67:87] is the sub-list for method output_type
-	47, // [47:67] is the sub-list for method input_type
-	47, // [47:47] is the sub-list for extension type_name
-	47, // [47:47] is the sub-list for extension extendee
-	0,  // [0:47] is the sub-list for field type_name
+	57, // 47: transactionsgrpc.ListDisputesResponse.rows:type_name -> transactionsgrpc.DisputeRow
+	57, // 48: transactionsgrpc.SubmitEvidenceResponse.dispute:type_name -> transactionsgrpc.DisputeRow
+	8,  // 49: transactionsgrpc.MerchantService.CreateMerchant:input_type -> transactionsgrpc.CreateMerchantRequest
+	10, // 50: transactionsgrpc.MerchantService.GetMerchant:input_type -> transactionsgrpc.GetMerchantRequest
+	12, // 51: transactionsgrpc.MerchantService.ListMerchants:input_type -> transactionsgrpc.ListMerchantsRequest
+	14, // 52: transactionsgrpc.CustomerService.CreateCustomer:input_type -> transactionsgrpc.CreateCustomerRequest
+	16, // 53: transactionsgrpc.CustomerService.GetCustomer:input_type -> transactionsgrpc.GetCustomerRequest
+	18, // 54: transactionsgrpc.DepositService.InitiateDeposit:input_type -> transactionsgrpc.CreateDepositRequest
+	20, // 55: transactionsgrpc.DepositService.GetDeposit:input_type -> transactionsgrpc.GetDepositRequest
+	22, // 56: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:input_type -> transactionsgrpc.GetDepositByGHLTransactionIDRequest
+	24, // 57: transactionsgrpc.PaymentService.VerifyPayment:input_type -> transactionsgrpc.VerifyPaymentRequest
+	26, // 58: transactionsgrpc.PaymentService.ProcessPaymentWebhook:input_type -> transactionsgrpc.ProcessPaymentWebhookRequest
+	28, // 59: transactionsgrpc.PaymentService.ProcessDepositCallback:input_type -> transactionsgrpc.ProcessDepositCallbackRequest
+	31, // 60: transactionsgrpc.PaymentService.ProcessRefundCallback:input_type -> transactionsgrpc.ProcessRefundCallbackRequest
+	33, // 61: transactionsgrpc.PaymentService.ProcessCheckoutCallback:input_type -> transactionsgrpc.ProcessCheckoutCallbackRequest
+	35, // 62: transactionsgrpc.PayoutService.RequestPayout:input_type -> transactionsgrpc.CreatePayoutRequest
+	37, // 63: transactionsgrpc.PayoutService.GetPayout:input_type -> transactionsgrpc.GetPayoutRequest
+	45, // 64: transactionsgrpc.PayoutService.GetPayoutOverviewStats:input_type -> transactionsgrpc.GetPayoutOverviewStatsRequest
+	48, // 65: transactionsgrpc.PayoutService.ListPayouts:input_type -> transactionsgrpc.ListPayoutsRequest
+	41, // 66: transactionsgrpc.DashboardOverviewService.GetOverviewSnapshot:input_type -> transactionsgrpc.GetOverviewSnapshotRequest
+	51, // 67: transactionsgrpc.DashboardOverviewService.ListTransactions:input_type -> transactionsgrpc.ListTransactionsRequest
+	54, // 68: transactionsgrpc.DashboardOverviewService.GetDisputeStats:input_type -> transactionsgrpc.GetDisputeStatsRequest
+	56, // 69: transactionsgrpc.DashboardOverviewService.ListDisputes:input_type -> transactionsgrpc.ListDisputesRequest
+	59, // 70: transactionsgrpc.DashboardOverviewService.SubmitEvidence:input_type -> transactionsgrpc.SubmitEvidenceRequest
+	39, // 71: transactionsgrpc.HealthService.HealthCheck:input_type -> transactionsgrpc.HealthCheckRequest
+	9,  // 72: transactionsgrpc.MerchantService.CreateMerchant:output_type -> transactionsgrpc.CreateMerchantResponse
+	11, // 73: transactionsgrpc.MerchantService.GetMerchant:output_type -> transactionsgrpc.GetMerchantResponse
+	13, // 74: transactionsgrpc.MerchantService.ListMerchants:output_type -> transactionsgrpc.ListMerchantsResponse
+	15, // 75: transactionsgrpc.CustomerService.CreateCustomer:output_type -> transactionsgrpc.CreateCustomerResponse
+	17, // 76: transactionsgrpc.CustomerService.GetCustomer:output_type -> transactionsgrpc.GetCustomerResponse
+	19, // 77: transactionsgrpc.DepositService.InitiateDeposit:output_type -> transactionsgrpc.CreateDepositResponse
+	21, // 78: transactionsgrpc.DepositService.GetDeposit:output_type -> transactionsgrpc.GetDepositResponse
+	23, // 79: transactionsgrpc.DepositService.GetDepositByGHLTransactionID:output_type -> transactionsgrpc.GetDepositByGHLTransactionIDResponse
+	25, // 80: transactionsgrpc.PaymentService.VerifyPayment:output_type -> transactionsgrpc.VerifyPaymentResponse
+	27, // 81: transactionsgrpc.PaymentService.ProcessPaymentWebhook:output_type -> transactionsgrpc.ProcessPaymentWebhookResponse
+	30, // 82: transactionsgrpc.PaymentService.ProcessDepositCallback:output_type -> transactionsgrpc.ProcessDepositCallbackResponse
+	32, // 83: transactionsgrpc.PaymentService.ProcessRefundCallback:output_type -> transactionsgrpc.ProcessRefundCallbackResponse
+	34, // 84: transactionsgrpc.PaymentService.ProcessCheckoutCallback:output_type -> transactionsgrpc.ProcessCheckoutCallbackResponse
+	36, // 85: transactionsgrpc.PayoutService.RequestPayout:output_type -> transactionsgrpc.CreatePayoutResponse
+	38, // 86: transactionsgrpc.PayoutService.GetPayout:output_type -> transactionsgrpc.GetPayoutResponse
+	47, // 87: transactionsgrpc.PayoutService.GetPayoutOverviewStats:output_type -> transactionsgrpc.GetPayoutOverviewStatsResponse
+	50, // 88: transactionsgrpc.PayoutService.ListPayouts:output_type -> transactionsgrpc.ListPayoutsResponse
+	44, // 89: transactionsgrpc.DashboardOverviewService.GetOverviewSnapshot:output_type -> transactionsgrpc.GetOverviewSnapshotResponse
+	53, // 90: transactionsgrpc.DashboardOverviewService.ListTransactions:output_type -> transactionsgrpc.ListTransactionsResponse
+	55, // 91: transactionsgrpc.DashboardOverviewService.GetDisputeStats:output_type -> transactionsgrpc.GetDisputeStatsResponse
+	58, // 92: transactionsgrpc.DashboardOverviewService.ListDisputes:output_type -> transactionsgrpc.ListDisputesResponse
+	60, // 93: transactionsgrpc.DashboardOverviewService.SubmitEvidence:output_type -> transactionsgrpc.SubmitEvidenceResponse
+	40, // 94: transactionsgrpc.HealthService.HealthCheck:output_type -> transactionsgrpc.HealthCheckResponse
+	72, // [72:95] is the sub-list for method output_type
+	49, // [49:72] is the sub-list for method input_type
+	49, // [49:49] is the sub-list for extension type_name
+	49, // [49:49] is the sub-list for extension extendee
+	0,  // [0:49] is the sub-list for field type_name
 }
 
 func init() { file_transactions_proto_init() }
@@ -4010,7 +4496,7 @@ func file_transactions_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_transactions_proto_rawDesc), len(file_transactions_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   50,
+			NumMessages:   57,
 			NumExtensions: 0,
 			NumServices:   7,
 		},

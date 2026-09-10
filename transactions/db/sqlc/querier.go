@@ -15,6 +15,7 @@ import (
 type Querier interface {
 	CountDepositsFiltered(ctx context.Context, arg CountDepositsFilteredParams) (int64, error)
 	CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
+	CountDisputesFiltered(ctx context.Context, arg CountDisputesFilteredParams) (int64, error)
 	CountMerchants(ctx context.Context) (int64, error)
 	// Payout overview aggregates (for /v1/public/payouts/overview/stats and the
 	// overview snapshot). All money is stored as NUMERIC(18,2); sums are returned
@@ -36,11 +37,14 @@ type Querier interface {
 	GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID *string) (Deposit, error)
 	GetDepositByID(ctx context.Context, id uuid.UUID) (Deposit, error)
 	GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Deposit, error)
+	GetDisputeByID(ctx context.Context, id uuid.UUID) (GetDisputeByIDRow, error)
+	GetDisputeStats(ctx context.Context) (GetDisputeStatsRow, error)
 	GetMerchantByID(ctx context.Context, id uuid.UUID) (Merchant, error)
 	GetMerchantBySlug(ctx context.Context, slug string) (Merchant, error)
 	GetPayoutByExternalReference(ctx context.Context, externalReference *string) (Payout, error)
 	GetPayoutByID(ctx context.Context, id uuid.UUID) (Payout, error)
 	GetPayoutByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Payout, error)
+	InsertDispute(ctx context.Context, arg InsertDisputeParams) (Dispute, error)
 	ListCustomersByClientName(ctx context.Context, clientName string) ([]Customer, error)
 	ListCustomersByMerchant(ctx context.Context, merchantID pgtype.UUID) ([]Customer, error)
 	ListDepositsByClient(ctx context.Context, clientName string) ([]Deposit, error)
@@ -48,6 +52,7 @@ type Querier interface {
 	ListDepositsByMerchant(ctx context.Context, merchantID *string) ([]Deposit, error)
 	ListDepositsByStatus(ctx context.Context, status DepositStatus) ([]Deposit, error)
 	ListDepositsFiltered(ctx context.Context, arg ListDepositsFilteredParams) ([]Deposit, error)
+	ListDisputesFiltered(ctx context.Context, arg ListDisputesFilteredParams) ([]ListDisputesFilteredRow, error)
 	ListMerchants(ctx context.Context, arg ListMerchantsParams) ([]Merchant, error)
 	ListPayoutsByClient(ctx context.Context, clientID uuid.UUID) ([]Payout, error)
 	ListPayoutsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Payout, error)
@@ -59,6 +64,7 @@ type Querier interface {
 	// units). Buckets with no deposits are omitted (no zero-filling), matching a
 	// sparse time series.
 	RevenueOverTimeInWindow(ctx context.Context, createdAt time.Time) ([]RevenueOverTimeInWindowRow, error)
+	SubmitEvidence(ctx context.Context, id uuid.UUID) (Dispute, error)
 	// Overview-snapshot aggregates. Deposits drive revenue + volume; payouts are
 	// queried separately. All money is NUMERIC(18,2).
 	SumDepositAmountInWindow(ctx context.Context, createdAt time.Time) (interface{}, error)

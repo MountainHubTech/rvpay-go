@@ -7,6 +7,7 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,6 +22,25 @@ WHERE id = $1
 func (q *Queries) ClearUserRefreshTokenHash(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, clearUserRefreshTokenHash, id)
 	return err
+}
+
+const countUsers = `-- name: CountUsers :one
+SELECT COUNT(*)
+FROM users
+WHERE ($1::TEXT = '' OR name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR user_role = $2::user_role)
+`
+
+type CountUsersParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+}
+
+func (q *Queries) CountUsers(ctx context.Context, arg CountUsersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsers, arg.Column1, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createUser = `-- name: CreateUser :one
@@ -95,6 +115,68 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listUsers = `-- name: ListUsers :many
+SELECT id,
+       name,
+       email,
+       user_role,
+       refresh_token_hash,
+       created_at
+FROM users
+WHERE ($1::TEXT = '' OR name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR user_role = $2::user_role)
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListUsersParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+type ListUsersRow struct {
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	Email            string    `json:"email"`
+	UserRole         UserRole  `json:"user_role"`
+	RefreshTokenHash string    `json:"refresh_token_hash"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers,
+		arg.Column1,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersRow{}
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Email,
+			&i.UserRole,
+			&i.RefreshTokenHash,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const updateUserNameEmail = `-- name: UpdateUserNameEmail :one

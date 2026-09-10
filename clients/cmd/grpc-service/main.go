@@ -257,6 +257,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// payment-page, health and provider endpoints are never intercepted.
 	protectedRoutes := []auth.AdminRoute{
 		{Method: http.MethodGet, Path: "/v1/public/clients/sub-accounts"},
+		{Method: http.MethodGet, Path: "/v1/public/clients/users"},
 	}
 	validateAccessToken := func(ctx context.Context, accessToken string) (bool, error) {
 		resp, err := authService.ValidateAccessToken(ctx, &clientsgrpc.ValidateAccessTokenRequest{AccessToken: accessToken})

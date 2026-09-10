@@ -1,6 +1,7 @@
 # RVPay Go — Stage Checkpoint
-## Stage: Admin Dashboard New Pages + ListTransactions backend — IN PROGRESS (2026-09-10)
-- [x] Transactions/Disputes/Settings dashboard pages implemented per new-pages/*.png (design-matched views, real endpoints only, truthful empty states); settings env selector preserved + moved to bottom; payment success modal -> https://store.citscm.com; new-pages/ gitignored; missing-endpoints doc -> agents/new-pages-endpoints/README.md
-- [x] Backend: Transactions ListTransactions -> GET /v1/public/transactions (proto regen; ListDepositsFiltered/CountDepositsFiltered + sqlc+mocks regen; repo ListFiltered/CountFiltered; service impl; protected admin route). build/vet/test transactions+clients PASS.
-- [ ] NEXT (handoff): wire admindashboard lib/api.ts fetchTransactions + transactions/page.tsx table/pagination binding; then E2E. Disputes + Settings team-mgmt REMAIN empty-state (backend capability NOT implemented — documented).
+## Stage: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
+- [x] Transactions page wired to GET /v1/public/transactions (fetchTransactions + table/pagination + subAccount id→name mapping)
+- [x] Settings Team Management wired to GET /v1/public/clients/users (ListUsers RPC; proto/sqlc/repo/service/protected route; fetchUsers + team table)
+- [x] Disputes page wired to GET /v1/public/transactions/disputes*,/stats (full stack: migration + proto/sqlc/repo/service/protected routes; fetchDisputes/fetchDisputeStats + stats/table)
+- [x] build/vet/test transactions+clients PASS; npm run build PASS (type-check clean, all 3 pages prerendered)
 ## Prior: Admin auth COMPLETE (2026-09-08); dashboard pages committed 576d8f5; module-path migration MountainHubTech COMPLETE.

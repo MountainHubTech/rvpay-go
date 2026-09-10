@@ -101,6 +101,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	customerRepo := repo.NewCustomerRepo(queries)
 	depositRepo := repo.NewDepositRepo(queries)
 	payoutRepo := repo.NewPayoutRepo(queries)
+	disputeRepo := repo.NewDisputeRepo(queries)
 
 	/* This block is only to be used for local testing
 	logger.Info().Msg("Declaring PawaPay client...")
@@ -115,7 +116,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, customerRepo, logger, *pawapayClient)
 	paymentService := payments.NewPaymentService(depositRepo, logger)
 	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
-	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, logger)
+	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, disputeRepo, logger)
 	healthCheck := health_check.NewHealthService(logger)
 
 	svrOpts := []grpc.ServerOption{
@@ -195,6 +196,9 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	protectedRoutes := []auth.AdminRoute{
 		{Method: http.MethodGet, Path: "/v1/public/transactions/overview/snapshot"},
 		{Method: http.MethodGet, Path: "/v1/public/transactions"},
+		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes/stats"},
+		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes"},
+		{Method: http.MethodPost, Path: "/v1/public/transactions/disputes/evidence"},
 		{Method: http.MethodGet, Path: "/v1/public/payouts/overview/stats"},
 		{Method: http.MethodGet, Path: "/v1/public/payouts"},
 	}

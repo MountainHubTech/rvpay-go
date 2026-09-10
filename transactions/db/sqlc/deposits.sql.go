@@ -47,6 +47,25 @@ func (q *Queries) CountDepositsInWindow(ctx context.Context, createdAt time.Time
 	return count, err
 }
 
+const countDisputesFiltered = `-- name: CountDisputesFiltered :one
+SELECT COUNT(*)
+FROM disputes
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::dispute_status)
+`
+
+type CountDisputesFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+}
+
+func (q *Queries) CountDisputesFiltered(ctx context.Context, arg CountDisputesFilteredParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countDisputesFiltered, arg.Column1, arg.Column2)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createDeposit = `-- name: CreateDeposit :one
 INSERT INTO deposits (
     client_name,
@@ -275,6 +294,116 @@ func (q *Queries) GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey
 		&i.UpdatedAt,
 		&i.GhlTransactionID,
 		&i.GhlChargeID,
+	)
+	return i, err
+}
+
+const getDisputeByID = `-- name: GetDisputeByID :one
+SELECT id,
+       deposit_id,
+       client_name,
+       dispute_type,
+       amount,
+       currency,
+       status,
+       opened_at,
+       due_at,
+       evidence_submitted,
+       resolved_at
+FROM disputes
+WHERE id = $1
+`
+
+type GetDisputeByIDRow struct {
+	ID                uuid.UUID          `json:"id"`
+	DepositID         uuid.UUID          `json:"deposit_id"`
+	ClientName        string             `json:"client_name"`
+	DisputeType       string             `json:"dispute_type"`
+	Amount            pgtype.Numeric     `json:"amount"`
+	Currency          string             `json:"currency"`
+	Status            DisputeStatus      `json:"status"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	DueAt             time.Time          `json:"due_at"`
+	EvidenceSubmitted bool               `json:"evidence_submitted"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+}
+
+func (q *Queries) GetDisputeByID(ctx context.Context, id uuid.UUID) (GetDisputeByIDRow, error) {
+	row := q.db.QueryRow(ctx, getDisputeByID, id)
+	var i GetDisputeByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.DepositID,
+		&i.ClientName,
+		&i.DisputeType,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.OpenedAt,
+		&i.DueAt,
+		&i.EvidenceSubmitted,
+		&i.ResolvedAt,
+	)
+	return i, err
+}
+
+const getDisputeStats = `-- name: GetDisputeStats :one
+SELECT COUNT(*) FILTER (WHERE status = 'NEEDS_RESPONSE') AS needs_response,
+       COUNT(*) FILTER (WHERE status = 'UNDER_REVIEW')  AS under_review
+FROM disputes
+`
+
+type GetDisputeStatsRow struct {
+	NeedsResponse int64 `json:"needs_response"`
+	UnderReview   int64 `json:"under_review"`
+}
+
+func (q *Queries) GetDisputeStats(ctx context.Context) (GetDisputeStatsRow, error) {
+	row := q.db.QueryRow(ctx, getDisputeStats)
+	var i GetDisputeStatsRow
+	err := row.Scan(&i.NeedsResponse, &i.UnderReview)
+	return i, err
+}
+
+const insertDispute = `-- name: InsertDispute :one
+INSERT INTO disputes (deposit_id, client_name, dispute_type, amount, currency, status, due_at)
+VALUES ($1, $2, $3, $4, $5, 'NEEDS_RESPONSE'::dispute_status, $6)
+RETURNING id, deposit_id, client_name, dispute_type, amount, currency, status, evidence_submitted, opened_at, due_at, resolved_at, created_at, updated_at
+`
+
+type InsertDisputeParams struct {
+	DepositID   uuid.UUID      `json:"deposit_id"`
+	ClientName  string         `json:"client_name"`
+	DisputeType string         `json:"dispute_type"`
+	Amount      pgtype.Numeric `json:"amount"`
+	Currency    string         `json:"currency"`
+	DueAt       time.Time      `json:"due_at"`
+}
+
+func (q *Queries) InsertDispute(ctx context.Context, arg InsertDisputeParams) (Dispute, error) {
+	row := q.db.QueryRow(ctx, insertDispute,
+		arg.DepositID,
+		arg.ClientName,
+		arg.DisputeType,
+		arg.Amount,
+		arg.Currency,
+		arg.DueAt,
+	)
+	var i Dispute
+	err := row.Scan(
+		&i.ID,
+		&i.DepositID,
+		&i.ClientName,
+		&i.DisputeType,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.EvidenceSubmitted,
+		&i.OpenedAt,
+		&i.DueAt,
+		&i.ResolvedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -532,6 +661,77 @@ func (q *Queries) ListDepositsFiltered(ctx context.Context, arg ListDepositsFilt
 	return items, nil
 }
 
+const listDisputesFiltered = `-- name: ListDisputesFiltered :many
+SELECT id,
+       deposit_id,
+       client_name,
+       dispute_type,
+       amount,
+       currency,
+       status,
+       opened_at,
+       due_at
+FROM disputes
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::dispute_status)
+ORDER BY opened_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListDisputesFilteredParams struct {
+	Column1 string `json:"column_1"`
+	Column2 string `json:"column_2"`
+	Limit   int32  `json:"limit"`
+	Offset  int32  `json:"offset"`
+}
+
+type ListDisputesFilteredRow struct {
+	ID          uuid.UUID      `json:"id"`
+	DepositID   uuid.UUID      `json:"deposit_id"`
+	ClientName  string         `json:"client_name"`
+	DisputeType string         `json:"dispute_type"`
+	Amount      pgtype.Numeric `json:"amount"`
+	Currency    string         `json:"currency"`
+	Status      DisputeStatus  `json:"status"`
+	OpenedAt    time.Time      `json:"opened_at"`
+	DueAt       time.Time      `json:"due_at"`
+}
+
+func (q *Queries) ListDisputesFiltered(ctx context.Context, arg ListDisputesFilteredParams) ([]ListDisputesFilteredRow, error) {
+	rows, err := q.db.Query(ctx, listDisputesFiltered,
+		arg.Column1,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListDisputesFilteredRow{}
+	for rows.Next() {
+		var i ListDisputesFilteredRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.DepositID,
+			&i.ClientName,
+			&i.DisputeType,
+			&i.Amount,
+			&i.Currency,
+			&i.Status,
+			&i.OpenedAt,
+			&i.DueAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listRecentDeposits = `-- name: ListRecentDeposits :many
 SELECT id, client_name, customer_id, merchant_id, amount, currency, payment_type, payer_phone_number, provider, status, external_reference, idempotency_key, initiated_at, completed_at, failed_at, failure_reason, created_at, updated_at, ghl_transaction_id, ghl_charge_id
 FROM deposits
@@ -617,6 +817,37 @@ func (q *Queries) RevenueOverTimeInWindow(ctx context.Context, createdAt time.Ti
 		return nil, err
 	}
 	return items, nil
+}
+
+const submitEvidence = `-- name: SubmitEvidence :one
+UPDATE disputes
+SET evidence_submitted = true,
+    status = 'UNDER_REVIEW',
+    resolved_at = NULL,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, deposit_id, client_name, dispute_type, amount, currency, status, evidence_submitted, opened_at, due_at, resolved_at, created_at, updated_at
+`
+
+func (q *Queries) SubmitEvidence(ctx context.Context, id uuid.UUID) (Dispute, error) {
+	row := q.db.QueryRow(ctx, submitEvidence, id)
+	var i Dispute
+	err := row.Scan(
+		&i.ID,
+		&i.DepositID,
+		&i.ClientName,
+		&i.DisputeType,
+		&i.Amount,
+		&i.Currency,
+		&i.Status,
+		&i.EvidenceSubmitted,
+		&i.OpenedAt,
+		&i.DueAt,
+		&i.ResolvedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const sumDepositAmountInWindow = `-- name: SumDepositAmountInWindow :one

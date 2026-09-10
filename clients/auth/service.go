@@ -339,6 +339,107 @@ func (s *Service) UpdateUser(ctx context.Context, req *clientsgrpc.UpdateUserReq
 	}, nil
 }
 
+// userListTime renders a human-readable initiation time for the user list.
+func userListTime(t time.Time) string {
+	if t.IsZero() {
+		return "—"
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+// ListUsers implements AuthService.ListUsers: a paginated, searchable,
+// role-filtered list of database-managed users for the Admin Dashboard
+// Settings team-management page. Password and token material are never
+// returned — only safe identity fields.
+func (s *Service) ListUsers(ctx context.Context, req *clientsgrpc.ListUsersRequest) (resp *clientsgrpc.ListUsersResponse, err error) {
+	if req == nil {
+		req = &clientsgrpc.ListUsersRequest{}
+	}
+	s.logger.Info().
+		Str("endpoint", "/v1/public/clients/users").
+		Str("method", "GET").
+		Str("operation", "ListUsers").
+		Str("search", req.GetSearch()).
+		Str("role", req.GetRole()).
+		Int("page", int(req.GetPage())).
+		Int("page_size", int(req.GetPageSize())).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("endpoint", "/v1/public/clients/users").
+				Str("operation", "ListUsers").
+				Str("grpc_code", status.Code(err).String()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("endpoint", "/v1/public/clients/users").
+			Str("operation", "ListUsers").
+			Str("grpc_code", "OK").
+			Int("rows_returned", len(resp.GetRows())).
+			Int64("total", resp.GetTotal()).
+			Int("page", int(resp.GetPage())).
+			Int("page_size", int(resp.GetPageSize())).
+			Msg("dashboard API request completed")
+	}()
+
+	page := req.GetPage()
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.GetPageSize()
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	rows, err := s.userRepo.ListUsers(ctx, req.GetSearch(), req.GetRole(), pageSize, offset)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListUsers").
+			Str("repository", "UserRepo.ListUsers").
+			Msg("could not list users")
+		return nil, translateAuthError(err)
+	}
+	total, err := s.userRepo.CountUsers(ctx, req.GetSearch(), req.GetRole())
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListUsers").
+			Str("repository", "UserRepo.CountUsers").
+			Msg("could not count users")
+		return nil, translateAuthError(err)
+	}
+
+	protoRows := make([]*clientsgrpc.UserRow, 0, len(rows))
+	for _, row := range rows {
+		status := "Inactive"
+		if row.RefreshTokenHash != "" {
+			status = "Active"
+		}
+		protoRows = append(protoRows, &clientsgrpc.UserRow{
+			Id:         row.ID.String(),
+			Name:       row.Name,
+			Email:      row.Email,
+			Role:       string(row.UserRole),
+			Status:     status,
+			DateJoined: userListTime(row.CreatedAt),
+		})
+	}
+
+	return &clientsgrpc.ListUsersResponse{
+		Rows:     protoRows,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
 // validateEmail enforces a syntactically valid, non-empty email address.
 func validateEmail(email string) error {
 	address, err := mail.ParseAddress(email)

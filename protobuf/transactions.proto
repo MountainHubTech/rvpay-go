@@ -613,6 +613,41 @@ service DashboardOverviewService {
       get : "/v1/public/transactions"
     };
   }
+
+  // GetDisputeStats returns the Needs Response / Under Review counters for
+  // the Admin Dashboard disputes page. The route lives under the permitted
+  // /v1/public/transactions* ALB prefix and is protected by the admin
+  // middleware.
+  rpc GetDisputeStats(GetDisputeStatsRequest)
+      returns (GetDisputeStatsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/disputes/stats"
+    };
+  }
+
+  // ListDisputes returns a paginated, searchable, status-filtered list of
+  // disputes for the Admin Dashboard disputes page. The route lives under
+  // the permitted /v1/public/transactions* ALB prefix and is protected by
+  // the admin middleware.
+  rpc ListDisputes(ListDisputesRequest)
+      returns (ListDisputesResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/disputes"
+    };
+  }
+
+  // SubmitEvidence submits evidence for a dispute, moving it to UNDER_REVIEW.
+  // The route lives under the permitted /v1/public/transactions* ALB prefix
+  // and is protected by the admin middleware. The dispute id is carried in
+  // the request body (no path parameter) so the transport middleware can match
+  // the route exactly.
+  rpc SubmitEvidence(SubmitEvidenceRequest)
+      returns (SubmitEvidenceResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/transactions/disputes/evidence"
+      body : "*"
+    };
+  }
 }
 
 // GetOverviewSnapshotRequest requests the overview snapshot for a period.
@@ -780,4 +815,70 @@ message ListTransactionsResponse {
   int32 page = 3;
   // page_size is the page size in effect.
   int32 page_size = 4;
+}
+
+// GetDisputeStatsRequest requests the disputes page counters.
+message GetDisputeStatsRequest {}
+
+// GetDisputeStatsResponse carries the Needs Response / Under Review counters.
+message GetDisputeStatsResponse {
+  // needs_response is the count of disputes awaiting a response.
+  int64 needs_response = 1;
+  // under_review is the count of disputes with evidence submitted.
+  int64 under_review = 2;
+}
+
+// ListDisputesRequest requests a paginated dispute list for the disputes page.
+message ListDisputesRequest {
+  // search filters by client name (case-insensitive).
+  string search = 1;
+  // status filters by dispute status. Empty means all.
+  string status = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// DisputeRow is a single row of the disputes list.
+message DisputeRow {
+  // id is the stable dispute identifier.
+  string id = 1;
+  // sub_account is the RVPay client name the dispute belongs to.
+  string sub_account = 2;
+  // type is the dispute type (e.g. Chargeback, Payout Issue).
+  string type = 3;
+  // amount is the human-readable dispute amount.
+  string amount = 4;
+  // status is the dashboard-facing dispute status.
+  string status = 5;
+  // date_opened is the human-readable opening time.
+  string date_opened = 6;
+  // due_in is a human-readable "due in N days" label.
+  string due_in = 7;
+}
+
+// ListDisputesResponse carries a page of disputes.
+message ListDisputesResponse {
+  repeated DisputeRow rows = 1;
+  // total is the total number of disputes matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
+
+// SubmitEvidenceRequest submits evidence for a dispute.
+message SubmitEvidenceRequest {
+  // id is the dispute identifier.
+  string id = 1;
+  // notes is free-text evidence notes.
+  string notes = 2;
+}
+
+// SubmitEvidenceResponse confirms the evidence submission.
+message SubmitEvidenceResponse {
+  // dispute is the updated dispute.
+  DisputeRow dispute = 1;
 }

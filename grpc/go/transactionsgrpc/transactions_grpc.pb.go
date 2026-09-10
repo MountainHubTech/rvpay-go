@@ -1081,6 +1081,9 @@ var PayoutService_ServiceDesc = grpc.ServiceDesc{
 const (
 	DashboardOverviewService_GetOverviewSnapshot_FullMethodName = "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot"
 	DashboardOverviewService_ListTransactions_FullMethodName    = "/transactionsgrpc.DashboardOverviewService/ListTransactions"
+	DashboardOverviewService_GetDisputeStats_FullMethodName     = "/transactionsgrpc.DashboardOverviewService/GetDisputeStats"
+	DashboardOverviewService_ListDisputes_FullMethodName        = "/transactionsgrpc.DashboardOverviewService/ListDisputes"
+	DashboardOverviewService_SubmitEvidence_FullMethodName      = "/transactionsgrpc.DashboardOverviewService/SubmitEvidence"
 )
 
 // DashboardOverviewServiceClient is the client API for DashboardOverviewService service.
@@ -1100,6 +1103,22 @@ type DashboardOverviewServiceClient interface {
 	// route lives under the permitted /v1/public/transactions* ALB prefix and
 	// is protected by the admin middleware.
 	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (*ListTransactionsResponse, error)
+	// GetDisputeStats returns the Needs Response / Under Review counters for
+	// the Admin Dashboard disputes page. The route lives under the permitted
+	// /v1/public/transactions* ALB prefix and is protected by the admin
+	// middleware.
+	GetDisputeStats(ctx context.Context, in *GetDisputeStatsRequest, opts ...grpc.CallOption) (*GetDisputeStatsResponse, error)
+	// ListDisputes returns a paginated, searchable, status-filtered list of
+	// disputes for the Admin Dashboard disputes page. The route lives under
+	// the permitted /v1/public/transactions* ALB prefix and is protected by
+	// the admin middleware.
+	ListDisputes(ctx context.Context, in *ListDisputesRequest, opts ...grpc.CallOption) (*ListDisputesResponse, error)
+	// SubmitEvidence submits evidence for a dispute, moving it to UNDER_REVIEW.
+	// The route lives under the permitted /v1/public/transactions* ALB prefix
+	// and is protected by the admin middleware. The dispute id is carried in
+	// the request body (no path parameter) so the transport middleware can match
+	// the route exactly.
+	SubmitEvidence(ctx context.Context, in *SubmitEvidenceRequest, opts ...grpc.CallOption) (*SubmitEvidenceResponse, error)
 }
 
 type dashboardOverviewServiceClient struct {
@@ -1130,6 +1149,36 @@ func (c *dashboardOverviewServiceClient) ListTransactions(ctx context.Context, i
 	return out, nil
 }
 
+func (c *dashboardOverviewServiceClient) GetDisputeStats(ctx context.Context, in *GetDisputeStatsRequest, opts ...grpc.CallOption) (*GetDisputeStatsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetDisputeStatsResponse)
+	err := c.cc.Invoke(ctx, DashboardOverviewService_GetDisputeStats_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dashboardOverviewServiceClient) ListDisputes(ctx context.Context, in *ListDisputesRequest, opts ...grpc.CallOption) (*ListDisputesResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListDisputesResponse)
+	err := c.cc.Invoke(ctx, DashboardOverviewService_ListDisputes_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *dashboardOverviewServiceClient) SubmitEvidence(ctx context.Context, in *SubmitEvidenceRequest, opts ...grpc.CallOption) (*SubmitEvidenceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SubmitEvidenceResponse)
+	err := c.cc.Invoke(ctx, DashboardOverviewService_SubmitEvidence_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DashboardOverviewServiceServer is the server API for DashboardOverviewService service.
 // All implementations must embed UnimplementedDashboardOverviewServiceServer
 // for forward compatibility.
@@ -1147,6 +1196,22 @@ type DashboardOverviewServiceServer interface {
 	// route lives under the permitted /v1/public/transactions* ALB prefix and
 	// is protected by the admin middleware.
 	ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error)
+	// GetDisputeStats returns the Needs Response / Under Review counters for
+	// the Admin Dashboard disputes page. The route lives under the permitted
+	// /v1/public/transactions* ALB prefix and is protected by the admin
+	// middleware.
+	GetDisputeStats(context.Context, *GetDisputeStatsRequest) (*GetDisputeStatsResponse, error)
+	// ListDisputes returns a paginated, searchable, status-filtered list of
+	// disputes for the Admin Dashboard disputes page. The route lives under
+	// the permitted /v1/public/transactions* ALB prefix and is protected by
+	// the admin middleware.
+	ListDisputes(context.Context, *ListDisputesRequest) (*ListDisputesResponse, error)
+	// SubmitEvidence submits evidence for a dispute, moving it to UNDER_REVIEW.
+	// The route lives under the permitted /v1/public/transactions* ALB prefix
+	// and is protected by the admin middleware. The dispute id is carried in
+	// the request body (no path parameter) so the transport middleware can match
+	// the route exactly.
+	SubmitEvidence(context.Context, *SubmitEvidenceRequest) (*SubmitEvidenceResponse, error)
 	mustEmbedUnimplementedDashboardOverviewServiceServer()
 }
 
@@ -1162,6 +1227,15 @@ func (UnimplementedDashboardOverviewServiceServer) GetOverviewSnapshot(context.C
 }
 func (UnimplementedDashboardOverviewServiceServer) ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListTransactions not implemented")
+}
+func (UnimplementedDashboardOverviewServiceServer) GetDisputeStats(context.Context, *GetDisputeStatsRequest) (*GetDisputeStatsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetDisputeStats not implemented")
+}
+func (UnimplementedDashboardOverviewServiceServer) ListDisputes(context.Context, *ListDisputesRequest) (*ListDisputesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListDisputes not implemented")
+}
+func (UnimplementedDashboardOverviewServiceServer) SubmitEvidence(context.Context, *SubmitEvidenceRequest) (*SubmitEvidenceResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SubmitEvidence not implemented")
 }
 func (UnimplementedDashboardOverviewServiceServer) mustEmbedUnimplementedDashboardOverviewServiceServer() {
 }
@@ -1221,6 +1295,60 @@ func _DashboardOverviewService_ListTransactions_Handler(srv interface{}, ctx con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DashboardOverviewService_GetDisputeStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetDisputeStatsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DashboardOverviewServiceServer).GetDisputeStats(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DashboardOverviewService_GetDisputeStats_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DashboardOverviewServiceServer).GetDisputeStats(ctx, req.(*GetDisputeStatsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DashboardOverviewService_ListDisputes_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListDisputesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DashboardOverviewServiceServer).ListDisputes(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DashboardOverviewService_ListDisputes_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DashboardOverviewServiceServer).ListDisputes(ctx, req.(*ListDisputesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DashboardOverviewService_SubmitEvidence_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SubmitEvidenceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DashboardOverviewServiceServer).SubmitEvidence(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DashboardOverviewService_SubmitEvidence_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DashboardOverviewServiceServer).SubmitEvidence(ctx, req.(*SubmitEvidenceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DashboardOverviewService_ServiceDesc is the grpc.ServiceDesc for DashboardOverviewService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1235,6 +1363,18 @@ var DashboardOverviewService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListTransactions",
 			Handler:    _DashboardOverviewService_ListTransactions_Handler,
+		},
+		{
+			MethodName: "GetDisputeStats",
+			Handler:    _DashboardOverviewService_GetDisputeStats_Handler,
+		},
+		{
+			MethodName: "ListDisputes",
+			Handler:    _DashboardOverviewService_ListDisputes_Handler,
+		},
+		{
+			MethodName: "SubmitEvidence",
+			Handler:    _DashboardOverviewService_SubmitEvidence_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

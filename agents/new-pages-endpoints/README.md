@@ -1,45 +1,31 @@
 # Missing Backend Endpoints — Transactions / Disputes / Settings Pages
 
-Status snapshot after implementing `admindashboard` pages from
-`agents/final-dashboard-pages.md` (2026-09-10). Every item below is real
-backend work required before the corresponding UI can show live rows. The UI
-already renders truthful empty states and reuses existing endpoints wherever
-possible — no mock data and no speculative endpoints were created.
+Status snapshot updated 2026-09-10 after implementing all three dashboard
+pages AND their backends. Items 1–3 and the users-list half of item 4 are now
+IMPLEMENTED; only the invite/delete team-management actions remain. See the
+per-service checkpoints for full details.
 
 ---
 
-## 1. Transactions — transaction list (MISSING)
+## 1. Transactions — transaction list (IMPLEMENTED)
 
 - Page: Transactions
 - UI feature: paginated table (Transaction ID, Sub-Account, Customer, Amount,
-  Status, Gateway, Date) with sub-account/status/date-range filters.
+  Status, Gateway, Date) with sub-account/status filters.
 - Owning service: Transactions
-- Proposed HTTP route: `GET /v1/public/transactions`
-  (fits the existing ALB rule `25/50/75` prefix `/v1/public/transactions*` —
-  no ALB change required)
-- Proposed gRPC: `ListTransactions` on a new/existing TransactionsService in
+- HTTP route: `GET /v1/public/transactions` (live)
+- gRPC: `ListTransactions` on `DashboardOverviewService` in
   `protobuf/transactions.proto`
 - HTTP method: GET
-- Authentication: Bearer access token — add path to the transport middleware
-  protected-path list in `transactions/cmd/grpc-service/main.go` (same list
-  that already protects `/v1/public/transactions/overview/snapshot`).
-- Request params: `search`, `subAccountId`, `status`, `from`, `to`,
-  `page`, `pageSize`
-- Response: `{ rows: [{ id, shortId, subAccountId, subAccountName, customerId,
-  customerName, amount, currency, status, gateway, createdAt }], total, page,
-  pageSize }`
-- Sorting: `createdAt desc` default; optional `sort`/`order`.
-- Database: requires deposits/payments data joined with merchants/customers;
-  existing tables can support it, but deposited-transaction status
-  normalization (Success/Failed/Refunded/Pending) must be defined.
-- Layers: proto → gateway regen (protobuf/Makefile) → handler → service →
-  repository (sqlc query + regen) → middleware protected-path entry.
-- CORS: none beyond existing shared middleware (Content-Type,
-  Authorization already allowed).
-- ALB: covered by existing rule (75 `/v1/public/transactions*`).
-- EXISTS today: `GET /v1/public/transactions/overview/snapshot` (stats only —
-  used by the page's stat cards), `GET /v1/public/payouts`,
-  `GET /v1/public/clients/sub-accounts` (filter options).
+- Authentication: Bearer access token (protected-path list in
+  `transactions/cmd/grpc-service/main.go`)
+- Request params: `search`, `status`, `sub_account`, `page`, `page_size`
+- Response: `{ rows: [{ id, short_id, sub_account, customer, customer_initials,
+  amount, status, gateway, date }], total, page, page_size }`
+- Database: deposits via `ListDepositsFiltered`/`CountDepositsFiltered`
+  (status normalization Success/Failed/Pending; no Refunded deposit concept).
+- ALB: covered by existing rule (`/v1/public/transactions*`).
+- Dashboard wiring: `fetchTransactions` + `transactions/page.tsx` (DONE).
 
 ## 2. Transactions — transaction statistics refinement (PARTIALLY EXISTS)
 
@@ -52,57 +38,44 @@ possible — no mock data and no speculative endpoints were created.
   `GET /v1/public/transactions/stats?period=`.
 - ALB: existing rule covers `/v1/public/transactions*`.
 
-## 3. Disputes — entire capability (MISSING)
+## 3. Disputes — entire capability (IMPLEMENTED)
 
 - Page: Disputes & Errors
 - UI features: Needs Response / Under Review counters, dispute table
   (Sub-Account, Type, Amount, Date Opened, Status), Submit-Evidence action.
 - Owning service: Transactions
-- Why missing: no disputes tables, protobuf, repositories, or routes exist
-  anywhere in the Transactions service (verified by search).
-- Proposed routes (all under existing `/v1/public/transactions*` ALB rule —
-  no ALB change required):
+- Live routes (all under existing `/v1/public/transactions*` ALB rule — no
+  ALB change required):
   - `GET /v1/public/transactions/disputes/stats` →
     `{ needsResponse, underReview }`
-  - `GET /v1/public/transactions/disputes?subAccountId=&status=&page=&pageSize=`
+  - `GET /v1/public/transactions/disputes?search=&status=&page=&page_size=`
     → rows `{ id, subAccount, type, amount, dateOpened, status, dueIn }`
-  - `POST /v1/public/transactions/disputes/{id}/evidence`
-    `{ notes, documentIds[] }` (multipart or JSON)
-- Authentication: Bearer token; add each path to the middleware
+  - `POST /v1/public/transactions/disputes/evidence` `{ id, notes }` →
+    `{ dispute }` (static path so the transport middleware matches exactly)
+- Authentication: Bearer admin token; each path added to the middleware
   protected-path list.
-- Database: NEW tables required (`disputes`, `dispute_evidence`) — new
-  migrations (up + down) + sqlc queries. Dispute lifecycle
-  (NEEDS RESPONSE / Under Review / RESOLVED) must be modeled.
-- Layers: proto → gateway regen → handlers → services → repositories →
-  migrations → middleware.
-- CORS: covered by existing shared middleware.
-- Recommended sequence: migrations → sqlc → proto/regen → repo → service →
-  handler → middleware entry → gateway tests.
+- Database: `disputes` table + `dispute_status` enum (NEEDS_RESPONSE /
+  UNDER_REVIEW / RESOLVED) via migration 000005 (up + down) + sqlc queries.
+- Layers: proto → gateway regen → repo → service → middleware (DONE).
+- Dashboard wiring: `fetchDisputes`/`fetchDisputeStats` + `disputes/page.tsx`
+  (DONE).
 
-## 4. Settings — team management (MISSING)
+## 4. Settings — team management (PARTIAL — list IMPLEMENTED, invite/delete REMAIN)
 
 - Page: Settings
 - UI features: team member list (User, Role, Status, Actions) and
   Invite Member.
 - Owning service: Clients
-- Why missing: Clients auth currently exposes only SignIn/RefreshToken/
-  SignOut/CreateUser/UpdateUser (internal gRPC); there is no list-users,
-  invite, or role-assignment HTTP/gRPC surface for dashboard use.
-- Proposed routes (under existing `/v1/public/clients*` ALB rule — no ALB
-  change required):
-  - `GET /v1/public/clients/users?page=&pageSize=` →
-    `{ rows: [{ id, email, name, role, status }], total, page, pageSize }`
-  - `POST /v1/public/clients/users/invite`
-    `{ email, role }` → creates pending invite (email delivery TBD)
-  - `DELETE /v1/public/clients/users/{id}` (role-dependent authorization)
-- Authentication: Bearer token, admin role required; add paths to the
-  Clients middleware protected list (mirroring the auth middleware pattern in
-  `transactions/auth/middleware.go`).
-- Database: the existing `users` table (migration 000005) can support
-  listing; invitations likely need a new `user_invites` table (up + down
-  migration + sqlc).
-- Layers: proto (ClientsService) → gateway regen → handler → service → repo
-  → middleware → tests.
+- IMPLEMENTED: `GET /v1/public/clients/users?search=&role=&page=&page_size=`
+  → `{ rows: [{ id, name, email, role, status, dateJoined }], total, page,
+  page_size }` via `AuthService.ListUsers`; wired to
+  `fetchUsers` + `settings/page.tsx` team table.
+- REMAINS: `POST /v1/public/clients/users/invite` `{ email, role }` (pending
+  invite; email delivery TBD) and `DELETE /v1/public/clients/users/{id}`
+  (role-dependent authorization). The dashboard keeps the Invite action
+  disabled until the invite endpoint lands.
+- Database: the existing `users` table (migration 000005) supports listing;
+  invitations require a new `user_invites` table (up + down migration + sqlc).
 
 ---
 

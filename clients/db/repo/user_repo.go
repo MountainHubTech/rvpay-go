@@ -19,6 +19,8 @@ type UserRepo interface {
 	UpdatePasswordHash(ctx context.Context, userID uuid.UUID, passwordHash string) (sqlc.User, error)
 	UpdateRefreshTokenHash(ctx context.Context, userID uuid.UUID, refreshTokenHash string) error
 	ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error
+	ListUsers(ctx context.Context, search, role string, limit, offset int32) ([]sqlc.ListUsersRow, error)
+	CountUsers(ctx context.Context, search, role string) (int64, error)
 }
 
 type userRepo struct {
@@ -97,4 +99,30 @@ func (r *userRepo) UpdateRefreshTokenHash(ctx context.Context, userID uuid.UUID,
 func (r *userRepo) ClearRefreshTokenHash(ctx context.Context, userID uuid.UUID) error {
 	err := r.q.ClearUserRefreshTokenHash(ctx, userID)
 	return wrapError(err)
+}
+
+// ListUsers returns a paginated, searchable, role-filtered list of users.
+func (r *userRepo) ListUsers(ctx context.Context, search, role string, limit, offset int32) ([]sqlc.ListUsersRow, error) {
+	rows, err := r.q.ListUsers(ctx, sqlc.ListUsersParams{
+		Column1: search,
+		Column2: role,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return rows, nil
+}
+
+// CountUsers returns the total number of users matching the search/role filter.
+func (r *userRepo) CountUsers(ctx context.Context, search, role string) (int64, error) {
+	count, err := r.q.CountUsers(ctx, sqlc.CountUsersParams{
+		Column1: search,
+		Column2: role,
+	})
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
 }

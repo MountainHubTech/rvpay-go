@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/dashboard/app-sidebar"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Topbar } from "@/components/dashboard/topbar"
+import { cn } from "@/lib/utils"
 import {
   DEFAULT_ENVIRONMENT,
   ENVIRONMENTS,
@@ -15,7 +16,12 @@ import {
   setSelectedEnvironment,
   type DashboardEnvironment,
 } from "@/lib/environments"
-import { probeService } from "@/lib/api"
+import {
+  describeApiError,
+  fetchUsers,
+  probeService,
+  type UsersListResponse,
+} from "@/lib/api"
 
 // The selected environment is treated as an external store (localStorage) and
 // read via useSyncExternalStore so the component stays SSR-safe (the server
@@ -52,6 +58,13 @@ export default function SettingsPage() {
     transactions: null,
   })
   const [probing, setProbing] = React.useState(false)
+
+  // Team management list — driven by the EXISTING ListUsers RPC
+  // (GET /v1/public/clients/users). Rows come from the backend; the Invite
+  // action stays disabled until an invite endpoint lands.
+  const [users, setUsers] = React.useState<UsersListResponse["rows"]>([])
+  const [usersLoading, setUsersLoading] = React.useState(false)
+  const [usersError, setUsersError] = React.useState<string | null>(null)
 
   // Mixed content: an HTTPS page cannot call HTTP (Local) APIs — the browser
   // blocks the request before it reaches the network. Detect and explain it
@@ -96,6 +109,31 @@ export default function SettingsPage() {
     setProbing(false)
   }
 
+  // Load the team member list once on mount. The list endpoint is protected
+  // by the same admin middleware as the rest of the dashboard.
+  React.useEffect(() => {
+    let cancelled = false
+    setUsersLoading(true)
+    setUsersError(null)
+    fetchUsers({ page: 1, pageSize: 100 })
+      .then((response: UsersListResponse) => {
+        if (!cancelled) setUsers(response.rows)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          console.warn("[RVPay] users fetch failed:", error)
+          setUsersError(describeApiError(error, "Team members are currently unavailable."))
+          setUsers([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setUsersLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   return (
     <div className="flex min-h-screen">
       <AppSidebar />
@@ -112,10 +150,12 @@ export default function SettingsPage() {
               </p>
             </div>
 
-            {/* Team Management (per supplied design). No team/list-invite
-                endpoint exists in the Clients service yet (see
-                agents/new-pages-endpoints), so the table renders a truthful
-                empty state — never mock members. */}
+            {/* Team Management (per supplied design). Wired to the EXISTING
+                ListUsers RPC (GET /v1/public/clients/users). The Invite action
+                stays disabled until an invite endpoint lands. */}
+            {usersError && (
+              <p className="text-sm text-rose-600" role="alert">{usersError}</p>
+            )}
             <Card className="p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -124,7 +164,7 @@ export default function SettingsPage() {
                     Control access and roles for this integration.
                   </p>
                 </div>
-                <Button type="button" disabled title="Team management endpoints are not yet available">
+                <Button type="button" disabled title="Invite endpoint is not yet available">
                   Invite Member
                 </Button>
               </div>
@@ -140,13 +180,40 @@ export default function SettingsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr>
-                      <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
-                        Team management endpoints are not yet available in the
-                        Clients service (tracked in agents/new-pages-endpoints),
-                        so members cannot be listed yet.
-                      </td>
-                    </tr>
+                    {users.map((user) => (
+                      <tr key={user.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-xs text-muted-foreground">{user.email}</div>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.role}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                            user.status === "Active"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-muted text-muted-foreground"
+                          )}>
+                            {user.status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{user.dateJoined}</td>
+                      </tr>
+                    ))}
+                    {usersLoading && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground" role="status">
+                          Loading team members…
+                        </td>
+                      </tr>
+                    )}
+                    {!usersLoading && users.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
+                          No team members to display yet.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>

@@ -35,3 +35,22 @@ SET password_hash = $2,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: ListUsers :many
+SELECT id,
+       name,
+       email,
+       user_role,
+       refresh_token_hash,
+       created_at
+FROM users
+WHERE ($1::TEXT = '' OR name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR user_role = $2::user_role)
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
+
+-- name: CountUsers :one
+SELECT COUNT(*)
+FROM users
+WHERE ($1::TEXT = '' OR name ILIKE '%' || $1 || '%' OR email ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR user_role = $2::user_role);

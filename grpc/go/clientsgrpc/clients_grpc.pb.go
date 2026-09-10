@@ -1099,6 +1099,7 @@ const (
 	AuthService_ValidateAccessToken_FullMethodName = "/clientsgrpc.AuthService/ValidateAccessToken"
 	AuthService_CreateUser_FullMethodName          = "/clientsgrpc.AuthService/CreateUser"
 	AuthService_UpdateUser_FullMethodName          = "/clientsgrpc.AuthService/UpdateUser"
+	AuthService_ListUsers_FullMethodName           = "/clientsgrpc.AuthService/ListUsers"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -1131,6 +1132,11 @@ type AuthServiceClient interface {
 	// user's role is immutable here. gRPC-only: no HTTP annotation and no
 	// grpc-gateway route.
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UpdateUserResponse, error)
+	// ListUsers returns a paginated list of database-managed users for the
+	// Admin Dashboard Settings team-management page. The route lives under the
+	// permitted /v1/public/clients* ALB prefix and is protected by the admin
+	// middleware. Password and token material are never returned.
+	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
 }
 
 type authServiceClient struct {
@@ -1201,6 +1207,16 @@ func (c *authServiceClient) UpdateUser(ctx context.Context, in *UpdateUserReques
 	return out, nil
 }
 
+func (c *authServiceClient) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUsersResponse)
+	err := c.cc.Invoke(ctx, AuthService_ListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -1231,6 +1247,11 @@ type AuthServiceServer interface {
 	// user's role is immutable here. gRPC-only: no HTTP annotation and no
 	// grpc-gateway route.
 	UpdateUser(context.Context, *UpdateUserRequest) (*UpdateUserResponse, error)
+	// ListUsers returns a paginated list of database-managed users for the
+	// Admin Dashboard Settings team-management page. The route lives under the
+	// permitted /v1/public/clients* ALB prefix and is protected by the admin
+	// middleware. Password and token material are never returned.
+	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -1258,6 +1279,9 @@ func (UnimplementedAuthServiceServer) CreateUser(context.Context, *CreateUserReq
 }
 func (UnimplementedAuthServiceServer) UpdateUser(context.Context, *UpdateUserRequest) (*UpdateUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateUser not implemented")
+}
+func (UnimplementedAuthServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUsers not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -1388,6 +1412,24 @@ func _AuthService_UpdateUser_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_ListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1418,6 +1460,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateUser",
 			Handler:    _AuthService_UpdateUser_Handler,
+		},
+		{
+			MethodName: "ListUsers",
+			Handler:    _AuthService_ListUsers_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

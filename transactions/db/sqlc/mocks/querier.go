@@ -74,6 +74,21 @@ func (mr *MockQuerierMockRecorder) CountDepositsInWindow(ctx, createdAt any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountDepositsInWindow", reflect.TypeOf((*MockQuerier)(nil).CountDepositsInWindow), ctx, createdAt)
 }
 
+// CountDisputesFiltered mocks base method.
+func (m *MockQuerier) CountDisputesFiltered(ctx context.Context, arg sqlc.CountDisputesFilteredParams) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountDisputesFiltered", ctx, arg)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountDisputesFiltered indicates an expected call of CountDisputesFiltered.
+func (mr *MockQuerierMockRecorder) CountDisputesFiltered(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountDisputesFiltered", reflect.TypeOf((*MockQuerier)(nil).CountDisputesFiltered), ctx, arg)
+}
+
 // CountMerchants mocks base method.
 func (m *MockQuerier) CountMerchants(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -314,6 +329,36 @@ func (mr *MockQuerierMockRecorder) GetDepositByIdempotencyKey(ctx, idempotencyKe
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDepositByIdempotencyKey", reflect.TypeOf((*MockQuerier)(nil).GetDepositByIdempotencyKey), ctx, idempotencyKey)
 }
 
+// GetDisputeByID mocks base method.
+func (m *MockQuerier) GetDisputeByID(ctx context.Context, id uuid.UUID) (sqlc.GetDisputeByIDRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDisputeByID", ctx, id)
+	ret0, _ := ret[0].(sqlc.GetDisputeByIDRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDisputeByID indicates an expected call of GetDisputeByID.
+func (mr *MockQuerierMockRecorder) GetDisputeByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisputeByID", reflect.TypeOf((*MockQuerier)(nil).GetDisputeByID), ctx, id)
+}
+
+// GetDisputeStats mocks base method.
+func (m *MockQuerier) GetDisputeStats(ctx context.Context) (sqlc.GetDisputeStatsRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetDisputeStats", ctx)
+	ret0, _ := ret[0].(sqlc.GetDisputeStatsRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetDisputeStats indicates an expected call of GetDisputeStats.
+func (mr *MockQuerierMockRecorder) GetDisputeStats(ctx any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetDisputeStats", reflect.TypeOf((*MockQuerier)(nil).GetDisputeStats), ctx)
+}
+
 // GetMerchantByID mocks base method.
 func (m *MockQuerier) GetMerchantByID(ctx context.Context, id uuid.UUID) (sqlc.Merchant, error) {
 	m.ctrl.T.Helper()
@@ -387,6 +432,21 @@ func (m *MockQuerier) GetPayoutByIdempotencyKey(ctx context.Context, idempotency
 func (mr *MockQuerierMockRecorder) GetPayoutByIdempotencyKey(ctx, idempotencyKey any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPayoutByIdempotencyKey", reflect.TypeOf((*MockQuerier)(nil).GetPayoutByIdempotencyKey), ctx, idempotencyKey)
+}
+
+// InsertDispute mocks base method.
+func (m *MockQuerier) InsertDispute(ctx context.Context, arg sqlc.InsertDisputeParams) (sqlc.Dispute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertDispute", ctx, arg)
+	ret0, _ := ret[0].(sqlc.Dispute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InsertDispute indicates an expected call of InsertDispute.
+func (mr *MockQuerierMockRecorder) InsertDispute(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertDispute", reflect.TypeOf((*MockQuerier)(nil).InsertDispute), ctx, arg)
 }
 
 // ListCustomersByClientName mocks base method.
@@ -494,6 +554,21 @@ func (mr *MockQuerierMockRecorder) ListDepositsFiltered(ctx, arg any) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDepositsFiltered", reflect.TypeOf((*MockQuerier)(nil).ListDepositsFiltered), ctx, arg)
 }
 
+// ListDisputesFiltered mocks base method.
+func (m *MockQuerier) ListDisputesFiltered(ctx context.Context, arg sqlc.ListDisputesFilteredParams) ([]sqlc.ListDisputesFilteredRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListDisputesFiltered", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.ListDisputesFilteredRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListDisputesFiltered indicates an expected call of ListDisputesFiltered.
+func (mr *MockQuerierMockRecorder) ListDisputesFiltered(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListDisputesFiltered", reflect.TypeOf((*MockQuerier)(nil).ListDisputesFiltered), ctx, arg)
+}
+
 // ListMerchants mocks base method.
 func (m *MockQuerier) ListMerchants(ctx context.Context, arg sqlc.ListMerchantsParams) ([]sqlc.Merchant, error) {
 	m.ctrl.T.Helper()
@@ -597,6 +672,21 @@ func (m *MockQuerier) RevenueOverTimeInWindow(ctx context.Context, createdAt tim
 func (mr *MockQuerierMockRecorder) RevenueOverTimeInWindow(ctx, createdAt any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevenueOverTimeInWindow", reflect.TypeOf((*MockQuerier)(nil).RevenueOverTimeInWindow), ctx, createdAt)
+}
+
+// SubmitEvidence mocks base method.
+func (m *MockQuerier) SubmitEvidence(ctx context.Context, id uuid.UUID) (sqlc.Dispute, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SubmitEvidence", ctx, id)
+	ret0, _ := ret[0].(sqlc.Dispute)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SubmitEvidence indicates an expected call of SubmitEvidence.
+func (mr *MockQuerierMockRecorder) SubmitEvidence(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubmitEvidence", reflect.TypeOf((*MockQuerier)(nil).SubmitEvidence), ctx, id)
 }
 
 // SumDepositAmountInWindow mocks base method.

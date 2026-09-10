@@ -129,6 +129,76 @@ export type SubAccountListResponse = {
   pageSize: number;
 };
 
+// TransactionListRow is a single row of the transactions list
+// (GET /v1/public/transactions). All fields come from the Transactions
+// service's ListTransactions RPC; nothing is fabricated.
+export type TransactionListRow = {
+  id: string;
+  shortId: string;
+  subAccount: string;
+  customer: string;
+  customerInitials: string;
+  amount: string;
+  status: string;
+  gateway: string;
+  date: string;
+};
+
+// TransactionsListResponse carries a page of transactions (deposits).
+export type TransactionsListResponse = {
+  rows: TransactionListRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+// UserRow is a single user row from the team-management list
+// (GET /v1/public/clients/users). Password and token material are never
+// returned by the backend.
+export type UserRow = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  status: string;
+  dateJoined: string;
+};
+
+// UsersListResponse carries a page of users.
+export type UsersListResponse = {
+  rows: UserRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+// DisputeStatsResponse carries the Needs Response / Under Review counters.
+export type DisputeStatsResponse = {
+  needsResponse: number;
+  underReview: number;
+};
+
+// DisputeRow is a single row of the disputes list
+// (GET /v1/public/transactions/disputes). All fields come from the
+// Transactions service's ListDisputes RPC; nothing is fabricated.
+export type DisputeRow = {
+  id: string;
+  subAccount: string;
+  type: string;
+  amount: string;
+  status: string;
+  dateOpened: string;
+  dueIn: string;
+};
+
+// DisputesListResponse carries a page of disputes.
+export type DisputesListResponse = {
+  rows: DisputeRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 async function getJson<T>(service: ApiService, path: string, baseUrl: string): Promise<T> {
   return requestJson<T>(service, "GET", `${baseUrl}${path}`, path, baseUrl, false)
 }
@@ -346,6 +416,71 @@ export function fetchSubAccounts(params: {
   // :8080 for Clients and :8081 for Transactions). The route lives under the
   // permitted /v1/public/clients* ALB prefix.
   return getJson("clients", `/v1/public/clients/sub-accounts?${query.toString()}`, getClientsBaseUrl());
+}
+
+// fetchTransactions loads a paginated, searchable, status-filtered list of
+// customer deposits (the Transactions service's transaction records) for the
+// Admin Dashboard transactions page. The route lives under the permitted
+// /v1/public/transactions* ALB prefix and is protected by the admin middleware.
+// Query params use the gRPC-gateway proto field names (page_size, sub_account).
+export function fetchTransactions(params: {
+  search?: string;
+  status?: string;
+  subAccount?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<TransactionsListResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.status) query.set("status", params.status);
+  if (params.subAccount) query.set("sub_account", params.subAccount);
+  query.set("page", String(params.page ?? 1));
+  query.set("page_size", String(params.pageSize ?? 20));
+  return getJson("transactions", `/v1/public/transactions?${query.toString()}`, getTransactionsBaseUrl());
+}
+
+// fetchUsers loads a paginated, searchable, role-filtered list of
+// database-managed users for the Admin Dashboard Settings team-management
+// page. The route lives under the permitted /v1/public/clients* ALB prefix
+// and is protected by the admin middleware. Query params use the gRPC-gateway
+// proto field names (page_size, role).
+export function fetchUsers(params: {
+  search?: string;
+  role?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<UsersListResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.role) query.set("role", params.role);
+  query.set("page", String(params.page ?? 1));
+  query.set("page_size", String(params.pageSize ?? 20));
+  return getJson("clients", `/v1/public/clients/users?${query.toString()}`, getClientsBaseUrl());
+}
+
+// fetchDisputeStats loads the Needs Response / Under Review counters for the
+// Admin Dashboard disputes page. The route lives under the permitted
+// /v1/public/transactions* ALB prefix and is protected by the admin middleware.
+export function fetchDisputeStats(): Promise<DisputeStatsResponse> {
+  return getJson("transactions", "/v1/public/transactions/disputes/stats", getTransactionsBaseUrl());
+}
+
+// fetchDisputes loads a paginated, searchable, status-filtered list of
+// disputes for the Admin Dashboard disputes page. The route lives under the
+// permitted /v1/public/transactions* ALB prefix and is protected by the admin
+// middleware. Query params use the gRPC-gateway proto field names.
+export function fetchDisputes(params: {
+  search?: string;
+  status?: string;
+  page?: number;
+  pageSize?: number;
+}): Promise<DisputesListResponse> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.status) query.set("status", params.status);
+  query.set("page", String(params.page ?? 1));
+  query.set("page_size", String(params.pageSize ?? 20));
+  return getJson("transactions", `/v1/public/transactions/disputes?${query.toString()}`, getTransactionsBaseUrl());
 }
 
 // Lightweight reachability probe used by the Settings "Test Connection"
