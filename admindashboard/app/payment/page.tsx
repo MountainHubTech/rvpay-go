@@ -566,16 +566,15 @@ const chargeId = paymentContext.chargeId;
 
   // OK button of the terminal payment-result modal.
   //
-  // SAFE SEAM — do not fabricate a URL: the current HighLevel integration
-  // (payment_initiate_props, URL parameters, configuration, checkout code)
-  // provides NO products/store return URL. Once HighLevel supplies one (e.g.
-  // as payment_initiate_props.returnTo or an environment variable), navigate
-  // to it here instead of dismissing the modal. For now, OK simply closes the
-  // modal and leaves the user on this page with the terminal status text.
+  // On SUCCESS the user is returned to the HighLevel storefront:
+  //   https://store.citscm.com
+  // On FAILURE the modal is dismissed and the user stays on this page with
+  // the terminal status text (unchanged legacy behavior).
   function handlePaymentResultOk() {
-    console.log(
-      "[RVPay] Payment result OK clicked: no HighLevel products return URL is available in the current integration; staying on the payment page."
-    );
+    if (paymentResult === "completed") {
+      window.location.href = "https://store.citscm.com";
+      return;
+    }
     setPaymentResult(null);
   }
 

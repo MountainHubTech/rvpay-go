@@ -1,4 +1,7 @@
 # RVPay Go — Stage Checkpoint
+## Stage: Admin Dashboard New Pages (Transactions/Disputes/Settings) — COMPLETE (2026-09-10)
+- [x] Dashboard: transactions + disputes pages rewritten from placeholders (design-matched views, real endpoints only, truthful empty states); settings redesigned with team-mgmt empty state; env selector PRESERVED and moved to bottom; payment success modal → https://store.citscm.com; new-pages/ gitignored; missing endpoints documented in agents/new-pages-endpoints/ (all fit existing ALB rules)
+- [x] Verification: npm run build PASS (tsc clean); go build/vet/test ./transactions/... ./clients/... ./shared/... PASS
 
 ## Stage: Minimal Secure Admin Authentication — COMPLETE (2026-09-08)
 - [x] Clients: migration 000005 users+access_tokens (up/down), sqlc regen, user/access_token repos, clients/auth (argon2id, opaque hashed tokens, refresh rotation, sign-out, env-seeded bootstrap admin)

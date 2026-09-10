@@ -104,19 +104,65 @@ export default function SettingsPage() {
         <Topbar />
 
         <main className="flex-1 bg-muted/30 p-6">
-          <Card className="p-8">
-            <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Manage your RVPAY workspace and integration preferences.
-            </p>
-
-            <section className="mt-8 border-t pt-6">
-              <h2 className="text-sm font-semibold">Environment</h2>
+          <div className="space-y-6">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
               <p className="mt-1 text-sm text-muted-foreground">
-                Select which backend deployment this dashboard communicates
-                with. The change applies to subsequent API requests immediately
-                and persists in this browser.
+                Manage integration health and team access.
               </p>
+            </div>
+
+            {/* Team Management (per supplied design). No team/list-invite
+                endpoint exists in the Clients service yet (see
+                agents/new-pages-endpoints), so the table renders a truthful
+                empty state — never mock members. */}
+            <Card className="p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold">Team Management</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Control access and roles for this integration.
+                  </p>
+                </div>
+                <Button type="button" disabled title="Team management endpoints are not yet available">
+                  Invite Member
+                </Button>
+              </div>
+
+              <div className="mt-4 overflow-hidden rounded-lg border">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3">User</th>
+                      <th className="px-4 py-3">Role</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td colSpan={4} className="px-4 py-10 text-center text-muted-foreground">
+                        Team management endpoints are not yet available in the
+                        Clients service (tracked in agents/new-pages-endpoints),
+                        so members cannot be listed yet.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+
+            {/* Environment selector — EXISTING functionality, preserved
+                verbatim and relocated to the bottom of the Settings page per
+                the agent directive. */}
+            <Card className="p-8">
+              <section>
+                <h2 className="text-sm font-semibold">Environment</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Select which backend deployment this dashboard communicates
+                  with. The change applies to subsequent API requests immediately
+                  and persists in this browser.
+                </p>
 
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 {(Object.keys(ENVIRONMENTS) as DashboardEnvironment[]).map(
@@ -175,8 +221,9 @@ export default function SettingsPage() {
                   </span>
                 )}
               </div>
-            </section>
-          </Card>
+              </section>
+            </Card>
+          </div>
         </main>
       </div>
     </div>

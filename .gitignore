@@ -8,3 +8,6 @@
 # Ignore previous oci configuration
 deploy-oci-bootstrap.sh
 systemd/
+
+# Supplied design PNG references for the new dashboard pages (not committed)
+admindashboard/new-pages/
