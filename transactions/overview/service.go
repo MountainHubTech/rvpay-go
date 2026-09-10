@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
@@ -200,6 +201,173 @@ func textOrDash(s *string) string {
 		return "-"
 	}
 	return *s
+}
+
+// ListTransactions returns a paginated, searchable, status-filtered list of
+// customer deposits (the Transactions service's transaction records) for the
+// Admin Dashboard transactions page. The mapping and pagination semantics
+// mirror the payouts list endpoint.
+func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListTransactionsRequest) (resp *transactionsgrpc.ListTransactionsResponse, err error) {
+	start := time.Now()
+	if req == nil {
+		req = &transactionsgrpc.ListTransactionsRequest{}
+	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("endpoint", "/v1/public/transactions").
+		Str("method", "GET").
+		Str("operation", "ListTransactions").
+		Str("status", req.GetStatus()).
+		Str("sub_account", req.GetSubAccount()).
+		Msg("dashboard API request received")
+
+	defer func() {
+		if err != nil {
+			s.logger.Error().
+				Err(err).
+				Str("request_id", observability.RequestIDFromContext(ctx)).
+				Str("endpoint", "/v1/public/transactions").
+				Str("operation", "ListTransactions").
+				Str("grpc_code", status.Code(err).String()).
+				Int64("duration_ms", time.Since(start).Milliseconds()).
+				Msg("dashboard API request failed")
+			return
+		}
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("endpoint", "/v1/public/transactions").
+			Str("operation", "ListTransactions").
+			Str("grpc_code", "OK").
+			Int("rows_returned", len(resp.GetRows())).
+			Int64("total", resp.GetTotal()).
+			Int("page", int(resp.GetPage())).
+			Int("page_size", int(resp.GetPageSize())).
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("dashboard API request completed")
+	}()
+
+	page := req.GetPage()
+	if page < 1 {
+		page = 1
+	}
+	pageSize := req.GetPageSize()
+	if pageSize < 1 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	offset := (page - 1) * pageSize
+
+	deposits, err := s.depositRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), req.GetSubAccount(), pageSize, offset)
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListTransactions").
+			Str("repository", "DepositRepo.ListFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not list transactions")
+		return nil, status.Error(codes.Internal, "could not list transactions")
+	}
+	total, err := s.depositRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus(), req.GetSubAccount())
+	if err != nil {
+		s.logger.Error().Err(err).
+			Str("operation", "ListTransactions").
+			Str("repository", "DepositRepo.CountFiltered").
+			Int64("duration_ms", time.Since(start).Milliseconds()).
+			Msg("could not count transactions")
+		return nil, status.Error(codes.Internal, "could not list transactions")
+	}
+
+	rows := make([]*transactionsgrpc.TransactionListRow, 0, len(deposits))
+	for _, deposit := range deposits {
+		rows = append(rows, &transactionsgrpc.TransactionListRow{
+			Id:               deposit.ID.String(),
+			ShortId:          shortID(deposit.ID.String()),
+			SubAccount:       deposit.ClientName,
+			Customer:         textValue(deposit.CustomerID),
+			CustomerInitials: initialsFromIdentifier(textValue(deposit.CustomerID)),
+			Amount:           formatOverviewAmount(deposit.Amount, deposit.Currency),
+			Status:           transactionListStatus(deposit.Status),
+			Gateway:          gatewayDisplayName(deposit.Provider),
+			Date:             formatOverviewTime(deposit.InitiatedAt),
+		})
+	}
+
+	return &transactionsgrpc.ListTransactionsResponse{
+		Rows:     rows,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
+}
+
+// textValue returns s, or the empty string when the pointer is nil.
+func textValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+// shortID renders the first 8 characters of a deposit identifier with an
+// ellipsis suffix, matching the design's truncated transaction IDs.
+func shortID(id string) string {
+	if len(id) <= 12 {
+		return id
+	}
+	return id[:8] + "…"
+}
+
+// initialsFromIdentifier derives two-letter initials from a customer
+// identifier for the dashboard avatar chip.
+func initialsFromIdentifier(identifier string) string {
+	cleaned := strings.Map(func(r rune) rune {
+		switch r {
+		case '-', '_', ' ', '.':
+			return -1
+		default:
+			return r
+		}
+	}, identifier)
+	runes := []rune(cleaned)
+	if len(runes) == 0 {
+		return "--"
+	}
+	initials := string(runes[0])
+	if len(runes) > 1 {
+		initials += string(runes[1])
+	}
+	return strings.ToUpper(initials)
+}
+
+// transactionListStatus maps a persisted deposit status to the
+// dashboard-facing status string.
+func transactionListStatus(status sqlc.DepositStatus) string {
+	switch status {
+	case sqlc.DepositStatusCOMPLETED:
+		return "Success"
+	case sqlc.DepositStatusFAILED:
+		return "Failed"
+	case sqlc.DepositStatusPROCESSING:
+		return "Pending"
+	case sqlc.DepositStatusINITIATED:
+		return "Pending"
+	default:
+		return "Pending"
+	}
+}
+
+// gatewayDisplayName renders the persisted payment provider as the
+// human-readable gateway name shown on the dashboard.
+func gatewayDisplayName(provider sqlc.PaymentProvider) string {
+	switch provider {
+	case sqlc.PaymentProviderMTNMOMO:
+		return "MTN MoMo"
+	case sqlc.PaymentProviderORANGEMOMO:
+		return "Orange MoMo"
+	default:
+		return "-"
+	}
 }
 
 func revenueFromInterface(v interface{}) int64 {

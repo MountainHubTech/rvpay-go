@@ -1080,6 +1080,7 @@ var PayoutService_ServiceDesc = grpc.ServiceDesc{
 
 const (
 	DashboardOverviewService_GetOverviewSnapshot_FullMethodName = "/transactionsgrpc.DashboardOverviewService/GetOverviewSnapshot"
+	DashboardOverviewService_ListTransactions_FullMethodName    = "/transactionsgrpc.DashboardOverviewService/ListTransactions"
 )
 
 // DashboardOverviewServiceClient is the client API for DashboardOverviewService service.
@@ -1093,6 +1094,12 @@ type DashboardOverviewServiceClient interface {
 	// page for the requested period. The route lives under the permitted
 	// /v1/public/transactions* ALB prefix.
 	GetOverviewSnapshot(ctx context.Context, in *GetOverviewSnapshotRequest, opts ...grpc.CallOption) (*GetOverviewSnapshotResponse, error)
+	// ListTransactions returns a paginated, searchable, status-filtered list of
+	// customer deposits (transactions) for the Admin Dashboard transactions
+	// page. Deposits are the Transactions service's transaction records; the
+	// route lives under the permitted /v1/public/transactions* ALB prefix and
+	// is protected by the admin middleware.
+	ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (*ListTransactionsResponse, error)
 }
 
 type dashboardOverviewServiceClient struct {
@@ -1113,6 +1120,16 @@ func (c *dashboardOverviewServiceClient) GetOverviewSnapshot(ctx context.Context
 	return out, nil
 }
 
+func (c *dashboardOverviewServiceClient) ListTransactions(ctx context.Context, in *ListTransactionsRequest, opts ...grpc.CallOption) (*ListTransactionsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListTransactionsResponse)
+	err := c.cc.Invoke(ctx, DashboardOverviewService_ListTransactions_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DashboardOverviewServiceServer is the server API for DashboardOverviewService service.
 // All implementations must embed UnimplementedDashboardOverviewServiceServer
 // for forward compatibility.
@@ -1124,6 +1141,12 @@ type DashboardOverviewServiceServer interface {
 	// page for the requested period. The route lives under the permitted
 	// /v1/public/transactions* ALB prefix.
 	GetOverviewSnapshot(context.Context, *GetOverviewSnapshotRequest) (*GetOverviewSnapshotResponse, error)
+	// ListTransactions returns a paginated, searchable, status-filtered list of
+	// customer deposits (transactions) for the Admin Dashboard transactions
+	// page. Deposits are the Transactions service's transaction records; the
+	// route lives under the permitted /v1/public/transactions* ALB prefix and
+	// is protected by the admin middleware.
+	ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error)
 	mustEmbedUnimplementedDashboardOverviewServiceServer()
 }
 
@@ -1136,6 +1159,9 @@ type UnimplementedDashboardOverviewServiceServer struct{}
 
 func (UnimplementedDashboardOverviewServiceServer) GetOverviewSnapshot(context.Context, *GetOverviewSnapshotRequest) (*GetOverviewSnapshotResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetOverviewSnapshot not implemented")
+}
+func (UnimplementedDashboardOverviewServiceServer) ListTransactions(context.Context, *ListTransactionsRequest) (*ListTransactionsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListTransactions not implemented")
 }
 func (UnimplementedDashboardOverviewServiceServer) mustEmbedUnimplementedDashboardOverviewServiceServer() {
 }
@@ -1177,6 +1203,24 @@ func _DashboardOverviewService_GetOverviewSnapshot_Handler(srv interface{}, ctx 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DashboardOverviewService_ListTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListTransactionsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DashboardOverviewServiceServer).ListTransactions(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DashboardOverviewService_ListTransactions_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DashboardOverviewServiceServer).ListTransactions(ctx, req.(*ListTransactionsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DashboardOverviewService_ServiceDesc is the grpc.ServiceDesc for DashboardOverviewService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1187,6 +1231,10 @@ var DashboardOverviewService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetOverviewSnapshot",
 			Handler:    _DashboardOverviewService_GetOverviewSnapshot_Handler,
+		},
+		{
+			MethodName: "ListTransactions",
+			Handler:    _DashboardOverviewService_ListTransactions_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

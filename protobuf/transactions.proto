@@ -601,6 +601,18 @@ service DashboardOverviewService {
       get : "/v1/public/transactions/overview/snapshot"
     };
   }
+
+  // ListTransactions returns a paginated, searchable, status-filtered list of
+  // customer deposits (transactions) for the Admin Dashboard transactions
+  // page. Deposits are the Transactions service's transaction records; the
+  // route lives under the permitted /v1/public/transactions* ALB prefix and
+  // is protected by the admin middleware.
+  rpc ListTransactions(ListTransactionsRequest)
+      returns (ListTransactionsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions"
+    };
+  }
 }
 
 // GetOverviewSnapshotRequest requests the overview snapshot for a period.
@@ -718,4 +730,54 @@ service HealthService {
       get : "/v1/public/transactions/healthcheck"
     };
   }
+}
+
+// ListTransactionsRequest requests a paginated deposit (transaction) list for
+// the Admin Dashboard transactions page. Filters mirror the payouts list:
+// free-text search, lifecycle status and the RVPay client (sub-account) name.
+message ListTransactionsRequest {
+  // search filters by client_name or customer_id (case-insensitive).
+  string search = 1;
+  // status filters by deposit status. Empty means all.
+  string status = 2;
+  // sub_account filters by the RVPay client name (the dashboard's
+  // sub-account). Empty means all.
+  string sub_account = 3;
+  // page is the 1-based page number.
+  int32 page = 4;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 5;
+}
+
+// TransactionListRow is a single row of the transactions list.
+message TransactionListRow {
+  // id is the stable deposit identifier.
+  string id = 1;
+  // short_id is a truncated, display-friendly identifier.
+  string short_id = 2;
+  // sub_account is the RVPay client name the deposit belongs to.
+  string sub_account = 3;
+  // customer is the display/customer identifier associated with the deposit.
+  string customer = 4;
+  // customer_initials are derived from the customer identifier.
+  string customer_initials = 5;
+  // amount is the human-readable deposit amount.
+  string amount = 6;
+  // status is the dashboard-facing deposit status.
+  string status = 7;
+  // gateway identifies the payment provider for the deposit.
+  string gateway = 8;
+  // date is the human-readable initiation time.
+  string date = 9;
+}
+
+// ListTransactionsResponse carries a page of transactions (deposits).
+message ListTransactionsResponse {
+  repeated TransactionListRow rows = 1;
+  // total is the total number of transactions matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
 }

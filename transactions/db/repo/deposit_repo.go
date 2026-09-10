@@ -59,6 +59,8 @@ type DepositRepo interface {
 	ListByCustomer(ctx context.Context, customerID string) ([]sqlc.Deposit, error)
 	ListByMerchant(ctx context.Context, merchantID string) ([]sqlc.Deposit, error)
 	ListByStatus(ctx context.Context, status sqlc.DepositStatus) ([]sqlc.Deposit, error)
+	ListFiltered(ctx context.Context, search string, status string, subAccount string, limit, offset int32) ([]sqlc.Deposit, error)
+	CountFiltered(ctx context.Context, search string, status string, subAccount string) (int64, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error)
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error)
@@ -169,6 +171,36 @@ func (r *depositRepo) ListByStatus(ctx context.Context, status sqlc.DepositStatu
 		return nil, wrapError(err)
 	}
 	return deposits, nil
+}
+
+// ListFiltered returns a page of deposits for the Admin Dashboard
+// transactions list, mirroring the payouts list filters (free-text search,
+// lifecycle status, and the RVPay client/sub-account name).
+func (r *depositRepo) ListFiltered(ctx context.Context, search string, status string, subAccount string, limit, offset int32) ([]sqlc.Deposit, error) {
+	deposits, err := r.q.ListDepositsFiltered(ctx, sqlc.ListDepositsFilteredParams{
+		Column1: search,
+		Column2: status,
+		Column3: subAccount,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return deposits, nil
+}
+
+// CountFiltered counts the deposits matching ListFiltered's criteria.
+func (r *depositRepo) CountFiltered(ctx context.Context, search string, status string, subAccount string) (int64, error) {
+	count, err := r.q.CountDepositsFiltered(ctx, sqlc.CountDepositsFilteredParams{
+		Column1: search,
+		Column2: status,
+		Column3: subAccount,
+	})
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
 }
 
 func (r *depositRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus) (sqlc.Deposit, error) {

@@ -107,6 +107,22 @@ FROM deposits
 ORDER BY created_at DESC
 LIMIT $1;
 
+-- name: ListDepositsFiltered :many
+SELECT *
+FROM deposits
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%' OR customer_id ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::deposit_status)
+  AND ($3::TEXT = '' OR client_name = $3)
+ORDER BY created_at DESC
+LIMIT $4 OFFSET $5;
+
+-- name: CountDepositsFiltered :one
+SELECT COUNT(*)
+FROM deposits
+WHERE ($1::TEXT = '' OR client_name ILIKE '%' || $1 || '%' OR customer_id ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::deposit_status)
+  AND ($3::TEXT = '' OR client_name = $3);
+
 -- name: UpdateDepositExternalReference :exec
 UPDATE deposits
 SET external_reference = $2,

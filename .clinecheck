@@ -1,23 +1,6 @@
 # RVPay Go — Stage Checkpoint
-## Stage: Admin Dashboard New Pages (Transactions/Disputes/Settings) — COMPLETE (2026-09-10)
-- [x] Dashboard: transactions + disputes pages rewritten from placeholders (design-matched views, real endpoints only, truthful empty states); settings redesigned with team-mgmt empty state; env selector PRESERVED and moved to bottom; payment success modal → https://store.citscm.com; new-pages/ gitignored; missing endpoints documented in agents/new-pages-endpoints/ (all fit existing ALB rules)
-- [x] Verification: npm run build PASS (tsc clean); go build/vet/test ./transactions/... ./clients/... ./shared/... PASS
-
-## Stage: Minimal Secure Admin Authentication — COMPLETE (2026-09-08)
-- [x] Clients: migration 000005 users+access_tokens (up/down), sqlc regen, user/access_token repos, clients/auth (argon2id, opaque hashed tokens, refresh rotation, sign-out, env-seeded bootstrap admin)
-- [x] proto AuthService: /v1/public/auth/sign-in|refresh|sign-out + internal ValidateAccessToken; gateway regenerated via protobuf/Makefile
-- [x] Transactions: auth middleware delegates validation to Clients via CLIENTS_GRPC_ADDR; protects overview/snapshot, payouts/stats, payouts list; deposits/payments/callbacks stay PUBLIC (payment-page exemption)
-- [x] ALB rule respected: /v1/admin not routable → endpoints RETAIN /v1/public* prefixes with transport-layer middleware protection (§21 alternative); no ALB/infra edits
-- [x] Dashboard: lib/auth.tsx (AuthProvider/AuthGuard), /sign-in page, api.ts Bearer + 401 single-flight refresh, sidebar real identity + sign-out; sessionStorage tokens, never logged
-- [x] go build/vet/test ./clients/... ./transactions/... ./shared/... PASS; npm run build PASS (type-check clean); docs/checkpoints appended in all services
-- [x] Correlation fix: shared/observability/cors.go Allow-Headers now "Content-Type, Authorization"; root cause of dashboard TypeError after auth = CORS allowed only Content-Type preflight while authenticated requests carry Authorization; single shared middleware fixes BOTH Clients:8080 and Transactions:8081; middleware order CORS→AdminAuth correct; preflight 204 transport-layer (no token needed); no env override for headers (origins only)
-- [x] Regression: cors_test.go + transactions gateway_test preflight now send "authorization, content-type" and assert Allow-Headers "Content-Type, Authorization"; go build/vet PASS; go test ./clients/... ./transactions/... ./shared/... 22 pkgs ok, 0 failures
-
-## Prior: Server-Connection Implementation — COMPLETE (2026-09-04) | HighLevel OAuth v3 — COMPLETE
-## Stage: RVPay module-path migration to MountainHubTech org (2026-09-08)
-- [ ] RVPay module path changed: `github.com/I-Frostbyte/rvpay-go` → `github.com/MountainHubTech/rvpay-go` (repo-wide: go.mod module, all Go imports, protobuf `go_package`, grpc/go + mocks regenerated, render.yaml, README, deploy docs).
-- [ ] PawaPay SDK EXEMPT and untouched: `github.com/I-Frostbyte/pawapay_client` (and `/deposits`, `/payouts` subpackages) remain external deps under the personal account; go.mod/go.sum PawaPay pin unchanged.
-- [ ] Category coverage: go.mod(module line only; go.sum unmodified), all Go sources, protobuf/*.proto, regenerated grpc/go + */db/{sqlc,repo}/mocks via protobuf/Makefile + mockgen directives; Dockerfiles; GitHub Actions workflows (no old path); Makefiles; render.yaml; README + deploy/docs. Historical agent logs that cite the old path left intact.
-- [ ] Transactions Docker build fix: `transactions/auth/middleware.go` imports repo-local `clients/auth`; transactions/Dockerfile now `COPY clients ./clients` so the repo-local package resolves in the build context.
-- [ ] Verification: `go build ./...` PASS; `go vet ./...` PASS; `go test ./transactions/... ./clients/... ./shared/...` + full `./...` PASS; `go mod tidy` introduced unrelated dep churn so was reverted (go.sum stays clean); no active `I-Frostbyte/rvpay-go` references remain outside historical docs.
-## Next: deploy env (ADMIN_* + CLIENTS_GRPC_ADDR), migration 000005 on live DBs, restart services, live sign-in + protected-route verification
+## Stage: Admin Dashboard New Pages + ListTransactions backend — IN PROGRESS (2026-09-10)
+- [x] Transactions/Disputes/Settings dashboard pages implemented per new-pages/*.png (design-matched views, real endpoints only, truthful empty states); settings env selector preserved + moved to bottom; payment success modal -> https://store.citscm.com; new-pages/ gitignored; missing-endpoints doc -> agents/new-pages-endpoints/README.md
+- [x] Backend: Transactions ListTransactions -> GET /v1/public/transactions (proto regen; ListDepositsFiltered/CountDepositsFiltered + sqlc+mocks regen; repo ListFiltered/CountFiltered; service impl; protected admin route). build/vet/test transactions+clients PASS.
+- [ ] NEXT (handoff): wire admindashboard lib/api.ts fetchTransactions + transactions/page.tsx table/pagination binding; then E2E. Disputes + Settings team-mgmt REMAIN empty-state (backend capability NOT implemented — documented).
+## Prior: Admin auth COMPLETE (2026-09-08); dashboard pages committed 576d8f5; module-path migration MountainHubTech COMPLETE.
