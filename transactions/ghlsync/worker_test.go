@@ -3,23 +3,23 @@
 // These tests cover the required behaviors of the server-side GHL order
 // status synchronization using focused unit coverage (no real PawaPay API,
 // no real HighLevel API, no live Postgres):
-//   1. ghl_order_id is accepted and persisted;
-//   2. a completed deposit creates one GHL synchronization event;
-//   3. a failed deposit creates one GHL synchronization event;
-//   4. a pending (PROCESSING) deposit does not create a final-status event;
-//   5. a duplicate PawaPay callback does not create duplicate work;
-//   6. a terminal deposit status cannot regress;
-//   7. a successful GHL synchronization is marked completed;
-//   8. a first GHL failure causes one retry;
-//   9. a second GHL failure records the failure;
-//   10. a GHL failure does not change the authoritative PawaPay status;
-//   11. malformed or missing GHL identifiers are handled safely;
-//   12. queue claiming prevents concurrent duplicate processing (SQL-level
-//      claim contract is covered by the query; see comment on
-//      ClaimPendingGhlSync).
-//   13. GHL API errors are logged with correlation identifiers;
-//   14. queue claiming prevents concurrent duplicate processing;
-//   15. generated protobuf and gateway code remains consistent.
+//  1. ghl_order_id is accepted and persisted;
+//  2. a completed deposit creates one GHL synchronization event;
+//  3. a failed deposit creates one GHL synchronization event;
+//  4. a pending (PROCESSING) deposit does not create a final-status event;
+//  5. a duplicate PawaPay callback does not create duplicate work;
+//  6. a terminal deposit status cannot regress;
+//  7. a successful GHL synchronization is marked completed;
+//  8. a first GHL failure causes one retry;
+//  9. a second GHL failure records the failure;
+//  10. a GHL failure does not change the authoritative PawaPay status;
+//  11. malformed or missing GHL identifiers are handled safely;
+//  12. queue claiming prevents concurrent duplicate processing (SQL-level
+//     claim contract is covered by the query; see comment on
+//     ClaimPendingGhlSync).
+//  13. GHL API errors are logged with correlation identifiers;
+//  14. queue claiming prevents concurrent duplicate processing;
+//  15. generated protobuf and gateway code remains consistent.
 package ghlsync
 
 import (
@@ -27,6 +27,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgtype"
 
 	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
@@ -74,10 +76,13 @@ func (nopWriter) Write(p []byte) (int, error) { return len(p), nil }
 func testDeposit(status sqlc.DepositStatus, syncStatus string, attempts int32) sqlc.Deposit {
 	id := uuid.New()
 	orderID := "ord-test-1"
+	var amount pgtype.Numeric
+	_ = amount.Scan("150.50") // 150.50 -> 15050 cents
 	return sqlc.Deposit{
 		ID:              id,
 		ClientName:      "highlevel-abc123",
 		Status:          status,
+		Amount:          amount,
 		GhlOrderID:      &orderID,
 		GhlSyncStatus:   syncStatus,
 		GhlSyncAttempts: attempts,
@@ -243,9 +248,9 @@ func TestWorker_LocationIDExtraction(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name      string
+		name       string
 		clientName string
-		want      string
+		want       string
 	}{
 		{"valid highlevel prefix", "highlevel-abc123", "abc123"},
 		{"missing locationId", "highlevel-", ""},
@@ -515,6 +520,7 @@ func TestWorker_GeneratedCodeConsistent(t *testing.T) {
 		LocationId: "test-location",
 		OrderId:    "test-order",
 		Status:     "completed",
+		Amount:     15050,
 	}
 
 	if req.LocationId != "test-location" {
@@ -525,5 +531,48 @@ func TestWorker_GeneratedCodeConsistent(t *testing.T) {
 	}
 	if req.Status != "completed" {
 		t.Fatalf("Status mismatch: got %q", req.GetStatus())
+	}
+	if req.Amount != 15050 {
+		t.Fatalf("Amount mismatch: got %d, want 15050", req.GetAmount())
+	}
+}
+
+// TestWorker_PassesAmountFromDeposit verifies that the deposit amount is
+// extracted and passed through the gRPC request to the sync client.
+func TestWorker_PassesAmountFromDeposit(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	depositRepo := mocks.NewMockDepositRepo(ctrl)
+	fake := &fakePaymentSyncClient{}
+	worker := newTestWorker(depositRepo, fake)
+
+	// 150.50 in the deposit -> 15050 cents in the request.
+	deposit := testDeposit(sqlc.DepositStatusCOMPLETED, "pending", 0)
+	depositRepo.EXPECT().ClaimPendingGhlSync(gomock.Any()).Return([]sqlc.Deposit{deposit}, nil)
+	depositRepo.EXPECT().MarkGhlSyncSuccess(gomock.Any(), deposit.ID).Return(deposit, nil)
+
+	if err := worker.RunOnce(context.Background()); err != nil {
+		t.Fatalf("RunOnce failed: %v", err)
+	}
+
+	if len(fake.requests) != 1 {
+		t.Fatalf("expected 1 sync request, got %d", len(fake.requests))
+	}
+
+	req := fake.requests[0]
+	// Verify the amount was extracted from the deposit and passed through.
+	// 150.50 * 100 = 15050 cents
+	if req.Amount != 15050 {
+		t.Errorf("Amount = %d, want 15050 (150.50 in cents)", req.Amount)
+	}
+	// Verify location ID is passed as altId target (via locationID param).
+	if req.LocationId != "abc123" {
+		t.Errorf("LocationId = %q, want abc123", req.LocationId)
+	}
+	if req.OrderId != "ord-test-1" {
+		t.Errorf("OrderId = %q, want ord-test-1", req.OrderId)
 	}
 }

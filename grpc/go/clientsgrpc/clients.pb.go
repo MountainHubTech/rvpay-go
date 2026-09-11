@@ -3485,7 +3485,10 @@ type UpdateGhlOrderStatusRequest struct {
 	// order_id is the HighLevel order identifier captured at payment time.
 	OrderId string `protobuf:"bytes,2,opt,name=order_id,json=orderId,proto3" json:"order_id,omitempty"`
 	// status is the target GHL payment status: "completed" or "failed".
-	Status        string `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	Status string `protobuf:"bytes,3,opt,name=status,proto3" json:"status,omitempty"`
+	// amount is the deposit amount in minor currency units (e.g., cents).
+	// This is the actual RVPay deposit amount recorded against the GHL order.
+	Amount        int64 `protobuf:"varint,4,opt,name=amount,proto3" json:"amount,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3539,6 +3542,13 @@ func (x *UpdateGhlOrderStatusRequest) GetStatus() string {
 		return x.Status
 	}
 	return ""
+}
+
+func (x *UpdateGhlOrderStatusRequest) GetAmount() int64 {
+	if x != nil {
+		return x.Amount
+	}
+	return 0
 }
 
 // UpdateGhlOrderStatusResponse reports the outbound GHL update result.
@@ -3803,12 +3813,13 @@ const file_clients_proto_rawDesc = "" +
 	"\x04rows\x18\x01 \x03(\v2\x14.clientsgrpc.UserRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"q\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x89\x01\n" +
 	"\x1bUpdateGhlOrderStatusRequest\x12\x1f\n" +
 	"\vlocation_id\x18\x01 \x01(\tR\n" +
 	"locationId\x12\x19\n" +
 	"\border_id\x18\x02 \x01(\tR\aorderId\x12\x16\n" +
-	"\x06status\x18\x03 \x01(\tR\x06status\"8\n" +
+	"\x06status\x18\x03 \x01(\tR\x06status\x12\x16\n" +
+	"\x06amount\x18\x04 \x01(\x03R\x06amount\"8\n" +
 	"\x1cUpdateGhlOrderStatusResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess*\x99\x01\n" +
 	"\x10SubAccountStatus\x12\"\n" +

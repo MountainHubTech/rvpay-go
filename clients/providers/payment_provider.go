@@ -52,12 +52,13 @@ type PaymentProviderClient interface {
 	// accessToken is the installed location's OAuth access token; it is used
 	// only in the Authorization header and is never logged or returned in
 	// errors. status must be GhlOrderStatusCompleted or GhlOrderStatusFailed;
-	// any other value is a caller error. The concrete v3 operation is the
-	// Custom Payment Provider order-status update; the exact GHL path/shape
+	// any other value is a caller error. amount is the deposit amount in minor
+	// currency units (e.g., cents) recorded against the GHL order. The concrete
+	// v3 operation is the order payment record endpoint; the exact GHL path/shape
 	// is isolated to the HighLevelPaymentProviderClient implementation and
 	// requires full-deployment verification (see agents/
 	// ghl-v3-payment-status-synchronization.md §8).
-	UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus) error
+	UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus, amount int64) error
 
 	// CreateProviderConfigsWithDiagnostics performs the same credential push
 	// as CreateProviderConfigs and additionally returns diagnostic details

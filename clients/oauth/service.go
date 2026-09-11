@@ -1013,11 +1013,14 @@ func (s *Service) ValidateToken(ctx context.Context, integrationID uuid.UUID) (b
 //     store; an expired token is refreshed exactly once through the existing
 //     refresh path (RefreshAccessToken) and the refreshed value is used;
 //   - the outbound call goes through the existing provider's
-//     PaymentProvider().UpdateOrderStatus (Bearer + "Version: v3" via the
-//     existing doJSON transport; errors sanitized exactly as today).
+//     PaymentProvider().UpdateOrderStatus (POST /payments/orders/{orderId}/
+//     record-payment, Bearer + "Version: v3" via the existing doJSON
+//     transport; errors sanitized exactly as today).
 //
 // status must be "completed" or "failed" (PawaPay-authoritative terminal
 // deposit results). Pending/processing or unknown values are rejected.
+// amount is the deposit amount in minor currency units (e.g., cents) recorded
+// against the GHL order.
 //
 // Ownership notes:
 //   - This method never hard-codes credentials, order IDs, location IDs, or
@@ -1025,7 +1028,7 @@ func (s *Service) ValidateToken(ctx context.Context, integrationID uuid.UUID) (b
 //   - Deposit state stays in the Transactions service; after two failed GHL
 //     attempts the Transactions worker keeps the PawaPay status and records
 //     the GHL failure.
-func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, status string) error {
+func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, status string, amount int64) error {
 	if strings.TrimSpace(locationID) == "" {
 		return ErrMissingLocationID
 	}
@@ -1079,7 +1082,7 @@ func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, s
 		return err
 	}
 
-	err = paymentClient.UpdateOrderStatus(ctx, accessToken, locationID, orderID, ghlStatus)
+	err = paymentClient.UpdateOrderStatus(ctx, accessToken, locationID, orderID, ghlStatus, amount)
 	if err != nil {
 		// Correlation only: the caller (Transactions worker) persists the
 		// failure; the message must not leak credentials or the token.

@@ -146,10 +146,21 @@ func (w *Worker) processOne(ctx context.Context, deposit sqlc.Deposit) {
 		return
 	}
 
+	// Extract the deposit amount in minor currency units (cents).
+	var depositAmount int64
+	if deposit.Amount.Valid {
+		if f, err := deposit.Amount.Float64Value(); err == nil && f.Valid {
+			// Convert to cents (minor units). The database stores amounts
+			// with 2 decimal places (e.g., 1500.50 for $15.00.50), so multiply by 100.
+			depositAmount = int64(f.Float64 * 100)
+		}
+	}
+
 	_, err := w.syncClient.UpdateGhlOrderStatus(ctx, &clientsgrpc.UpdateGhlOrderStatusRequest{
 		LocationId: locationID,
 		OrderId:    orderID,
 		Status:     targetStatus,
+		Amount:     depositAmount,
 	})
 	if err == nil {
 		if _, recErr := w.depositRepo.MarkGhlSyncSuccess(ctx, deposit.ID); recErr != nil {

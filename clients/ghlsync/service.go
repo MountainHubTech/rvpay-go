@@ -49,7 +49,7 @@ func (s *Impl) UpdateGhlOrderStatus(ctx context.Context, req *clientsgrpc.Update
 		return nil, status.Error(codes.InvalidArgument, "location_id and order_id are required")
 	}
 
-	if err := s.oauthService.SyncGhlOrderStatus(ctx, locationID, orderID, orderStatus); err != nil {
+	if err := s.oauthService.SyncGhlOrderStatus(ctx, locationID, orderID, orderStatus, req.GetAmount()); err != nil {
 		// Surface the outcome to the worker without leaking credentials or
 		// tokens. A gRPC error here counts as one failed GHL attempt and is
 		// re-queued/failed by the worker per the two-try rule; it must never

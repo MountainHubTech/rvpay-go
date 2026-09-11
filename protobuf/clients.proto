@@ -775,6 +775,9 @@ message UpdateGhlOrderStatusRequest {
   string order_id = 2;
   // status is the target GHL payment status: "completed" or "failed".
   string status = 3;
+  // amount is the deposit amount in minor currency units (e.g., cents).
+  // This is the actual RVPay deposit amount recorded against the GHL order.
+  int64 amount = 4;
 }
 
 // UpdateGhlOrderStatusResponse reports the outbound GHL update result.
@@ -788,5 +791,6 @@ message UpdateGhlOrderStatusResponse {
 // Clients service, which holds the location OAuth access tokens and the GHL
 // provider, so GHL-specific HTTP details stay in the provider layer.
 service PaymentSyncService {
-  rpc UpdateGhlOrderStatus(UpdateGhlOrderStatusRequest) returns (UpdateGhlOrderStatusResponse) {}
+  rpc UpdateGhlOrderStatus(UpdateGhlOrderStatusRequest)
+      returns (UpdateGhlOrderStatusResponse) {}
 }

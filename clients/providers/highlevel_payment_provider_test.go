@@ -799,3 +799,287 @@ func TestHighLevelProviderPaymentProviderCapability(t *testing.T) {
 		t.Fatal("PaymentProvider() should return nil when no client is configured")
 	}
 }
+
+// TestUpdateOrderStatus_Success verifies that UpdateOrderStatus calls the
+// correct GHL v3 order payment record endpoint with the right HTTP method,
+// path, headers, and JSON body containing the location ID and deposit amount.
+func TestUpdateOrderStatus_Success(t *testing.T) {
+	t.Parallel()
+
+	var reqBody []byte
+	var recordedReq *http.Request
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		rec := r.Clone(r.Context())
+		rec.Body = r.Body
+		recordedReq = rec
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("failed to read request body: %v", err)
+		}
+		reqBody = body
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"test-access-token",
+		"loc-123",
+		"ord-abc-456",
+		GhlOrderStatusCompleted,
+		150050, // 1500.50 in cents
+	)
+	if err != nil {
+		t.Fatalf("UpdateOrderStatus failed: %v", err)
+	}
+
+	if recordedReq == nil {
+		t.Fatal("no request was recorded")
+	}
+
+	// Verify HTTP method is POST (not PUT).
+	if recordedReq.Method != http.MethodPost {
+		t.Errorf("method = %s, want POST", recordedReq.Method)
+	}
+
+	// Verify the path is /payments/orders/{orderId}/record-payment.
+	expectedPath := "/payments/orders/ord-abc-456/record-payment"
+	if recordedReq.URL.Path != expectedPath {
+		t.Errorf("path = %s, want %s", recordedReq.URL.Path, expectedPath)
+	}
+
+	// Verify the order ID is in the path, not as a query parameter.
+	if recordedReq.URL.RawQuery != "" {
+		t.Errorf("expected no query parameters, got %s", recordedReq.URL.RawQuery)
+	}
+
+	// Verify required headers.
+	if got := recordedReq.Header.Get("Authorization"); got != "Bearer test-access-token" {
+		t.Errorf("Authorization = %q, want Bearer test-access-token", got)
+	}
+	if got := recordedReq.Header.Get("Content-Type"); got != "application/json" {
+		t.Errorf("Content-Type = %q, want application/json", got)
+	}
+	if got := recordedReq.Header.Get("Version"); got != "v3" {
+		t.Errorf("Version = %q, want v3", got)
+	}
+
+	// Verify the JSON body contains the correct fields.
+	var body map[string]interface{}
+	if err := json.Unmarshal(reqBody, &body); err != nil {
+		t.Fatalf("failed to parse request body: %v", err)
+	}
+
+	// altId should be the location ID.
+	if body["altId"] != "loc-123" {
+		t.Errorf("altId = %v, want loc-123", body["altId"])
+	}
+	// altType should be "location".
+	if body["altType"] != "location" {
+		t.Errorf("altType = %v, want location", body["altType"])
+	}
+	// mode should be "other".
+	if body["mode"] != "other" {
+		t.Errorf("mode = %v, want other", body["mode"])
+	}
+	// amount should be the actual deposit amount (150050 = 1500.50 cents).
+	if body["amount"] != float64(150050) {
+		t.Errorf("amount = %v, want 150050", body["amount"])
+	}
+}
+
+// TestUpdateOrderStatus_MissingToken verifies that a missing access token
+// returns ErrMissingAccessToken without making an HTTP call.
+func TestUpdateOrderStatus_MissingToken(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"", // empty token
+		"loc-123",
+		"ord-abc",
+		GhlOrderStatusCompleted,
+		100,
+	)
+	if !errors.Is(err, ErrMissingAccessToken) {
+		t.Fatalf("expected ErrMissingAccessToken, got: %v", err)
+	}
+}
+
+// TestUpdateOrderStatus_MissingLocationID verifies that a missing location ID
+// returns ErrMissingLocationID without making an HTTP call.
+func TestUpdateOrderStatus_MissingLocationID(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"token",
+		"", // empty location ID
+		"ord-abc",
+		GhlOrderStatusCompleted,
+		100,
+	)
+	if !errors.Is(err, ErrMissingLocationID) {
+		t.Fatalf("expected ErrMissingLocationID, got: %v", err)
+	}
+}
+
+// TestUpdateOrderStatus_MissingOrderID verifies that a missing order ID
+// returns an error without making an HTTP call.
+func TestUpdateOrderStatus_MissingOrderID(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"token",
+		"loc-123",
+		"", // empty order ID
+		GhlOrderStatusCompleted,
+		100,
+	)
+	if err == nil {
+		t.Fatal("expected error for missing order ID, got nil")
+	}
+}
+
+// TestUpdateOrderStatus_InvalidStatus verifies that an unsupported status
+// returns an error without making an HTTP call.
+func TestUpdateOrderStatus_InvalidStatus(t *testing.T) {
+	t.Parallel()
+
+	client := NewHighLevelPaymentProviderClient("https://example.com", nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"token",
+		"loc-123",
+		"ord-abc",
+		GhlOrderStatus("pending"), // unsupported status
+		100,
+	)
+	if err == nil {
+		t.Fatal("expected error for invalid status, got nil")
+	}
+}
+
+// TestUpdateOrderStatus_FailedStatus verifies that a failed status is still
+// sent correctly to the new endpoint.
+func TestUpdateOrderStatus_FailedStatus(t *testing.T) {
+	t.Parallel()
+
+	var recordedReq *http.Request
+	var reqBody []byte
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		reqBody, _ = io.ReadAll(r.Body)
+		rec := r.Clone(r.Context())
+		recordedReq = rec
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"test-access-token",
+		"loc-456",
+		"ord-xyz-789",
+		GhlOrderStatusFailed,
+		250000, // 2500.00 in cents
+	)
+	if err != nil {
+		t.Fatalf("UpdateOrderStatus failed: %v", err)
+	}
+
+	if recordedReq == nil {
+		t.Fatal("no request was recorded")
+	}
+
+	// Verify the path contains the order ID.
+	expectedPath := "/payments/orders/ord-xyz-789/record-payment"
+	if recordedReq.URL.Path != expectedPath {
+		t.Errorf("path = %s, want %s", recordedReq.URL.Path, expectedPath)
+	}
+
+	if recordedReq.Method != http.MethodPost {
+		t.Errorf("method = %s, want POST", recordedReq.Method)
+	}
+
+	// Verify the body contains the correct amount and location ID.
+	var body map[string]interface{}
+	if err := json.Unmarshal(reqBody, &body); err != nil {
+		t.Fatalf("failed to parse body: %v", err)
+	}
+	if body["amount"] != float64(250000) {
+		t.Errorf("amount = %v, want 250000", body["amount"])
+	}
+	if body["altId"] != "loc-456" {
+		t.Errorf("altId = %v, want loc-456", body["altId"])
+	}
+}
+
+// TestUpdateOrderStatus_HTTPError verifies that HTTP errors are propagated.
+func TestUpdateOrderStatus_HTTPError(t *testing.T) {
+	t.Parallel()
+
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"invalid_token"}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"test-access-token",
+		"loc-123",
+		"ord-abc",
+		GhlOrderStatusCompleted,
+		100,
+	)
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("expected ErrUnauthorized, got: %v", err)
+	}
+}
+
+// TestUpdateOrderStatus_OrderIDInPath verifies that the order ID is escaped in
+// the URL path to prevent path injection.
+func TestUpdateOrderStatus_OrderIDInPath(t *testing.T) {
+	t.Parallel()
+
+	var recordedReq *http.Request
+	srv, _ := newTestPaymentProviderServer(t, func(w http.ResponseWriter, r *http.Request) {
+		recordedReq = r.Clone(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	})
+
+	client := NewHighLevelPaymentProviderClient(srv.URL, nil)
+	err := client.UpdateOrderStatus(
+		context.Background(),
+		"token",
+		"loc-123",
+		"ord-with-special/chars",
+		GhlOrderStatusCompleted,
+		500,
+	)
+	if err != nil {
+		t.Fatalf("UpdateOrderStatus failed: %v", err)
+	}
+
+	// The path should escape the order ID in the URL path.
+	if recordedReq.Method != http.MethodPost {
+		t.Errorf("method = %s, want POST", recordedReq.Method)
+	}
+	if !strings.HasPrefix(recordedReq.URL.Path, "/payments/orders/") {
+		t.Errorf("path = %s, expected to start with /payments/orders/", recordedReq.URL.Path)
+	}
+	if !strings.HasSuffix(recordedReq.URL.Path, "/record-payment") {
+		t.Errorf("path = %s, expected to end with /record-payment", recordedReq.URL.Path)
+	}
+}

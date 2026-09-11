@@ -238,18 +238,16 @@ func (c *HighLevelPaymentProviderClient) DisconnectProvider(ctx context.Context,
 // UpdateOrderStatus pushes a PawaPay-authoritative terminal payment result to
 // GoHighLevel for a location's order so the order leaves "pending".
 //
-// PUT /payments/custom-provider/order/status?locationId=<id>
-// Body: {orderId, locationId, status:"completed"|"failed"}
+// POST /payments/orders/{orderId}/record-payment
+// Headers: Authorization: Bearer <token>, Version: v3, Content-Type: application/json
+// Body: {altId: <locationId>, altType: "location", mode: "other", amount: <deposit amount in minor units>}
 //
-// NOTE (§8): the exact GHL v3 order-status operation is isolated here and
-// requires full-deployment verification. The path, the locationId query/body
-// placement, the camelCase body, and the "completed"|"failed" status values
-// follow the same Custom Payment Provider v3 conventions as the association,
-// connect, capabilities, and fetch operations above (location-scoped,
-// OAuth Bearer + "Version: v3" via doJSON, same base URL, same sanitized
-// errors). Success-only capture endpoints MUST NOT be reused for failed
-// payments; both terminal outcomes go through this operation.
-func (c *HighLevelPaymentProviderClient) UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus) error {
+// NOTE: the exact GHL v3 order payment record operation is isolated here and
+// requires full-deployment verification. Uses the official GHL v3 order payment
+// endpoint with the correct Version header (v3) and body shape.
+// Success-only capture endpoints MUST NOT be reused for failed payments; both
+// terminal outcomes go through this operation.
+func (c *HighLevelPaymentProviderClient) UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus, amount int64) error {
 	if strings.TrimSpace(accessToken) == "" {
 		return ErrMissingAccessToken
 	}
@@ -267,19 +265,19 @@ func (c *HighLevelPaymentProviderClient) UpdateOrderStatus(ctx context.Context, 
 		return errors.New("unsupported GHL order status")
 	}
 
-	path := "/payments/custom-provider/order/status"
-	q := url.Values{}
-	q.Set("locationId", locationID)
-	fullPath := path + "?" + q.Encode()
+	// Build the path with the order ID in the URL path.
+	path := fmt.Sprintf("/payments/orders/%s/record-payment", url.PathEscape(orderID))
 
+	// Build the request body per GHL v3 order payment record spec.
 	body := map[string]interface{}{
-		"locationId": locationID,
-		"orderId":    orderID,
-		"status":     string(status),
+		"altId":   locationID,
+		"altType": "location",
+		"mode":    "other",
+		"amount":  amount,
 	}
 
 	var respBody map[string]interface{}
-	if err := c.doJSON(ctx, http.MethodPut, fullPath, accessToken, body, &respBody); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, path, accessToken, body, &respBody); err != nil {
 		return err
 	}
 
