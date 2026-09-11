@@ -1469,3 +1469,115 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "clients.proto",
 }
+
+const (
+	PaymentSyncService_UpdateGhlOrderStatus_FullMethodName = "/clientsgrpc.PaymentSyncService/UpdateGhlOrderStatus"
+)
+
+// PaymentSyncServiceClient is the client API for PaymentSyncService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+type PaymentSyncServiceClient interface {
+	UpdateGhlOrderStatus(ctx context.Context, in *UpdateGhlOrderStatusRequest, opts ...grpc.CallOption) (*UpdateGhlOrderStatusResponse, error)
+}
+
+type paymentSyncServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewPaymentSyncServiceClient(cc grpc.ClientConnInterface) PaymentSyncServiceClient {
+	return &paymentSyncServiceClient{cc}
+}
+
+func (c *paymentSyncServiceClient) UpdateGhlOrderStatus(ctx context.Context, in *UpdateGhlOrderStatusRequest, opts ...grpc.CallOption) (*UpdateGhlOrderStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateGhlOrderStatusResponse)
+	err := c.cc.Invoke(ctx, PaymentSyncService_UpdateGhlOrderStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PaymentSyncServiceServer is the server API for PaymentSyncService service.
+// All implementations must embed UnimplementedPaymentSyncServiceServer
+// for forward compatibility.
+//
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+type PaymentSyncServiceServer interface {
+	UpdateGhlOrderStatus(context.Context, *UpdateGhlOrderStatusRequest) (*UpdateGhlOrderStatusResponse, error)
+	mustEmbedUnimplementedPaymentSyncServiceServer()
+}
+
+// UnimplementedPaymentSyncServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedPaymentSyncServiceServer struct{}
+
+func (UnimplementedPaymentSyncServiceServer) UpdateGhlOrderStatus(context.Context, *UpdateGhlOrderStatusRequest) (*UpdateGhlOrderStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateGhlOrderStatus not implemented")
+}
+func (UnimplementedPaymentSyncServiceServer) mustEmbedUnimplementedPaymentSyncServiceServer() {}
+func (UnimplementedPaymentSyncServiceServer) testEmbeddedByValue()                            {}
+
+// UnsafePaymentSyncServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to PaymentSyncServiceServer will
+// result in compilation errors.
+type UnsafePaymentSyncServiceServer interface {
+	mustEmbedUnimplementedPaymentSyncServiceServer()
+}
+
+func RegisterPaymentSyncServiceServer(s grpc.ServiceRegistrar, srv PaymentSyncServiceServer) {
+	// If the following call pancis, it indicates UnimplementedPaymentSyncServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&PaymentSyncService_ServiceDesc, srv)
+}
+
+func _PaymentSyncService_UpdateGhlOrderStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateGhlOrderStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PaymentSyncServiceServer).UpdateGhlOrderStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PaymentSyncService_UpdateGhlOrderStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PaymentSyncServiceServer).UpdateGhlOrderStatus(ctx, req.(*UpdateGhlOrderStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// PaymentSyncService_ServiceDesc is the grpc.ServiceDesc for PaymentSyncService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var PaymentSyncService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "clientsgrpc.PaymentSyncService",
+	HandlerType: (*PaymentSyncServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "UpdateGhlOrderStatus",
+			Handler:    _PaymentSyncService_UpdateGhlOrderStatus_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "clients.proto",
+}

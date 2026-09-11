@@ -1364,7 +1364,12 @@ type CreateDepositRequest struct {
 	// customer carries the paying customer's information. When present, the
 	// customer is created (or resolved) inside the same database transaction
 	// as the deposit. Optional.
-	Customer      *Customer `protobuf:"bytes,9,opt,name=customer,proto3" json:"customer,omitempty"`
+	Customer *Customer `protobuf:"bytes,9,opt,name=customer,proto3" json:"customer,omitempty"`
+	// ghl_order_id is the GoHighLevel order identifier captured from the GHL
+	// payment-provider iframe. It is persisted in deposits.ghl_order_id and is
+	// the identifier used by the server-side GHL order/payment status
+	// synchronization once the deposit reaches a terminal state. Optional.
+	GhlOrderId    string `protobuf:"bytes,10,opt,name=ghl_order_id,json=ghlOrderId,proto3" json:"ghl_order_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1460,6 +1465,13 @@ func (x *CreateDepositRequest) GetCustomer() *Customer {
 		return x.Customer
 	}
 	return nil
+}
+
+func (x *CreateDepositRequest) GetGhlOrderId() string {
+	if x != nil {
+		return x.GhlOrderId
+	}
+	return ""
 }
 
 // CreateDepositResponse returns the created deposit.
@@ -4072,7 +4084,7 @@ const file_transactions_proto_rawDesc = "" +
 	"\vcustomer_id\x18\x01 \x01(\tR\n" +
 	"customerId\"M\n" +
 	"\x13GetCustomerResponse\x126\n" +
-	"\bcustomer\x18\x01 \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\"\xa6\x03\n" +
+	"\bcustomer\x18\x01 \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\"\xc8\x03\n" +
 	"\x14CreateDepositRequest\x12\x1f\n" +
 	"\vclient_name\x18\x01 \x01(\tR\n" +
 	"clientName\x12\x1f\n" +
@@ -4085,7 +4097,10 @@ const file_transactions_proto_rawDesc = "" +
 	"\x12payer_phone_number\x18\x06 \x01(\tR\x10payerPhoneNumber\x120\n" +
 	"\bprovider\x18\a \x01(\x0e2\x14.commongrpc.ProviderR\bprovider\x12,\n" +
 	"\x12ghl_transaction_id\x18\b \x01(\tR\x10ghlTransactionId\x126\n" +
-	"\bcustomer\x18\t \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\"L\n" +
+	"\bcustomer\x18\t \x01(\v2\x1a.transactionsgrpc.CustomerR\bcustomer\x12 \n" +
+	"\fghl_order_id\x18\n" +
+	" \x01(\tR\n" +
+	"ghlOrderId\"L\n" +
 	"\x15CreateDepositResponse\x123\n" +
 	"\adeposit\x18\x01 \x01(\v2\x19.transactionsgrpc.DepositR\adeposit\"2\n" +
 	"\x11GetDepositRequest\x12\x1d\n" +

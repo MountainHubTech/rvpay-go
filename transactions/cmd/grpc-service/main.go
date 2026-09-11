@@ -22,6 +22,7 @@ import (
 	"github.com/MountainHubTech/rvpay-go/transactions/customers"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
 	"github.com/MountainHubTech/rvpay-go/transactions/deposits"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghlsync"
 	health_check "github.com/MountainHubTech/rvpay-go/transactions/health"
 	"github.com/MountainHubTech/rvpay-go/transactions/merchants"
 	"github.com/MountainHubTech/rvpay-go/transactions/overview"
@@ -114,10 +115,15 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	merchantService := merchants.NewMerchantService(merchantRepo, logger)
 	customerService := customers.NewCustomerService(customerRepo, logger)
 	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, customerRepo, logger, *pawapayClient)
-	paymentService := payments.NewPaymentService(depositRepo, logger)
+	paymentService := payments.NewPaymentService(depositRepo, transactionsRepo, logger)
 	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
 	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, disputeRepo, logger)
 	healthCheck := health_check.NewHealthService(logger)
+	// The GHL order-status synchronization worker claims terminal deposits
+	// from the durable deposits-table outbox and sends the GHL update through
+	// the Clients PaymentSyncService after the deposit transaction commits.
+	// It runs alongside the servers and shuts down cooperatively with them.
+	ghlSyncWorker := ghlsync.NewWorker(depositRepo, config.ClientsGrpcAddr, logger, ghlsync.DefaultPollInterval)
 
 	svrOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
@@ -251,7 +257,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		})
 	}
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(3)
 	go func() {
 		defer wg.Done()
 		err := grpcServer.Serve(listener)
@@ -266,6 +272,11 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			reportStartupErr(fmt.Errorf("httpServer.ListenAndServe: %w", err))
 		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		ghlSyncWorker.Run(ctx)
 	}()
 
 	go func() {

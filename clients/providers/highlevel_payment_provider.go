@@ -235,6 +235,57 @@ func (c *HighLevelPaymentProviderClient) DisconnectProvider(ctx context.Context,
 	return nil
 }
 
+// UpdateOrderStatus pushes a PawaPay-authoritative terminal payment result to
+// GoHighLevel for a location's order so the order leaves "pending".
+//
+// PUT /payments/custom-provider/order/status?locationId=<id>
+// Body: {orderId, locationId, status:"completed"|"failed"}
+//
+// NOTE (§8): the exact GHL v3 order-status operation is isolated here and
+// requires full-deployment verification. The path, the locationId query/body
+// placement, the camelCase body, and the "completed"|"failed" status values
+// follow the same Custom Payment Provider v3 conventions as the association,
+// connect, capabilities, and fetch operations above (location-scoped,
+// OAuth Bearer + "Version: v3" via doJSON, same base URL, same sanitized
+// errors). Success-only capture endpoints MUST NOT be reused for failed
+// payments; both terminal outcomes go through this operation.
+func (c *HighLevelPaymentProviderClient) UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus) error {
+	if strings.TrimSpace(accessToken) == "" {
+		return ErrMissingAccessToken
+	}
+	if strings.TrimSpace(locationID) == "" {
+		return ErrMissingLocationID
+	}
+	if strings.TrimSpace(orderID) == "" {
+		return errors.New("order ID is required")
+	}
+	switch status {
+	case GhlOrderStatusCompleted, GhlOrderStatusFailed:
+		// Terminal-only; pending/processing statuses are never sent by the
+		// synchronization worker, which only claims terminal deposits.
+	default:
+		return errors.New("unsupported GHL order status")
+	}
+
+	path := "/payments/custom-provider/order/status"
+	q := url.Values{}
+	q.Set("locationId", locationID)
+	fullPath := path + "?" + q.Encode()
+
+	body := map[string]interface{}{
+		"locationId": locationID,
+		"orderId":    orderID,
+		"status":     string(status),
+	}
+
+	var respBody map[string]interface{}
+	if err := c.doJSON(ctx, http.MethodPut, fullPath, accessToken, body, &respBody); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // doJSON performs an authenticated JSON request to the HighLevel API. It
 // handles 2xx, 400, 401, and 422 responses and returns typed/domain errors.
 // The access token is never logged or included in returned errors.

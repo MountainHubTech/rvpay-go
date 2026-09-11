@@ -13,6 +13,13 @@ import (
 )
 
 type Querier interface {
+	// Atomically claims all currently-pending GHL synchronizations for processing
+	// and increments the attempt count. Two concurrent workers cannot claim the
+	// same row: the UPDATE takes a row lock and re-evaluates the WHERE on the
+	// updated row, so a row claimed by one worker no longer matches
+	// ghl_sync_status = 'pending' for the other. Only deposits with fewer than two
+	// attempts are claimed (two total attempts).
+	ClaimPendingGhlSync(ctx context.Context) ([]Deposit, error)
 	CountDepositsFiltered(ctx context.Context, arg CountDepositsFilteredParams) (int64, error)
 	CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
 	CountDisputesFiltered(ctx context.Context, arg CountDisputesFilteredParams) (int64, error)
@@ -29,6 +36,14 @@ type Querier interface {
 	CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error)
 	CreateMerchant(ctx context.Context, arg CreateMerchantParams) (Merchant, error)
 	CreatePayout(ctx context.Context, arg CreatePayoutParams) (Payout, error)
+	// Atomically transitions a non-terminal deposit to a terminal PawaPay state
+	// (COMPLETED/FAILED) AND enqueues the server-side GHL synchronization intent
+	// (ghl_sync_status = 'pending') when a GHL order id is present. A single
+	// statement IS one database transaction: the deposit status update and the
+	// queue insertion commit together and the external GHL call is never made
+	// inside this statement. PROCESSING callbacks leave the deposit non-terminal
+	// and therefore never enqueue a final GHL update.
+	FinalizeDepositAndQueueGhlSync(ctx context.Context, arg FinalizeDepositAndQueueGhlSyncParams) (Deposit, error)
 	GetCustomerByClientAndMerchantAndPhone(ctx context.Context, arg GetCustomerByClientAndMerchantAndPhoneParams) (Customer, error)
 	GetCustomerByClientNameAndPhone(ctx context.Context, arg GetCustomerByClientNameAndPhoneParams) (Customer, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
@@ -59,6 +74,13 @@ type Querier interface {
 	ListPayoutsByStatus(ctx context.Context, status PayoutStatus) ([]Payout, error)
 	ListPayoutsFiltered(ctx context.Context, arg ListPayoutsFilteredParams) ([]Payout, error)
 	ListRecentDeposits(ctx context.Context, limit int32) ([]Deposit, error)
+	// Records the final GHL synchronization failure after two attempts without
+	// altering the authoritative PawaPay terminal deposit status.
+	RecordGhlSyncFailure(ctx context.Context, arg RecordGhlSyncFailureParams) (Deposit, error)
+	// Re-queues a failed GHL update for its single retry (attempts < 2). The
+	// authoritative PawaPay deposit status is never touched.
+	RecordGhlSyncRetry(ctx context.Context, arg RecordGhlSyncRetryParams) (Deposit, error)
+	RecordGhlSyncSuccess(ctx context.Context, id uuid.UUID) (Deposit, error)
 	// Returns per-day revenue buckets for the window. The bucket label is a
 	// calendar date; revenue is the raw numeric sum (service formats to minor
 	// units). Buckets with no deposits are omitted (no zero-filling), matching a

@@ -20,8 +20,9 @@ import (
 // decisions live here, not in Clients; the GHL-facing transport adapters in
 // Clients delegate to this service via gRPC.
 type Impl struct {
-	depositRepo repo.DepositRepo
-	logger      zerolog.Logger
+	depositRepo      repo.DepositRepo
+	transactionsRepo repo.TransactionsRepo
+	logger           zerolog.Logger
 
 	transactionsgrpc.UnimplementedPaymentServiceServer
 }
@@ -29,11 +30,13 @@ type Impl struct {
 // NewPaymentService creates a new payment-provider service.
 func NewPaymentService(
 	depositRepo repo.DepositRepo,
+	transactionsRepo repo.TransactionsRepo,
 	logger zerolog.Logger,
 ) *Impl {
 	return &Impl{
-		depositRepo: depositRepo,
-		logger:      logger,
+		depositRepo:      depositRepo,
+		transactionsRepo: transactionsRepo,
+		logger:           logger,
 	}
 }
 
@@ -221,30 +224,58 @@ func (s *Impl) ProcessDepositCallback(ctx context.Context, req *transactionsgrpc
 		return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
 	}
 
-	return s.applyPawaPayCallbackTransition(ctx, depositUUID, depositID, target, req)
+	return s.applyPawaPayCallbackTransition(ctx, depositID, target, req)
 }
 
 // applyPawaPayCallbackTransition applies a validated, non-terminal callback
-// status to the deposit and records the PawaPay provider reference.
-func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositUUID uuid.UUID, depositID string, target sqlc.DepositStatus, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+// status to the deposit and records the PawaPay provider reference. The
+// deposit finalization and the GHL synchronization intent (durable outbox)
+// are committed in a single database transaction; the external GHL call is
+// never made here — a separate worker performs it after commit.
+func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositID string, target sqlc.DepositStatus, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	depositUUID, err := uuid.Parse(depositID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id must be a valid deposit identifier")
+	}
+
+	txQuerier, tx, err := s.transactionsRepo.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not begin deposit finalization transaction")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				s.logger.Error().Err(rbErr).Str("deposit_id", depositID).Msg("could not roll back deposit finalization transaction")
+			}
+		}
+	}()
+
+	txDepositRepo := repo.NewDepositRepo(txQuerier)
+
 	switch target {
-	case sqlc.DepositStatusCOMPLETED:
-		if _, err := s.depositRepo.MarkCompleted(ctx, depositUUID, sqlc.DepositStatusCOMPLETED); err != nil {
-			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit completed from PawaPay callback")
-			return nil, status.Error(codes.Internal, "could not process callback")
-		}
-	case sqlc.DepositStatusFAILED:
-		failureReason := req.GetFailureReason().GetFailureMessage()
-		if failureReason == "" {
-			failureReason = req.GetFailureReason().GetFailureCode()
-		}
-		if _, err := s.depositRepo.MarkFailed(ctx, depositUUID, sqlc.DepositStatusFAILED, failureReason); err != nil {
-			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit failed from PawaPay callback")
-			return nil, status.Error(codes.Internal, "could not process callback")
-		}
 	case sqlc.DepositStatusPROCESSING:
-		if _, err := s.depositRepo.UpdateStatus(ctx, depositUUID, sqlc.DepositStatusPROCESSING); err != nil {
+		// PROCESSING is non-terminal; no final GHL synchronization is queued.
+		if _, err := txDepositRepo.UpdateStatus(ctx, depositUUID, sqlc.DepositStatusPROCESSING); err != nil {
 			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit processing from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	case sqlc.DepositStatusCOMPLETED, sqlc.DepositStatusFAILED:
+		// FinalizeDepositAndQueueGhlSync atomically sets the terminal status
+		// (and completed_at / failed_at + failure_reason) AND enqueues the GHL
+		// synchronization intent (ghl_sync_status='pending') when a
+		// ghl_order_id is present. PROCESSING is excluded from the terminal
+		// branch because it never enqueues a final update.
+		failureReason := ""
+		if target == sqlc.DepositStatusFAILED {
+			failureReason = req.GetFailureReason().GetFailureMessage()
+			if failureReason == "" {
+				failureReason = req.GetFailureReason().GetFailureCode()
+			}
+		}
+		if _, err := txDepositRepo.FinalizeDepositAndQueueGhlSync(ctx, depositUUID, target, failureReason); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not finalize deposit from PawaPay callback")
 			return nil, status.Error(codes.Internal, "could not process callback")
 		}
 	}
@@ -253,11 +284,17 @@ func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositUUID u
 	// touches ghl_transaction_id, which remains the HighLevel correlation ID
 	// used by VerifyPayment.
 	if req.GetProviderTransactionId() != "" {
-		if err := s.depositRepo.SetExternalReference(ctx, depositUUID, req.GetProviderTransactionId()); err != nil {
+		if err := txDepositRepo.SetExternalReference(ctx, depositUUID, req.GetProviderTransactionId()); err != nil {
 			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not record PawaPay provider transaction reference")
 			return nil, status.Error(codes.Internal, "could not process callback")
 		}
 	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not commit deposit finalization transaction")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+	committed = true
 
 	s.logger.Info().
 		Str("deposit_id", depositID).

@@ -508,6 +508,12 @@ const chargeId = paymentContext.chargeId;
       customerId: initiateProps.contact.id,
       merchantId: `${country.dialCode}${phone}`,
       ghlTransactionId: transactionId,
+      // ghlOrderId  = the true HighLevel order id from the payment_initiate_props
+      //               event, persisted in deposits.ghl_order_id and used by the
+      //               server-side GHL order/payment status synchronization. It is
+      //               never fabricated; when absent it is omitted so the backend
+      //               persists NULL.
+      ghlOrderId: initiateProps?.orderId ?? "",
       // Customer information: persisted in the customers table and associated
       // with client_name = highlevel-<locationId>. Only fields actually
       // present in the HighLevel payment context are sent; absent fields are

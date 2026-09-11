@@ -75,6 +75,10 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 	// and is what the verify endpoint resolves deposits by. It must NOT be
 	// stored in merchant_id.
 	ghlTransactionID := strings.TrimSpace(req.GetGhlTransactionId())
+	// The HighLevel order ID is persisted in deposits.ghl_order_id and is the
+	// identifier used by the server-side GHL order/payment status
+	// synchronization once the deposit reaches a terminal state.
+	ghlOrderID := strings.TrimSpace(req.GetGhlOrderId())
 
 	amount, err := validateAmount(req.GetAmount())
 	if err != nil {
@@ -136,7 +140,7 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		}
 	}
 
-	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New(), ghlTransactionID)
+	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New(), ghlTransactionID, ghlOrderID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):

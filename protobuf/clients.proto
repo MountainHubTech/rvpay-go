@@ -761,3 +761,32 @@ message ListUsersResponse {
   // page_size is the page size in effect.
   int32 page_size = 4;
 }
+
+// UpdateGhlOrderStatusRequest requests a server-side GoHighLevel order/payment
+// status update for one of a location's orders. This is an internal
+// server-to-server operation; it is deliberately gRPC-only (no HTTP binding)
+// and is used by the Transactions service's durable synchronization worker to
+// push the PawaPay-authoritative terminal deposit status back to GHL so the
+// order leaves "pending".
+message UpdateGhlOrderStatusRequest {
+  // location_id is the HighLevel location that owns the order.
+  string location_id = 1;
+  // order_id is the HighLevel order identifier captured at payment time.
+  string order_id = 2;
+  // status is the target GHL payment status: "completed" or "failed".
+  string status = 3;
+}
+
+// UpdateGhlOrderStatusResponse reports the outbound GHL update result.
+message UpdateGhlOrderStatusResponse {
+  // success is true when GHL accepted the order status update.
+  bool success = 1;
+}
+
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+service PaymentSyncService {
+  rpc UpdateGhlOrderStatus(UpdateGhlOrderStatusRequest) returns (UpdateGhlOrderStatusResponse) {}
+}

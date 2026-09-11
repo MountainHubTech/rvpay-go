@@ -49,7 +49,7 @@ func numericFromInterface(raw interface{}) (pgtype.Numeric, error) {
 // the external customer identifier, and merchantID is the external merchant
 // identifier. They are NOT RVPay UUIDs.
 type DepositRepo interface {
-	Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error)
+	Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID, ghlOrderID string) (sqlc.Deposit, error)
 	GetByID(ctx context.Context, id uuid.UUID) (sqlc.Deposit, error)
 	GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Deposit, error)
 	GetByGHLTransactionID(ctx context.Context, ghlTransactionID string) (sqlc.Deposit, error)
@@ -66,6 +66,16 @@ type DepositRepo interface {
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error)
 	SetExternalReference(ctx context.Context, id uuid.UUID, externalReference string) error
 	UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlTransactionID, ghlChargeID string) (sqlc.Deposit, error)
+	// FinalizeDepositAndQueueGhlSync atomically moves a non-terminal deposit to
+	// a terminal PawaPay state and enqueues the GHL synchronization intent in
+	// the same database statement.
+	FinalizeDepositAndQueueGhlSync(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error)
+	// ClaimPendingGhlSync atomically claims all pending GHL synchronizations
+	// for processing, incrementing their attempt count.
+	ClaimPendingGhlSync(ctx context.Context) ([]sqlc.Deposit, error)
+	MarkGhlSyncSuccess(ctx context.Context, id uuid.UUID) (sqlc.Deposit, error)
+	MarkGhlSyncRetry(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error)
+	MarkGhlSyncFailure(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error)
 	SumAmountInWindow(ctx context.Context, since time.Time) (pgtype.Numeric, error)
 	CountInWindow(ctx context.Context, since time.Time) (int64, error)
 	RevenueOverTimeInWindow(ctx context.Context, since time.Time) ([]sqlc.RevenueOverTimeInWindowRow, error)
@@ -81,7 +91,7 @@ func NewDepositRepo(q sqlc.Querier) DepositRepo {
 	return &depositRepo{q: q}
 }
 
-func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID string) (sqlc.Deposit, error) {
+func (r *depositRepo) Create(ctx context.Context, clientName string, customerID string, merchantID string, amount pgtype.Numeric, currency string, paymentType sqlc.PaymentType, payerPhoneNumber string, provider sqlc.PaymentProvider, status sqlc.DepositStatus, idempotencyKey uuid.UUID, ghlTransactionID, ghlOrderID string) (sqlc.Deposit, error) {
 	deposit, err := r.q.CreateDeposit(ctx, sqlc.CreateDepositParams{
 		ClientName:       clientName,
 		CustomerID:       textPtr(customerID),
@@ -94,6 +104,7 @@ func (r *depositRepo) Create(ctx context.Context, clientName string, customerID 
 		Status:           status,
 		IdempotencyKey:   idempotencyKey,
 		GhlTransactionID: textPtr(ghlTransactionID),
+		GhlOrderID:       textPtr(ghlOrderID),
 	})
 	if err != nil {
 		return sqlc.Deposit{}, wrapError(err)
@@ -255,6 +266,69 @@ func (r *depositRepo) UpdateGHLReference(ctx context.Context, id uuid.UUID, ghlT
 		ID:               id,
 		GhlTransactionID: textRef(ghlTransactionID),
 		GhlChargeID:      textRef(ghlChargeID),
+	})
+	if err != nil {
+		return sqlc.Deposit{}, wrapNotFound(err)
+	}
+	return deposit, nil
+}
+
+// FinalizeDepositAndQueueGhlSync atomically transitions a non-terminal deposit
+// to a terminal PawaPay state and enqueues the server-side GHL synchronization
+// intent. The status update and the queue insertion are a single SQL statement
+// (a single database transaction); the external GHL call is never made here.
+// It returns ErrNotFound if the deposit is already terminal (so duplicate
+// callbacks cannot re-side-effect).
+func (r *depositRepo) FinalizeDepositAndQueueGhlSync(ctx context.Context, id uuid.UUID, status sqlc.DepositStatus, failureReason string) (sqlc.Deposit, error) {
+	deposit, err := r.q.FinalizeDepositAndQueueGhlSync(ctx, sqlc.FinalizeDepositAndQueueGhlSyncParams{
+		ID:            id,
+		Status:        status,
+		FailureReason: textRef(failureReason),
+	})
+	if err != nil {
+		return sqlc.Deposit{}, wrapNotFound(err)
+	}
+	return deposit, nil
+}
+
+// ClaimPendingGhlSync atomically claims all pending GHL synchronizations,
+// incrementing their attempt count, and returns them for processing.
+func (r *depositRepo) ClaimPendingGhlSync(ctx context.Context) ([]sqlc.Deposit, error) {
+	deposits, err := r.q.ClaimPendingGhlSync(ctx)
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return deposits, nil
+}
+
+// MarkGhlSyncSuccess records a confirmed GHL update without touching the
+// authoritative PawaPay deposit status.
+func (r *depositRepo) MarkGhlSyncSuccess(ctx context.Context, id uuid.UUID) (sqlc.Deposit, error) {
+	deposit, err := r.q.RecordGhlSyncSuccess(ctx, id)
+	if err != nil {
+		return sqlc.Deposit{}, wrapNotFound(err)
+	}
+	return deposit, nil
+}
+
+// MarkGhlSyncRetry re-queues a failed GHL update for its single retry.
+func (r *depositRepo) MarkGhlSyncRetry(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error) {
+	deposit, err := r.q.RecordGhlSyncRetry(ctx, sqlc.RecordGhlSyncRetryParams{
+		ID:             id,
+		GhlSyncLastError: textRef(lastError),
+	})
+	if err != nil {
+		return sqlc.Deposit{}, wrapNotFound(err)
+	}
+	return deposit, nil
+}
+
+// MarkGhlSyncFailure records the final GHL synchronization failure after two
+// attempts without altering the authoritative PawaPay terminal deposit status.
+func (r *depositRepo) MarkGhlSyncFailure(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error) {
+	deposit, err := r.q.RecordGhlSyncFailure(ctx, sqlc.RecordGhlSyncFailureParams{
+		ID:             id,
+		GhlSyncLastError: textRef(lastError),
 	})
 	if err != nil {
 		return sqlc.Deposit{}, wrapNotFound(err)

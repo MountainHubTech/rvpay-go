@@ -15,6 +15,7 @@ import (
 	"github.com/MountainHubTech/rvpay-go/clients/auth"
 	"github.com/MountainHubTech/rvpay-go/clients/config"
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/ghlsync"
 	health_check "github.com/MountainHubTech/rvpay-go/clients/health"
 	clientshttp "github.com/MountainHubTech/rvpay-go/clients/http"
 	"github.com/MountainHubTech/rvpay-go/clients/oauth"
@@ -212,6 +213,10 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	clientsgrpc.RegisterIntegrationsServiceServer(grpcServer, integrationsService)
 	clientsgrpc.RegisterAuthServiceServer(grpcServer, authService)
 	clientsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
+	// PaymentSyncService is gRPC-only (internal): it is NOT registered on the
+	// public HTTP gateway, so the Transactions worker reaches it on the
+	// internal listener while browsers and the ALB cannot.
+	clientsgrpc.RegisterPaymentSyncServiceServer(grpcServer, ghlsync.NewGHLSyncService(oauthService, logger))
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered gRPC services...")
 

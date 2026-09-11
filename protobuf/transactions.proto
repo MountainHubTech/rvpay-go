@@ -275,6 +275,11 @@ message CreateDepositRequest {
   // customer is created (or resolved) inside the same database transaction
   // as the deposit. Optional.
   Customer customer = 9;
+  // ghl_order_id is the GoHighLevel order identifier captured from the GHL
+  // payment-provider iframe. It is persisted in deposits.ghl_order_id and is
+  // the identifier used by the server-side GHL order/payment status
+  // synchronization once the deposit reaches a terminal state. Optional.
+  string ghl_order_id = 10;
 }
 
 // CreateDepositResponse returns the created deposit.

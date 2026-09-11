@@ -37,7 +37,8 @@ func TestVerifyPaymentValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			depositRepo := mocks.NewMockDepositRepo(ctrl)
-			service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+			service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 			_, err := service.VerifyPayment(context.Background(), tt.req)
 			if got := status.Code(err); got != tt.code {
@@ -54,7 +55,8 @@ func TestVerifyPaymentCompleted(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
 		Return(sqlc.Deposit{ID: uuid.New(), Status: sqlc.DepositStatusCOMPLETED}, nil)
@@ -80,7 +82,8 @@ func TestVerifyPaymentFailed(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
 		Return(sqlc.Deposit{ID: uuid.New(), Status: sqlc.DepositStatusFAILED}, nil)
@@ -106,7 +109,8 @@ func TestVerifyPaymentPending(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
 		Return(sqlc.Deposit{ID: uuid.New(), Status: sqlc.DepositStatusINITIATED}, nil)
@@ -132,7 +136,8 @@ func TestVerifyPaymentNotFound(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "unknown-txn").
 		Return(sqlc.Deposit{}, repo.ErrNotFound)
@@ -155,7 +160,8 @@ func TestVerifyPaymentRepositoryError(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
 		Return(sqlc.Deposit{}, errors.New("database down"))
@@ -175,7 +181,8 @@ func TestVerifyPaymentByChargeIDFallback(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	// Transaction ID lookup fails; charge ID lookup succeeds.
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
@@ -202,7 +209,8 @@ func TestVerifyPaymentByChargeIDOnly(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	// Only charge ID is provided; transaction ID lookup is skipped.
 	depositRepo.EXPECT().GetByGHLChargeID(gomock.Any(), "charge-1").
@@ -226,7 +234,8 @@ func TestVerifyPaymentSubscriptionRejected(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	// Subscription-scoped verification is rejected; no repo calls are made.
 	_, err := service.VerifyPayment(context.Background(), &transactionsgrpc.VerifyPaymentRequest{
@@ -258,7 +267,8 @@ func TestProcessPaymentWebhookValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			depositRepo := mocks.NewMockDepositRepo(ctrl)
-			service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+			service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 			_, err := service.ProcessPaymentWebhook(context.Background(), tt.req)
 			if got := status.Code(err); got != tt.code {
@@ -275,7 +285,8 @@ func TestProcessPaymentWebhookUnknownEventType(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	// Unknown event types are acknowledged safely without processing.
 	_, err := service.ProcessPaymentWebhook(context.Background(), &transactionsgrpc.ProcessPaymentWebhookRequest{
@@ -293,7 +304,8 @@ func TestProcessPaymentWebhookMissingTransactionID(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	// payment.captured without a transaction_id is acknowledged safely.
 	_, err := service.ProcessPaymentWebhook(context.Background(), &transactionsgrpc.ProcessPaymentWebhookRequest{
@@ -311,7 +323,8 @@ func TestProcessPaymentWebhookPaymentCaptured(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositID := uuid.New()
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "txn-1").
@@ -337,7 +350,8 @@ func TestProcessPaymentWebhookUnknownTransaction(t *testing.T) {
 	defer ctrl.Finish()
 
 	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	service := NewPaymentService(depositRepo, zerolog.Nop())
+	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 	depositRepo.EXPECT().GetByGHLTransactionID(gomock.Any(), "unknown-txn").
 		Return(sqlc.Deposit{}, repo.ErrNotFound)

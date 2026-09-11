@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
@@ -996,6 +997,150 @@ func (s *Service) ValidateToken(ctx context.Context, integrationID uuid.UUID) (b
 	}
 
 	return valid, nil
+}
+
+// SyncGhlOrderStatus pushes a PawaPay-authoritative terminal payment result to
+// GoHighLevel for one of a location's orders so the GHL order leaves
+// "pending". It is the Clients-owned entry point of the server-side GHL
+// status synchronization; GHL-specific HTTP details live exclusively in the
+// HighLevel payment provider client (providers.PaymentProviderClient).
+//
+// It reuses the existing HighLevel OAuth lifecycle and token state:
+//   - the location resolves to its integration via the deterministic
+//     locationId -> integrations.external_account_id mapping established at
+//     Marketplace install (no platform creation, no new tables);
+//   - the location OAuth access token is loaded from the existing oauth token
+//     store; an expired token is refreshed exactly once through the existing
+//     refresh path (RefreshAccessToken) and the refreshed value is used;
+//   - the outbound call goes through the existing provider's
+//     PaymentProvider().UpdateOrderStatus (Bearer + "Version: v3" via the
+//     existing doJSON transport; errors sanitized exactly as today).
+//
+// status must be "completed" or "failed" (PawaPay-authoritative terminal
+// deposit results). Pending/processing or unknown values are rejected.
+//
+// Ownership notes:
+//   - This method never hard-codes credentials, order IDs, location IDs, or
+//     API keys; everything resolves from storage plus the request.
+//   - Deposit state stays in the Transactions service; after two failed GHL
+//     attempts the Transactions worker keeps the PawaPay status and records
+//     the GHL failure.
+func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, status string) error {
+	if strings.TrimSpace(locationID) == "" {
+		return ErrMissingLocationID
+	}
+	if strings.TrimSpace(orderID) == "" {
+		return ErrMissingOrderID
+	}
+	ghlStatus, err := parseGhlOrderStatus(status)
+	if err != nil {
+		return err
+	}
+
+	// Resolve the integration by locationId via the existing deterministic
+	// mapping (integrations.external_account_id = GHL locationId).
+	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, locationID)
+	if err == repo.ErrNotFound {
+		return ErrIntegrationNotFound
+	}
+	if err != nil {
+		return translateError(err)
+	}
+	if integration.Status != sqlc.IntegrationStatusACTIVE {
+		return ErrIntegrationNotActive
+	}
+
+	platform, err := s.platformsRepo.GetByID(ctx, integration.PlatformID)
+	if err == repo.ErrNotFound {
+		return ErrPlatformNotFound
+	}
+	if err != nil {
+		return translateError(err)
+	}
+	if !platform.Enabled {
+		return ErrPlatformDisabled
+	}
+
+	provider, ok := s.registry.Get(platform.Slug)
+	if !ok {
+		return ErrProviderNotSupported
+	}
+
+	paymentClient := provider.PaymentProvider()
+	if paymentClient == nil {
+		return ErrPaymentProviderNotSupported
+	}
+
+	// Load the location's stored OAuth access token. Expired tokens are
+	// refreshed once through the existing refresh path; the refreshed token
+	// is then used for this update.
+	accessToken, err := s.accessTokenForSync(ctx, integration.ID)
+	if err != nil {
+		return err
+	}
+
+	err = paymentClient.UpdateOrderStatus(ctx, accessToken, locationID, orderID, ghlStatus)
+	if err != nil {
+		// Correlation only: the caller (Transactions worker) persists the
+		// failure; the message must not leak credentials or the token.
+		s.logger.Error().Err(err).
+			Str("integration_id", integration.ID.String()).
+			Str("location_id", locationID).
+			Str("order_id", orderID).
+			Str("status", string(ghlStatus)).
+			Msg("GHL order status update failed")
+		return err
+	}
+
+	s.logger.Info().
+		Str("integration_id", integration.ID.String()).
+		Str("location_id", locationID).
+		Str("order_id", orderID).
+		Str("status", string(ghlStatus)).
+		Msg("GHL order status updated")
+
+	return nil
+}
+
+// accessTokenForSync loads the stored access token for an integration,
+// refreshing it once through the existing refresh path when expired.
+func (s *Service) accessTokenForSync(ctx context.Context, integrationID uuid.UUID) (string, error) {
+	oauthToken, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
+	if err == repo.ErrNotFound {
+		return "", ErrOAuthTokenNotFound
+	}
+	if err != nil {
+		return "", translateError(err)
+	}
+	if time.Now().Before(oauthToken.ExpiresAt) {
+		return oauthToken.AccessToken, nil
+	}
+
+	if err := s.RefreshAccessToken(ctx, integrationID); err != nil {
+		return "", err
+	}
+
+	refreshed, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
+	if err == repo.ErrNotFound {
+		return "", ErrOAuthTokenNotFound
+	}
+	if err != nil {
+		return "", translateError(err)
+	}
+	return refreshed.AccessToken, nil
+}
+
+// parseGhlOrderStatus maps a synchronization status string onto the provider
+// status. Only the two PawaPay-authoritative terminal results are accepted.
+func parseGhlOrderStatus(status string) (providers.GhlOrderStatus, error) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case string(providers.GhlOrderStatusCompleted):
+		return providers.GhlOrderStatusCompleted, nil
+	case string(providers.GhlOrderStatusFailed):
+		return providers.GhlOrderStatusFailed, nil
+	default:
+		return "", ErrUnsupportedGhlOrderStatus
+	}
 }
 
 // generateAPIKey generates a cryptographically random API key used to

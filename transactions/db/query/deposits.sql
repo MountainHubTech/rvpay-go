@@ -10,9 +10,10 @@ INSERT INTO deposits (
     provider,
     status,
     idempotency_key,
-    ghl_transaction_id
+    ghl_transaction_id,
+    ghl_order_id
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- name: GetDepositByID :one
@@ -133,6 +134,81 @@ WHERE id = $1;
 UPDATE deposits
 SET ghl_transaction_id = $2,
     ghl_charge_id = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: FinalizeDepositAndQueueGhlSync :one
+-- Atomically transitions a non-terminal deposit to a terminal PawaPay state
+-- (COMPLETED/FAILED) AND enqueues the server-side GHL synchronization intent
+-- (ghl_sync_status = 'pending') when a GHL order id is present. A single
+-- statement IS one database transaction: the deposit status update and the
+-- queue insertion commit together and the external GHL call is never made
+-- inside this statement. PROCESSING callbacks leave the deposit non-terminal
+-- and therefore never enqueue a final GHL update.
+UPDATE deposits
+SET status = $2,
+    completed_at = CASE WHEN $2::deposit_status = 'COMPLETED' THEN NOW() ELSE completed_at END,
+    failed_at = CASE WHEN $2::deposit_status = 'FAILED' THEN NOW() ELSE failed_at END,
+    failure_reason = CASE WHEN $2::deposit_status = 'FAILED' THEN $3 ELSE failure_reason END,
+    ghl_sync_status = CASE
+        WHEN ghl_order_id IS NULL OR ghl_order_id = '' THEN 'none'
+        WHEN $2::deposit_status IN ('COMPLETED', 'FAILED') THEN 'pending'
+        ELSE 'none' END,
+    ghl_sync_attempts = CASE
+        WHEN $2::deposit_status IN ('COMPLETED', 'FAILED') THEN 0 ELSE ghl_sync_attempts END,
+    ghl_sync_last_error = CASE
+        WHEN $2::deposit_status IN ('COMPLETED', 'FAILED') THEN NULL ELSE ghl_sync_last_error END,
+    updated_at = NOW()
+WHERE id = $1
+  AND status IN ('INITIATED', 'PROCESSING')
+RETURNING *;
+
+-- name: ClaimPendingGhlSync :many
+-- Atomically claims all currently-pending GHL synchronizations for processing
+-- and increments the attempt count. Two concurrent workers cannot claim the
+-- same row: the UPDATE takes a row lock and re-evaluates the WHERE on the
+-- updated row, so a row claimed by one worker no longer matches
+-- ghl_sync_status = 'pending' for the other. Only deposits with fewer than two
+-- attempts are claimed (two total attempts).
+UPDATE deposits
+SET ghl_sync_status = 'processing',
+    ghl_sync_attempts = ghl_sync_attempts + 1,
+    updated_at = NOW()
+WHERE ghl_sync_status = 'pending'
+  AND ghl_order_id IS NOT NULL
+  AND ghl_order_id <> ''
+  AND ghl_sync_attempts < 2
+RETURNING *;
+
+-- name: RecordGhlSyncSuccess :one
+UPDATE deposits
+SET ghl_sync_status = 'completed',
+    ghl_sync_last_error = NULL,
+    ghl_sync_failed_at = NULL,
+    ghl_synced_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: RecordGhlSyncRetry :one
+-- Re-queues a failed GHL update for its single retry (attempts < 2). The
+-- authoritative PawaPay deposit status is never touched.
+UPDATE deposits
+SET ghl_sync_status = 'pending',
+    ghl_sync_last_error = $2,
+    updated_at = NOW()
+WHERE id = $1
+  AND ghl_sync_attempts < 2
+RETURNING *;
+
+-- name: RecordGhlSyncFailure :one
+-- Records the final GHL synchronization failure after two attempts without
+-- altering the authoritative PawaPay terminal deposit status.
+UPDATE deposits
+SET ghl_sync_status = 'failed',
+    ghl_sync_last_error = $2,
+    ghl_sync_failed_at = NOW(),
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;

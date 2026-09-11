@@ -47,6 +47,18 @@ type PaymentProviderClient interface {
 	// DELETE /payments/custom-provider/connect?locationId=<id>
 	DisconnectProvider(ctx context.Context, accessToken, locationID string) error
 
+	// UpdateOrderStatus pushes a PawaPay-authoritative terminal payment result
+	// to GoHighLevel for a location's order so the order leaves "pending".
+	// accessToken is the installed location's OAuth access token; it is used
+	// only in the Authorization header and is never logged or returned in
+	// errors. status must be GhlOrderStatusCompleted or GhlOrderStatusFailed;
+	// any other value is a caller error. The concrete v3 operation is the
+	// Custom Payment Provider order-status update; the exact GHL path/shape
+	// is isolated to the HighLevelPaymentProviderClient implementation and
+	// requires full-deployment verification (see agents/
+	// ghl-v3-payment-status-synchronization.md §8).
+	UpdateOrderStatus(ctx context.Context, accessToken, locationID, orderID string, status GhlOrderStatus) error
+
 	// CreateProviderConfigsWithDiagnostics performs the same credential push
 	// as CreateProviderConfigs and additionally returns diagnostic details
 	// of the actual HighLevel HTTP response (status, sanitized body, traceId)
@@ -76,6 +88,18 @@ type HighLevelCallDiagnostics struct {
 	// TraceID is the HighLevel traceId from the response body, if present.
 	TraceID string
 }
+
+// GhlOrderStatus is the target GoHighLevel payment status for a server-side
+// order status synchronization. Only terminal PawaPay results may drive an
+// update; pending/processing deposits never land here.
+type GhlOrderStatus string
+
+const (
+	// GhlOrderStatusCompleted marks the GHL order/payment as captured/paid.
+	GhlOrderStatusCompleted GhlOrderStatus = "completed"
+	// GhlOrderStatusFailed marks the GHL order/payment as failed/declined.
+	GhlOrderStatusFailed GhlOrderStatus = "failed"
+)
 
 // ProviderConfig is the provider configuration sent to HighLevel. It is built
 // from RVPay configuration and the correct location; it is never hard-coded.

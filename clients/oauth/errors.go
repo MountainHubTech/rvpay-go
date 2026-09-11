@@ -69,6 +69,12 @@ var (
 	// ErrProviderCredentialsNotConfigured is returned when no live/test
 	// provider credentials are configured for pushing to HighLevel.
 	ErrProviderCredentialsNotConfigured = status.Error(codes.FailedPrecondition, "provider credentials not configured")
+	// ErrMissingOrderID is returned when no GHL order ID is provided for the
+	// server-side order status synchronization.
+	ErrMissingOrderID = status.Error(codes.InvalidArgument, "order ID is required")
+	// ErrUnsupportedGhlOrderStatus is returned when the synchronization status
+	// is not one of the two PawaPay-authoritative terminal results.
+	ErrUnsupportedGhlOrderStatus = status.Error(codes.InvalidArgument, "ghl order status must be completed or failed")
 )
 
 // translateError converts repository errors to business errors.

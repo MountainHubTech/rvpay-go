@@ -347,6 +347,12 @@ type Deposit struct {
 	UpdatedAt         time.Time          `json:"updated_at"`
 	GhlTransactionID  *string            `json:"ghl_transaction_id"`
 	GhlChargeID       *string            `json:"ghl_charge_id"`
+	GhlOrderID        *string            `json:"ghl_order_id"`
+	GhlSyncStatus     string             `json:"ghl_sync_status"`
+	GhlSyncAttempts   int32              `json:"ghl_sync_attempts"`
+	GhlSyncLastError  *string            `json:"ghl_sync_last_error"`
+	GhlSyncFailedAt   pgtype.Timestamptz `json:"ghl_sync_failed_at"`
+	GhlSyncedAt       pgtype.Timestamptz `json:"ghl_synced_at"`
 }
 
 type Dispute struct {
