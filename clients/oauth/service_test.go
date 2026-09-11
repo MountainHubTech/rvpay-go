@@ -1,10 +1,15 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1387,27 +1392,74 @@ func TestProcessCallback_ReusesCreatedIntegration(t *testing.T) {
 	}
 }
 
-func TestProcessCallback_ActiveIntegrationStillConflicts(t *testing.T) {
+func TestProcessCallback_ReauthorizationReplacesStoredToken(t *testing.T) {
 	t.Parallel()
 
 	// Mock HighLevel: both association and config creation succeed.
-	svc, integrationRepo, _, clientRepo, platformRepo, stateRepo, _ := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
+	svc, integrationRepo, tokenRepo, clientRepo, platformRepo, stateRepo, _ := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"success":true}`))
 	})
 
 	clientID, platformID, state := setupRegistrationContext(t, clientRepo, platformRepo, stateRepo)
 
-	// Pre-provision an ACTIVE integration (not CREATED). This is a genuine
-	// conflict and must return ErrIntegrationAlreadyExists.
-	_, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
+	// A previously installed location: ACTIVE integration with a token that
+	// predates the app's current payments/* scopes (the GHL 401 "The token
+	// is not authorized for this scope" scenario). Reauthorization must
+	// replace the stored token instead of failing with
+	// ErrIntegrationAlreadyExists.
+	active, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
 	if err != nil {
 		t.Fatalf("create active integration: %v", err)
 	}
+	if _, err := tokenRepo.Create(context.Background(), active.ID, "old-access-token", "old-refresh-token", time.Now().Add(-time.Hour), "old-scope", "Bearer"); err != nil {
+		t.Fatalf("seed old token: %v", err)
+	}
 
-	_, err = svc.HandleCallback(context.Background(), "test-code", state)
-	if status.Code(err) != codes.AlreadyExists {
-		t.Fatalf("status code = %s, want %s", status.Code(err), codes.AlreadyExists)
+	result, err := svc.HandleCallback(context.Background(), "test-code", state)
+	if err != nil {
+		t.Fatalf("HandleCallback failed: %v", err)
+	}
+
+	// The exchange must store the returned location token.
+	if result.AccessToken == "" || result.RefreshToken == "" {
+		t.Fatal("callback result must carry the exchanged token pair")
+	}
+	if !result.ExpiresAt.After(time.Now()) {
+		t.Fatal("callback result ExpiresAt must be in the future")
+	}
+
+	// The ACTIVE integration must be reused, not duplicated.
+	if len(integrationRepo.integrations) != 1 {
+		t.Fatalf("expected 1 integration (reused), got %d", len(integrationRepo.integrations))
+	}
+
+	// The stored token must be replaced in place: one row with the new
+	// access token, the new refresh token, the new expiry, and the new
+	// scope. No stale refresh token may be retained.
+	if len(tokenRepo.tokens) != 1 {
+		t.Fatalf("expected 1 token row, got %d", len(tokenRepo.tokens))
+	}
+	for _, token := range tokenRepo.tokens {
+		if token.IntegrationID != active.ID {
+			t.Fatalf("token IntegrationID = %v, want %v", token.IntegrationID, active.ID)
+		}
+		if token.AccessToken == "old-access-token" || token.AccessToken == "" {
+			t.Fatalf("stored access token not replaced: %q", token.AccessToken)
+		}
+		if token.RefreshToken == "old-refresh-token" || token.RefreshToken == "" {
+			t.Fatalf("stored refresh token not replaced: %q", token.RefreshToken)
+		}
+		if !token.ExpiresAt.After(time.Now()) {
+			t.Fatal("stored token expiry not replaced")
+		}
+		if token.Scope == "old-scope" {
+			t.Fatal("stored token scope not replaced")
+		}
+	}
+
+	if !result.ProviderRegistered {
+		t.Fatal("ProviderRegistered should be true after reauthorization")
 	}
 }
 
@@ -1744,5 +1796,286 @@ func TestRegisterProvider_NoConfigRepo(t *testing.T) {
 	err := svc.RegisterProvider(context.Background(), uuid.New(), "loc-123", "test-access-token")
 	if status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("error code = %s, want %s", status.Code(err), codes.FailedPrecondition)
+	}
+}
+
+// newSyncTestService mirrors newRegistrationTestService but accepts a custom
+// logger so tests can assert on diagnostic fields.
+func newSyncTestService(t *testing.T, paymentHandler http.HandlerFunc, logOut *bytes.Buffer) (*Service, *mockIntegrationRepo, *mockOAuthTokenRepo, *mockPlatformRepo) {
+	t.Helper()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/authorize":
+			w.WriteHeader(http.StatusOK)
+		case "/oauth/token":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{
+				"accessToken":"test-access-token",
+				"refreshToken":"test-refresh-token",
+				"expiresIn":3600,
+				"tokenType":"Bearer",
+				"scope":"read write",
+				"locationId":"loc-123"
+			}`))
+		case "/v1/users/me":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"id":"loc-123"}`))
+		default:
+			paymentHandler(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+
+	paymentClient := providers.NewHighLevelPaymentProviderClient(srv.URL, nil)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProviderWithURLs(
+		"test-client",
+		"test-secret",
+		"https://example.com/callback",
+		"",
+		srv.URL+"/oauth/authorize",
+		srv.URL+"/oauth/token",
+		srv.URL+"/v1/users/me",
+		paymentClient,
+	))
+
+	integrationRepo := newMockIntegrationRepo()
+	tokenRepo := newMockOAuthTokenRepo()
+	clientRepo := newMockClientRepo()
+	platformRepo := newMockPlatformRepo()
+	stateRepo := newMockOAuthStateRepo()
+	configRepo := newMockPaymentProviderConfigRepo()
+
+	logger := zerolog.Nop()
+	if logOut != nil {
+		logger = zerolog.New(logOut)
+	}
+
+	svc := NewService(
+		integrationRepo,
+		tokenRepo,
+		clientRepo,
+		platformRepo,
+		stateRepo,
+		configRepo,
+		registry,
+		"https://example.com/callback",
+		ProviderConfigSettings{
+			Name:        "RVPay",
+			Description: "RVPay payment provider",
+			ImageURL:    "https://example.com/logo.jpg",
+			PaymentsURL: "https://checkout.example.com/payment/checkout",
+			QueryURL:    "https://api.example.com/payments/custom-provider/query",
+		},
+		logger,
+	)
+
+	return svc, integrationRepo, tokenRepo, platformRepo
+}
+
+func TestAccessTokenFingerprint(t *testing.T) {
+	t.Parallel()
+
+	// Empty tokens must produce no fingerprint rather than a hash of "".
+	if got := providers.AccessTokenFingerprint(""); got != "" {
+		t.Fatalf("fingerprint of empty token = %q, want %q", got, "")
+	}
+
+	a := providers.AccessTokenFingerprint("test-access-token")
+	b := providers.AccessTokenFingerprint("different-token")
+
+	// Deterministic and 12 lowercase hex chars.
+	if a != providers.AccessTokenFingerprint("test-access-token") {
+		t.Fatal("fingerprint must be deterministic")
+	}
+	if len(a) != 12 {
+		t.Fatalf("fingerprint length = %d, want 12", len(a))
+	}
+	if a != strings.ToLower(a) {
+		t.Fatalf("fingerprint %q must be lowercase hex", a)
+	}
+	// Distinct tokens map to distinct fingerprints, and the fingerprint must
+	// never contain the token itself.
+	if a == b {
+		t.Fatal("distinct tokens must produce distinct fingerprints")
+	}
+	if strings.Contains(a, "test-access-token") || strings.Contains(b, "different-token") {
+		t.Fatal("fingerprint must not contain the token")
+	}
+}
+
+// TestSyncGhlOrderStatus_SendsStoredTokenWithDiagnostics is the end-to-end
+// regression for the GHL 401 record-payment incident: the stored location
+// token must be sent as the Bearer credential on the /payments/orders/{id}/
+// record-payment endpoint (Version v3), with fingerprint-only diagnostics
+// logged around the call.
+func TestSyncGhlOrderStatus_SendsStoredTokenWithDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mu         sync.Mutex
+		gotMethod  string
+		gotPath    string
+		gotAuth    string
+		gotVersion string
+		gotBody    string
+	)
+	svc, integrationRepo, tokenRepo, platformRepo := newSyncTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotVersion = r.Header.Get("Version")
+		raw, _ := io.ReadAll(r.Body)
+		gotBody = string(raw)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"err":null,"msg":"success"}`))
+	}, nil)
+
+	clientID := uuid.New()
+	platformID := uuid.New()
+	clientRepo := newMockClientRepo()
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+	integration, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
+	if err != nil {
+		t.Fatalf("create integration: %v", err)
+	}
+	if _, err := tokenRepo.Create(context.Background(), integration.ID, "test-access-token", "test-refresh-token", time.Now().Add(time.Hour), "read write", "Bearer"); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	if err := svc.SyncGhlOrderStatus(context.Background(), "loc-123", "ord-1", "completed", 15050); err != nil {
+		t.Fatalf("SyncGhlOrderStatus failed: %v", err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if gotMethod != http.MethodPost {
+		t.Fatalf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/payments/orders/ord-1/record-payment" {
+		t.Fatalf("path = %s, want /payments/orders/ord-1/record-payment", gotPath)
+	}
+	if gotAuth != "Bearer test-access-token" {
+		t.Fatalf("Authorization = %q, want Bearer stored location token", gotAuth)
+	}
+	if gotVersion != "v3" {
+		t.Fatalf("Version header = %q, want v3", gotVersion)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(gotBody), &payload); err != nil {
+		t.Fatalf("request body not JSON: %v (%q)", err, gotBody)
+	}
+	if payload["altId"] != "loc-123" || payload["altType"] != "location" || payload["mode"] != "other" || payload["amount"] != float64(15050) {
+		t.Fatalf("unexpected record-payment body: %v", payload)
+	}
+	// The location's stored refresh token must never ride along as the
+	// order's payment credential.
+	if strings.Contains(gotBody, "test-refresh-token") {
+		t.Fatal("refresh token leaked into record-payment body")
+	}
+}
+
+// TestSyncGhlOrderStatus_GHL401SurfacesSafeMetadata verifies that a GHL 401
+// from record-payment is surfaced with safe correlation metadata (status
+// code, GHL trace id, token fingerprint) and never with token material.
+func TestSyncGhlOrderStatus_GHL401SurfacesSafeMetadata(t *testing.T) {
+	t.Parallel()
+
+	logBuf := &bytes.Buffer{}
+	svc, integrationRepo, tokenRepo, platformRepo := newSyncTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"traceId":"trace-401-abc","msg":"The token is not authorized for this scope.","statusCode":401}`))
+	}, logBuf)
+
+	clientID := uuid.New()
+	platformID := uuid.New()
+	clientRepo := newMockClientRepo()
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+	integration, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
+	if err != nil {
+		t.Fatalf("create integration: %v", err)
+	}
+	if _, err := tokenRepo.Create(context.Background(), integration.ID, "test-access-token", "test-refresh-token", time.Now().Add(time.Hour), "read write", "Bearer"); err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
+
+	err = svc.SyncGhlOrderStatus(context.Background(), "loc-123", "ord-1", "completed", 15050)
+	if err == nil {
+		t.Fatal("expected error from GHL 401")
+	}
+
+	logs := logBuf.String()
+
+	// Safe correlation metadata must be present, including the fingerprint of
+	// the exact token used for the Authorization header.
+	for _, want := range []string{
+		`"http_status_code":401`,
+		`"highlevel_trace_id":"trace-401-abc"`,
+		`"access_token_fingerprint":"` + providers.AccessTokenFingerprint("test-access-token") + `"`,
+		`"token_source":"stored_location_token"`,
+		`"token_refreshed":false`,
+		`"http_method":"POST"`,
+		`"endpoint_path":"/payments/orders/ord-1/record-payment"`,
+		`"api_version":"v3"`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("logs missing %s\ngot: %s", want, logs)
+		}
+	}
+	// No token material may ever appear in the logs.
+	if strings.Contains(logs, "test-access-token") || strings.Contains(logs, "test-refresh-token") {
+		t.Fatalf("logs leaked token material: %s", logs)
+	}
+}
+
+// TestRefreshAccessToken_PersistsNewTokenAndExpiry verifies that a refreshed
+// token (new access token, new refresh token, new expiry, new scope) fully
+// replaces the stored token row.
+func TestRefreshAccessToken_PersistsNewTokenAndExpiry(t *testing.T) {
+	t.Parallel()
+
+	svc, integrationRepo, tokenRepo, platformRepo := newSyncTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}, nil)
+
+	clientID := uuid.New()
+	platformID := uuid.New()
+	clientRepo := newMockClientRepo()
+	clientRepo.clients[clientID.String()] = sqlc.Client{ID: clientID, Status: sqlc.ClientStatusACTIVE}
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+	integration, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusACTIVE)
+	if err != nil {
+		t.Fatalf("create integration: %v", err)
+	}
+	if _, err := tokenRepo.Create(context.Background(), integration.ID, "expired-access-token", "expired-refresh-token", time.Now().Add(-time.Minute), "expired-scope", "Bearer"); err != nil {
+		t.Fatalf("seed expired token: %v", err)
+	}
+
+	if err := svc.RefreshAccessToken(context.Background(), integration.ID); err != nil {
+		t.Fatalf("RefreshAccessToken failed: %v", err)
+	}
+
+	if len(tokenRepo.tokens) != 1 {
+		t.Fatalf("expected 1 token row, got %d", len(tokenRepo.tokens))
+	}
+	for _, token := range tokenRepo.tokens {
+		if token.AccessToken == "expired-access-token" || token.AccessToken == "" {
+			t.Fatalf("stored access token not replaced: %q", token.AccessToken)
+		}
+		if token.RefreshToken == "expired-refresh-token" || token.RefreshToken == "" {
+			t.Fatalf("stored refresh token not replaced: %q", token.RefreshToken)
+		}
+		if !token.ExpiresAt.After(time.Now()) {
+			t.Fatal("stored token expiry not replaced")
+		}
+		if token.Scope != "read write" {
+			t.Fatalf("stored token scope = %q, want refreshed scope", token.Scope)
+		}
 	}
 }

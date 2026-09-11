@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"net/http"
 	"strings"
 	"time"
 
@@ -417,34 +418,34 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	// this client/platform:
 	//   - CREATED: reuse it (pre-provisioned integration awaiting OAuth
 	//     completion). Activate it and continue the token/registration flow.
-	//   - otherwise: return ErrIntegrationAlreadyExists (genuine conflict).
+	//   - ACTIVE (reauthorization): keep it and let the token persistence
+	//     step below replace the stored location token with the freshly
+	//     exchanged one. Discarding the exchanged token here (the previous
+	//     ErrIntegrationAlreadyExists behavior) left the old token in place;
+	//     that old token was granted before the app's current payments/*
+	//     scopes were configured, so GHL rejects it with 401 "The token is
+	//     not authorized for this scope."
 	var integration sqlc.Integration
 	existing, err := s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
 	if err == nil {
 		if existing.Status != sqlc.IntegrationStatusCREATED {
-			// // Temporarily create the provider association here.
-			// // Get rid of this if block after local testing is done.
-			// if provider.HasCapability(providers.CapabilityPaymentProvider) {
-			// 	regErr := s.RegisterProvider(ctx, existing.ID, tokenResp.LocationID, tokenResp.AccessToken)
-			// 	if regErr != nil {
-			// 		s.logger.Warn().Err(regErr).Str("integration_id", existing.ID.String()).Str("location_id", tokenResp.LocationID).Msg("HighLevel provider registration failed; integration remains installed")
-			// 		// result.ProviderRegistrationError = regErr
-			// 	} else {
-			// 		// result.ProviderRegistered = true
-			// 		s.logger.Info().Msg("Provider successfully registered")
-			// 	}
-			// }
-			return nil, ErrIntegrationAlreadyExists
+			integration = existing
+			s.logger.Info().
+				Str("integration_id", existing.ID.String()).
+				Str("location_id", tokenResp.LocationID).
+				Msg("reauthorization of installed location; stored OAuth token will be replaced")
+		} else {
+			// Reuse the pre-provisioned CREATED integration. Activate it. The
+			// external_account_id is set to the GHL locationId when the
+			// provider registration persists the payment_provider_configs
+			// record; the locationId is the deterministic GHL sub-account
+			// identifier.
+			integration, err = s.integrationsRepo.UpdateStatus(ctx, existing.ID, sqlc.IntegrationStatusACTIVE)
+			if err != nil {
+				return nil, translateError(err)
+			}
+			s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 		}
-		// Reuse the pre-provisioned CREATED integration. Activate it. The
-		// external_account_id is set to the GHL locationId when the provider
-		// registration persists the payment_provider_configs record; the
-		// locationId is the deterministic GHL sub-account identifier.
-		integration, err = s.integrationsRepo.UpdateStatus(ctx, existing.ID, sqlc.IntegrationStatusACTIVE)
-		if err != nil {
-			return nil, translateError(err)
-		}
-		s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return nil, translateError(err)
 	} else {
@@ -474,10 +475,55 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	// }
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-	_, err = s.oauthRepo.Create(ctx, integration.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
-	if err != nil {
-		s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
-		return nil, translateError(err)
+
+	// Persist the exchanged token as replace-or-insert on the integration.
+	// The oauth_tokens table does not enforce uniqueness on integration_id,
+	// so an unconditional INSERT could leave two rows for the same
+	// integration and (depending on the read path) shadow the fresh token
+	// behind a stale one. An existing row is therefore updated in place so
+	// exactly one token row per integration exists and the freshly exchanged
+	// token is always the one later used by record-payment synchronization.
+	// Diagnostics log only fingerprints, never token or refresh-token values.
+	tokenLog := s.logger.Info().
+		Str("location_id", tokenResp.LocationID).
+		Str("integration_id", integration.ID.String()).
+		Str("token_source", "authorization_code_exchange").
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(tokenResp.AccessToken)).
+		Int("access_token_length", len(tokenResp.AccessToken)).
+		Time("access_token_expires_at", expiresAt).
+		Bool("refresh_token_present", tokenResp.RefreshToken != "")
+
+	existingToken, tokenErr := s.oauthRepo.GetByIntegrationID(ctx, integration.ID)
+	switch {
+	case tokenErr == nil:
+		refreshReplaced := tokenResp.RefreshToken != "" && tokenResp.RefreshToken != existingToken.RefreshToken
+		newRefreshToken := tokenResp.RefreshToken
+		if newRefreshToken == "" {
+			// Defensive: never wipe a stored refresh token when the provider
+			// omits it from the exchange response.
+			newRefreshToken = existingToken.RefreshToken
+		}
+		_, err = s.oauthRepo.Update(ctx, existingToken.ID, tokenResp.AccessToken, newRefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+		if err != nil {
+			s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
+			return nil, translateError(err)
+		}
+		tokenLog.
+			Bool("token_replaced", true).
+			Bool("refresh_token_replaced", refreshReplaced).
+			Msg("OAuth token persisted (replaced stored token)")
+	case errors.Is(tokenErr, repo.ErrNotFound):
+		_, err = s.oauthRepo.Create(ctx, integration.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+		if err != nil {
+			s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
+			return nil, translateError(err)
+		}
+		tokenLog.
+			Bool("token_replaced", false).
+			Bool("refresh_token_replaced", tokenResp.RefreshToken != "").
+			Msg("OAuth token persisted (new token row)")
+	default:
+		return nil, translateError(tokenErr)
 	}
 
 	result := &CallbackResult{
@@ -809,11 +855,16 @@ func (s *Service) CreateProviderConfigs(ctx context.Context, paymentClient provi
 
 	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
 
-	s.logger.Info().Str("access_token", accessToken).Msg("access token for client")
+	// SECURITY: the access token and provider credentials (API keys) must
+	// never be logged. Only a non-reversible fingerprint is logged so logs
+	// can still correlate which stored token was used.
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(accessToken)).
+		Int("access_token_length", len(accessToken)).
+		Msg("access token for client (fingerprint only)")
 
 	s.logger.Info().Msgf("Payment Client: %v", paymentClient)
-
-	s.logger.Info().Msgf("Provider Credentials: %v", creds)
 
 	if paymentClient == nil {
 		return ErrPaymentProviderNotSupported
@@ -937,17 +988,39 @@ func (s *Service) RefreshAccessToken(ctx context.Context, integrationID uuid.UUI
 
 	tokenResp, err := provider.OAuthProvider().RefreshToken(ctx, oauthToken.RefreshToken)
 	if err != nil {
-		s.logger.Error().Err(err).Str("integration_id", integrationID.String()).Msg("OAuth token refresh failed")
+		s.logger.Error().Err(err).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", integration.ExternalAccountID).
+			Str("token_source", "refresh").
+			Bool("refresh_succeeded", false).
+			Msg("OAuth token refresh failed")
 		return ErrTokenRefreshFailed
 	}
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-	_, err = s.oauthRepo.Update(ctx, oauthToken.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+
+	// Defensive: never wipe a stored refresh token when the provider omits it
+	// from the refresh response.
+	newRefreshToken := tokenResp.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = oauthToken.RefreshToken
+	}
+
+	_, err = s.oauthRepo.Update(ctx, oauthToken.ID, tokenResp.AccessToken, newRefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
 	if err != nil {
 		return translateError(err)
 	}
 
-	s.logger.Info().Str("integration_id", integrationID.String()).Msg("OAuth token refreshed")
+	s.logger.Info().
+		Str("integration_id", integrationID.String()).
+		Str("location_id", integration.ExternalAccountID).
+		Str("token_source", "refresh").
+		Str("old_access_token_fingerprint", providers.AccessTokenFingerprint(oauthToken.AccessToken)).
+		Str("new_access_token_fingerprint", providers.AccessTokenFingerprint(tokenResp.AccessToken)).
+		Time("access_token_expires_at", expiresAt).
+		Bool("refresh_succeeded", true).
+		Bool("refresh_token_replaced", tokenResp.RefreshToken != "" && tokenResp.RefreshToken != oauthToken.RefreshToken).
+		Msg("OAuth token refreshed")
 
 	return nil
 }
@@ -1077,21 +1150,50 @@ func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, s
 	// Load the location's stored OAuth access token. Expired tokens are
 	// refreshed once through the existing refresh path; the refreshed token
 	// is then used for this update.
-	accessToken, err := s.accessTokenForSync(ctx, integration.ID)
+	syncToken, err := s.accessTokenForSync(ctx, integration.ID)
 	if err != nil {
 		return err
 	}
 
-	err = paymentClient.UpdateOrderStatus(ctx, accessToken, locationID, orderID, ghlStatus, amount)
+	// Safe pre-send diagnostics for the exact token that will be used to
+	// construct the Authorization header. Only fingerprints and metadata are
+	// logged — never the token, the refresh token, or the header itself.
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("integration_id", integration.ID.String()).
+		Str("order_id", orderID).
+		Str("token_source", syncToken.Source).
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(syncToken.AccessToken)).
+		Int("access_token_length", len(syncToken.AccessToken)).
+		Time("access_token_expires_at", syncToken.ExpiresAt).
+		Bool("token_refreshed", syncToken.Refreshed).
+		Str("http_method", http.MethodPost).
+		Str("endpoint_path", "/payments/orders/"+orderID+"/record-payment").
+		Str("api_version", "v3").
+		Msg("GHL record-payment request diagnostics")
+
+	err = paymentClient.UpdateOrderStatus(ctx, syncToken.AccessToken, locationID, orderID, ghlStatus, amount)
 	if err != nil {
 		// Correlation only: the caller (Transactions worker) persists the
-		// failure; the message must not leak credentials or the token.
-		s.logger.Error().Err(err).
+		// failure; the message must not leak credentials or the token. The
+		// response body attached to a HighLevelAPIError is already
+		// credential-sanitized.
+		errLog := s.logger.Error().Err(err).
 			Str("integration_id", integration.ID.String()).
 			Str("location_id", locationID).
 			Str("order_id", orderID).
 			Str("status", string(ghlStatus)).
-			Msg("GHL order status update failed")
+			Str("token_source", syncToken.Source).
+			Str("access_token_fingerprint", providers.AccessTokenFingerprint(syncToken.AccessToken)).
+			Bool("token_refreshed", syncToken.Refreshed)
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			errLog = errLog.
+				Int("http_status_code", apiErr.StatusCode).
+				Str("highlevel_trace_id", apiErr.TraceID).
+				Str("highlevel_body", apiErr.Body)
+		}
+		errLog.Msg("GHL order status update failed")
 		return err
 	}
 
@@ -1105,32 +1207,50 @@ func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, s
 	return nil
 }
 
+// syncAccessToken carries the exact access token used for a record-payment
+// call together with the safe metadata logged alongside it.
+type syncAccessToken struct {
+	AccessToken string
+	ExpiresAt   time.Time
+	Refreshed   bool
+	Source      string
+}
+
 // accessTokenForSync loads the stored access token for an integration,
 // refreshing it once through the existing refresh path when expired.
-func (s *Service) accessTokenForSync(ctx context.Context, integrationID uuid.UUID) (string, error) {
+func (s *Service) accessTokenForSync(ctx context.Context, integrationID uuid.UUID) (syncAccessToken, error) {
 	oauthToken, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
 	if err == repo.ErrNotFound {
-		return "", ErrOAuthTokenNotFound
+		return syncAccessToken{}, ErrOAuthTokenNotFound
 	}
 	if err != nil {
-		return "", translateError(err)
+		return syncAccessToken{}, translateError(err)
 	}
 	if time.Now().Before(oauthToken.ExpiresAt) {
-		return oauthToken.AccessToken, nil
+		return syncAccessToken{
+			AccessToken: oauthToken.AccessToken,
+			ExpiresAt:   oauthToken.ExpiresAt,
+			Source:      "stored_location_token",
+		}, nil
 	}
 
 	if err := s.RefreshAccessToken(ctx, integrationID); err != nil {
-		return "", err
+		return syncAccessToken{}, err
 	}
 
 	refreshed, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
 	if err == repo.ErrNotFound {
-		return "", ErrOAuthTokenNotFound
+		return syncAccessToken{}, ErrOAuthTokenNotFound
 	}
 	if err != nil {
-		return "", translateError(err)
+		return syncAccessToken{}, translateError(err)
 	}
-	return refreshed.AccessToken, nil
+	return syncAccessToken{
+		AccessToken: refreshed.AccessToken,
+		ExpiresAt:   refreshed.ExpiresAt,
+		Refreshed:   true,
+		Source:      "refresh",
+	}, nil
 }
 
 // parseGhlOrderStatus maps a synchronization status string onto the provider
