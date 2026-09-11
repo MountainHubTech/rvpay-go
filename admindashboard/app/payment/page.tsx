@@ -573,12 +573,12 @@ const chargeId = paymentContext.chargeId;
   // OK button of the terminal payment-result modal.
   //
   // On SUCCESS the user is returned to the HighLevel storefront:
-  //   https://store.citscm.com
+  //   https://shop.citscm.com
   // On FAILURE the modal is dismissed and the user stays on this page with
   // the terminal status text (unchanged legacy behavior).
   function handlePaymentResultOk() {
     if (paymentResult === "completed") {
-      window.location.href = "https://store.citscm.com";
+      window.location.href = "https://shop.citscm.com";
       return;
     }
     setPaymentResult(null);
