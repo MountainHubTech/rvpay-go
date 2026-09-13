@@ -603,7 +603,9 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 
 	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
 
-	s.logger.Info().Str("access_token", accessToken).Msg("access token for client")
+	// SECURITY: never log the access token; only a non-reversible fingerprint
+	// is logged so logs can still correlate which stored token was used.
+	s.logger.Info().Str("access_token_fingerprint", providers.AccessTokenFingerprint(accessToken)).Msg("access token for client (fingerprint only)")
 
 	s.logger.Info().Msg("Checking provider configuration repository...")
 	if s.configRepo == nil {
