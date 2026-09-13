@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
 	"github.com/rs/zerolog"
 )
 
@@ -204,6 +205,13 @@ type HighLevelWebhookDispatcher struct {
 	integrationsRepo repo.IntegrationRepo
 	configRepo       repo.PaymentProviderConfigRepo
 	providerConfig   ProviderConfigSettings
+	// reconciler, when wired, verifies and restores the remote HighLevel
+	// Custom Payment Provider during INSTALL. Local provider-config
+	// existence does NOT prove remote existence: GHL removes the remote
+	// association on uninstall while RVPay retains local state, so INSTALL
+	// must reconcile the remote provider instead of only reusing the local
+	// row. Optional: when nil, INSTALL keeps its previous behavior.
+	reconciler PaymentProviderReconciler
 }
 
 // ProviderConfigSettings holds the configuration used to build the HighLevel
@@ -241,6 +249,16 @@ func NewHighLevelWebhookDispatcher(
 		configRepo:       configRepo,
 		providerConfig:   providerConfig,
 	}
+}
+
+// SetPaymentProviderReconciler wires the optional remote-provider reconciler
+// into the dispatcher. It is called after construction so the existing
+// constructor signature and all existing call sites remain unchanged. The
+// reconciler is owned by the OAuth service, which already holds the token
+// lifecycle and the RegisterProvider sequence; the webhook dispatcher never
+// performs token lookup or provider registration itself.
+func (d *HighLevelWebhookDispatcher) SetPaymentProviderReconciler(reconciler PaymentProviderReconciler) {
+	d.reconciler = reconciler
 }
 
 func (d *HighLevelWebhookDispatcher) Dispatch(ctx context.Context, event *WebhookEvent) error {
@@ -316,8 +334,12 @@ func (d *HighLevelWebhookDispatcher) handleIntegrationInstalled(ctx context.Cont
 	// and will be completed during provider registration.
 	_, err = d.configRepo.GetByIntegrationID(ctx, integration.ID)
 	if err == nil {
-		d.logger.Info("INSTALL event: payment provider config already exists; reusing", "integration_id", integration.ID.String(), "location_id", event.LocationID)
-		return nil
+		// Local existence does NOT prove remote existence: GHL removes the
+		// custom payment-provider association on uninstall while RVPay
+		// retains the local row. Reconcile the remote provider instead of
+		// only logging "already exists".
+		d.logger.Info("INSTALL event: payment provider config already exists; reconciling remote provider state", "integration_id", integration.ID.String(), "location_id", event.LocationID)
+		return d.reconcileInstalledProvider(ctx, integration, event.LocationID)
 	}
 	if !errors.Is(err, repo.ErrNotFound) {
 		return fmt.Errorf("get payment provider config for integration: %w", err)
@@ -336,15 +358,61 @@ func (d *HighLevelWebhookDispatcher) handleIntegrationInstalled(ctx context.Cont
 		"",    // provider API key is generated during provider registration.
 	)
 	if err == repo.ErrDuplicate {
-		// A concurrent INSTALL event created the config; reuse it.
-		d.logger.Info("INSTALL event: payment provider config created concurrently; reusing", "integration_id", integration.ID.String(), "location_id", event.LocationID)
-		return nil
+		// A concurrent INSTALL event created the config; reuse it — and,
+		// exactly like the pre-existing row path, reconcile the remote
+		// provider because local existence still proves nothing.
+		d.logger.Info("INSTALL event: payment provider config created concurrently; reconciling remote provider state", "integration_id", integration.ID.String(), "location_id", event.LocationID)
+		return d.reconcileInstalledProvider(ctx, integration, event.LocationID)
 	}
 	if err != nil {
 		return fmt.Errorf("create payment provider config for integration: %w", err)
 	}
 
 	d.logger.Info("INSTALL event: payment provider config created", "integration_id", integration.ID.String(), "location_id", event.LocationID)
+	return d.reconcileInstalledProvider(ctx, integration, event.LocationID)
+}
+
+// reconcileInstalledProvider performs the INSTALL-time remote reconciliation
+// for a resolved integration:
+//
+//  1. A previously deactivated integration (e.g. after uninstall/reinstall)
+//     is reactivated non-destructively. No tokens, integrations, or local
+//     provider configuration rows are deleted.
+//  2. The optional reconciler verifies the remote HighLevel Custom Payment
+//     Provider and re-runs the existing registration sequence when the remote
+//     provider is absent or incomplete. The reconciler is idempotent, so
+//     duplicate INSTALL events are safe.
+//
+// When no reconciler is configured the behavior is the historical one: the
+// local config row is reused/created and only a log line is emitted.
+func (d *HighLevelWebhookDispatcher) reconcileInstalledProvider(ctx context.Context, integration sqlc.Integration, locationID string) error {
+	// Reactivate a deactivated integration so the location can transact
+	// again without waiting for an OAuth callback. This is the least
+	// destructive representation of a reinstall: the integration is flipped
+	// back to ACTIVE and nothing is removed.
+	if integration.Status != sqlc.IntegrationStatusACTIVE {
+		d.logger.Info("INSTALL event: integration not active; reactivating", "integration_id", integration.ID.String(), "location_id", locationID, "previous_status", string(integration.Status))
+		if _, err := d.integrationsRepo.UpdateStatus(ctx, integration.ID, sqlc.IntegrationStatusACTIVE); err != nil {
+			return fmt.Errorf("reactivate integration for locationId %q: %w", locationID, err)
+		}
+	}
+
+	if d.reconciler == nil {
+		d.logger.Info("INSTALL event: no provider reconciler configured; remote reconciliation skipped", "integration_id", integration.ID.String(), "location_id", locationID)
+		return nil
+	}
+
+	d.logger.Info("INSTALL event: provider reconciliation started", "integration_id", integration.ID.String(), "location_id", locationID)
+	if err := d.reconciler.ReconcilePaymentProvider(ctx, locationID); err != nil {
+		// Surface the failure so the webhook is retried by the provider, and
+		// log enough state for a later explicit reconciliation. The error is
+		// classified by the reconciler (unauthorized vs absent vs transient)
+		// and never contains token or credential material.
+		d.logger.Info("INSTALL event: provider reconciliation failed; later reconciliation required", "integration_id", integration.ID.String(), "location_id", locationID, "error", err.Error())
+		return fmt.Errorf("reconcile payment provider for locationId %q: %w", locationID, err)
+	}
+
+	d.logger.Info("INSTALL event: provider reconciliation succeeded", "integration_id", integration.ID.String(), "location_id", locationID)
 	return nil
 }
 

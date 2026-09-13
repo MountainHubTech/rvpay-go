@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"testing"
 
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
@@ -246,6 +247,8 @@ func TestParseEvent_MalformedJSON(t *testing.T) {
 // testDispatcherIntegrationRepo is an in-memory IntegrationRepo for dispatcher tests.
 type testDispatcherIntegrationRepo struct {
 	integrations map[string]sqlc.Integration
+	// statusCalls records UpdateStatus invocations for reactivation tests.
+	statusCalls []sqlc.IntegrationStatus
 }
 
 func newTestDispatcherIntegrationRepo() *testDispatcherIntegrationRepo {
@@ -289,7 +292,14 @@ func (m *testDispatcherIntegrationRepo) ExistsByClientAndPlatform(ctx context.Co
 	return false, nil
 }
 func (m *testDispatcherIntegrationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.IntegrationStatus) (sqlc.Integration, error) {
-	return sqlc.Integration{}, nil
+	i, ok := m.integrations[id.String()]
+	if !ok {
+		return sqlc.Integration{}, repo.ErrNotFound
+	}
+	i.Status = status
+	m.integrations[id.String()] = i
+	m.statusCalls = append(m.statusCalls, status)
+	return i, nil
 }
 func (m *testDispatcherIntegrationRepo) UpdateLastSyncAt(ctx context.Context, id uuid.UUID, lastSyncAt pgtype.Timestamptz) (sqlc.Integration, error) {
 	return sqlc.Integration{}, nil
@@ -579,5 +589,184 @@ func TestDispatch_InstallMissingLocationID(t *testing.T) {
 	err := dispatcher.Dispatch(context.Background(), event)
 	if err == nil {
 		t.Fatal("Dispatch should fail when locationId is missing")
+	}
+}
+
+// --- INSTALL remote-provider reconciliation tests ---
+
+// stubReconciler records ReconcilePaymentProvider calls and can fail on
+// demand so dispatcher error surfacing is testable.
+type stubReconciler struct {
+	locations []string
+	passErr   error
+}
+
+func (r *stubReconciler) ReconcilePaymentProvider(ctx context.Context, locationID string) error {
+	r.locations = append(r.locations, locationID)
+	return r.passErr
+}
+
+// reconcileInstallEvent builds an INSTALL event for loc-123.
+func reconcileInstallEvent() *WebhookEvent {
+	return &WebhookEvent{
+		Provider:        "highlevel",
+		EventType:       "INSTALL",
+		ProviderEventID: "evt-reconcile",
+		LocationID:      "loc-123",
+	}
+}
+
+// TestDispatch_InstallExistingConfig_ReconcilesRemoteProvider: a local
+// payment_provider_configs row does NOT prove the remote provider exists
+// (GHL removes it on uninstall), so INSTALL must invoke the reconciler
+// instead of only logging "reusing".
+func TestDispatch_InstallExistingConfig_ReconcilesRemoteProvider(t *testing.T) {
+	integrationRepo := newTestDispatcherIntegrationRepo()
+	configRepo := newTestDispatcherConfigRepo()
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ExternalAccountID: "loc-123",
+		Status:            sqlc.IntegrationStatusACTIVE,
+	}
+	if _, err := configRepo.Create(context.Background(), integrationID, "RVPay", "", "", "loc-123", "", "", false, ""); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	dispatcher := NewHighLevelWebhookDispatcher(
+		&testDispatcherLogger{}, integrationRepo, configRepo,
+		ProviderConfigSettings{Name: "RVPay"},
+	)
+	reconciler := &stubReconciler{}
+	dispatcher.SetPaymentProviderReconciler(reconciler)
+
+	if err := dispatcher.Dispatch(context.Background(), reconcileInstallEvent()); err != nil {
+		t.Fatalf("Dispatch failed: %v", err)
+	}
+	if len(reconciler.locations) != 1 || reconciler.locations[0] != "loc-123" {
+		t.Fatalf("reconciler called with %v, want [loc-123]", reconciler.locations)
+	}
+}
+
+// TestDispatch_InstallReconciliationFailureSurfaces: a reconciliation
+// failure must be surfaced (so the webhook is retried by GHL) and must not
+// be swallowed into "already exists".
+func TestDispatch_InstallReconciliationFailureSurfaces(t *testing.T) {
+	integrationRepo := newTestDispatcherIntegrationRepo()
+	configRepo := newTestDispatcherConfigRepo()
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ExternalAccountID: "loc-123",
+		Status:            sqlc.IntegrationStatusACTIVE,
+	}
+	if _, err := configRepo.Create(context.Background(), integrationID, "RVPay", "", "", "loc-123", "", "", false, ""); err != nil {
+		t.Fatalf("seed config: %v", err)
+	}
+
+	dispatcher := NewHighLevelWebhookDispatcher(
+		&testDispatcherLogger{}, integrationRepo, configRepo,
+		ProviderConfigSettings{Name: "RVPay"},
+	)
+	dispatcher.SetPaymentProviderReconciler(&stubReconciler{passErr: ErrUnauthorized})
+
+	err := dispatcher.Dispatch(context.Background(), reconcileInstallEvent())
+	if err == nil {
+		t.Fatal("Dispatch should surface the reconciliation failure")
+	}
+	// The unauthorized classification must survive the wrap, so an
+	// unauthorized failure is never mislabeled as "already exists".
+	if !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("error should wrap the typed reconciler error: %v", err)
+	}
+}
+
+// TestDispatch_InstallReactivatesDeactivatedIntegration: after an uninstall
+// the integration may be deactivated; INSTALL reactivates it
+// non-destructively (no tokens/integrations/config rows deleted).
+func TestDispatch_InstallReactivatesDeactivatedIntegration(t *testing.T) {
+	integrationRepo := newTestDispatcherIntegrationRepo()
+	configRepo := newTestDispatcherConfigRepo()
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ExternalAccountID: "loc-123",
+		Status:            sqlc.IntegrationStatusREVOKED,
+	}
+
+	dispatcher := NewHighLevelWebhookDispatcher(
+		&testDispatcherLogger{}, integrationRepo, configRepo,
+		ProviderConfigSettings{Name: "RVPay"},
+	)
+	dispatcher.SetPaymentProviderReconciler(&stubReconciler{})
+
+	if err := dispatcher.Dispatch(context.Background(), reconcileInstallEvent()); err != nil {
+		t.Fatalf("Dispatch failed: %v", err)
+	}
+	got := integrationRepo.integrations[integrationID.String()].Status
+	if got != sqlc.IntegrationStatusACTIVE {
+		t.Fatalf("integration status = %s, want ACTIVE (reactivated on reinstall)", got)
+	}
+	if len(integrationRepo.statusCalls) != 1 || integrationRepo.statusCalls[0] != sqlc.IntegrationStatusACTIVE {
+		t.Fatalf("UpdateStatus calls = %v, want exactly one ACTIVE", integrationRepo.statusCalls)
+	}
+}
+
+// TestDispatch_InstallDuplicateEvents_Idempotent: duplicate INSTALL events
+// reuse the single config row, call the reconciler per event, and create no
+// duplicate local provider rows.
+func TestDispatch_InstallDuplicateEvents_Idempotent(t *testing.T) {
+	integrationRepo := newTestDispatcherIntegrationRepo()
+	configRepo := newTestDispatcherConfigRepo()
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ExternalAccountID: "loc-123",
+		Status:            sqlc.IntegrationStatusACTIVE,
+	}
+
+	dispatcher := NewHighLevelWebhookDispatcher(
+		&testDispatcherLogger{}, integrationRepo, configRepo,
+		ProviderConfigSettings{Name: "RVPay"},
+	)
+	reconciler := &stubReconciler{}
+	dispatcher.SetPaymentProviderReconciler(reconciler)
+
+	for i := 0; i < 2; i++ {
+		if err := dispatcher.Dispatch(context.Background(), reconcileInstallEvent()); err != nil {
+			t.Fatalf("duplicate INSTALL %d failed: %v", i+1, err)
+		}
+	}
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("config rows = %d, want 1 (no duplicate local rows)", len(configRepo.configs))
+	}
+	if len(reconciler.locations) != 2 {
+		t.Fatalf("reconciler calls = %d, want 2 (one per INSTALL event)", len(reconciler.locations))
+	}
+}
+
+// TestDispatch_InstallNilReconciler_PreservesOldBehavior: without a wired
+// reconciler the dispatcher keeps its historical behavior (config
+// created/reused, no reconciliation, no error).
+func TestDispatch_InstallNilReconciler_PreservesOldBehavior(t *testing.T) {
+	integrationRepo := newTestDispatcherIntegrationRepo()
+	configRepo := newTestDispatcherConfigRepo()
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ExternalAccountID: "loc-123",
+		Status:            sqlc.IntegrationStatusACTIVE,
+	}
+
+	dispatcher := NewHighLevelWebhookDispatcher(
+		&testDispatcherLogger{}, integrationRepo, configRepo,
+		ProviderConfigSettings{Name: "RVPay"},
+	)
+
+	if err := dispatcher.Dispatch(context.Background(), reconcileInstallEvent()); err != nil {
+		t.Fatalf("Dispatch failed: %v", err)
+	}
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("config rows = %d, want 1", len(configRepo.configs))
 	}
 }

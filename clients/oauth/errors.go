@@ -75,6 +75,16 @@ var (
 	// ErrUnsupportedGhlOrderStatus is returned when the synchronization status
 	// is not one of the two PawaPay-authoritative terminal results.
 	ErrUnsupportedGhlOrderStatus = status.Error(codes.InvalidArgument, "ghl order status must be completed or failed")
+	// ErrReconciliationUnauthorized is returned when provider reconciliation
+	// cannot proceed because the location OAuth token is unauthorized (401):
+	// invalid, expired beyond refresh, or missing the required scope. It is
+	// deliberately distinct from "provider already exists" so an
+	// authorization problem is never mislabeled as a remote state result.
+	ErrReconciliationUnauthorized = status.Error(codes.PermissionDenied, "provider reconciliation unauthorized")
+	// ErrReconciliationFailed is returned when provider reconciliation fails
+	// for a transient, malformed, or rejected remote response that is not a
+	// confirmed authorization problem. The failure is safe to retry.
+	ErrReconciliationFailed = status.Error(codes.Internal, "provider reconciliation failed")
 )
 
 // translateError converts repository errors to business errors.

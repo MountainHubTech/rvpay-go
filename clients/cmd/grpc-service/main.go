@@ -163,6 +163,13 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 			QueryURL:    cfg.HighLevel.QueryURL,
 		},
 	)
+	// The INSTALL webhook must reconcile the REMOTE GHL payment provider
+	// because a local payment_provider_configs row does not prove the remote
+	// association still exists (GHL removes it on uninstall). The reconciler
+	// is the OAuth service, which already owns the location token lifecycle
+	// and the RegisterProvider sequence; the webhook dispatcher performs no
+	// token lookup or provider registration itself.
+	webhookDispatcher.SetPaymentProviderReconciler(oauthService)
 	webhookService := webhooks.NewService(integrationRepo, clientRepo, webhookSubscriptionRepo, webhookEventRepo, platformRepo, paymentProviderConfigRepo, providerRegistry, webhookDispatcher, logger)
 	oauthHandler := clientshttp.NewOAuthHandler(oauthService, logger)
 	webhookHandler := clientshttp.NewWebhookHandler(webhookService, logger)
