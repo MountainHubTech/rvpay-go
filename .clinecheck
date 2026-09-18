@@ -1,5 +1,9 @@
 # RVPay Go — Stage Checkpoint
-## Stage: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
+## Stage: HighLevel Inbound Webhook Delivery — IMPLEMENTATION START (2026-09-18)
+- [ ] New task: agents/rvpay-highlevel-inbound-webhook-agent.md (env-secret delivery, supersedes ghl-workflow-workaround.md)
+- [x] Required reading done (`.project-context.md` at repo root DOES NOT EXIST — reported, not invented)
+- [ ] Outbox migration + sqlc + emission hook in PawaPay callback + ghldeliver worker + config + CFN
+## Prior: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
 - [x] Transactions page wired to GET /v1/public/transactions (fetchTransactions + table/pagination + subAccount id→name mapping)
 - [x] Settings Team Management wired to GET /v1/public/clients/users (ListUsers RPC; proto/sqlc/repo/service/protected route; fetchUsers + team table)
 - [x] Disputes page wired to GET /v1/public/transactions/disputes*,/stats (full stack: migration + proto/sqlc/repo/service/protected routes; fetchDisputes/fetchDisputeStats + stats/table)
