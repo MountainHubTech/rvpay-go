@@ -9,3 +9,19 @@
 - [x] Disputes page wired to GET /v1/public/transactions/disputes*,/stats (full stack: migration + proto/sqlc/repo/service/protected routes; fetchDisputes/fetchDisputeStats + stats/table)
 - [x] build/vet/test transactions+clients PASS; npm run build PASS (type-check clean, all 3 pages prerendered)
 ## Prior: Admin auth COMPLETE (2026-09-08); dashboard pages committed 576d8f5; module-path migration MountainHubTech COMPLETE.
+## Stage: HighLevel Inbound Webhook Delivery — IMPLEMENTED (2026-09-20)
+- [x] Stage complete: RVPay → HighLevel Inbound Webhook durable outbox delivery (rvpay.payment.completed)
+- [x] Outbox table + sqlc: `transactions/db/migrations/000007_payment_events.{up,down}.sql`, `transactions/db/query/payment_events.sql`, sqlc regenerated
+- [x] Repository: `transactions/db/repo/payment_event_repo.go` + mockgen regenerated
+- [x] Event contract: `transactions/ghldeliver/event.go` + test
+- [x] HTTP poster: `transactions/ghldeliver/client.go` + test (bounded timeout, URL-free errors, retry classification)
+- [x] Worker: `transactions/ghldeliver/worker.go` + test (atomic claim, bounded retry, permanent-failure stop, disabled-without-config safety)
+- [x] Emission hook: `transactions/payments/service.go` `enqueuePaymentCompletedEvent` in PawaPay COMPLETED callback transaction + tests
+- [x] Config: `transactions/config/model.go` `HighLevelInboundWebhookURL` field
+- [x] Wiring: `transactions/cmd/grpc-service/main.go` worker created + started
+- [x] Infra: `infra/cloudformation/components/third_party_secrets.yaml` (HighLevelInboundWebhookSecret), `infra/cloudformation/services/transactions.yaml` (secret injection), `transactions/.env.example` (placeholder)
+- [x] Validation: go build ./... PASS, go vet ./transactions/... PASS, go test ./transactions/... PASS, gofmt clean
+- [ ] Remaining: AWS deploy of third_party_secrets.yaml + transactions.yaml; set real webhook URL in AWS Secrets Manager; live GHL verification
+- [x] No hard-coded URL anywhere; CFN secret + ECS injection in place; worker disabled-without-config safety confirmed
+
+## Prior: Admin Dashboard New Pages — ALL WIRED (2026-09-10)

@@ -8,6 +8,7 @@ import (
 	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghldeliver"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
@@ -290,6 +291,22 @@ func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositID str
 		}
 	}
 
+	// Durable outbound event: a confirmed COMPLETED payment always produces
+	// exactly one "rvpay.payment.completed" outbox event, inserted in THIS
+	// same transaction so the event can never exist without the authoritative
+	// terminal state (and vice versa). FAILED/PROCESSING never emit. A
+	// failure to enqueue rolls the whole transaction back, so PawaPay's
+	// retry re-runs the finalization; the unique deposit_id outbox constraint
+	// plus the terminal-state guard make duplicate callbacks a no-op. The
+	// external HighLevel delivery happens strictly after commit, in the
+	// ghldeliver worker — HighLevel availability never affects the payment.
+	if target == sqlc.DepositStatusCOMPLETED {
+		if err := s.enqueuePaymentCompletedEvent(ctx, txQuerier, depositUUID); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not enqueue payment completed event")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not commit deposit finalization transaction")
 		return nil, status.Error(codes.Internal, "could not process callback")
@@ -303,6 +320,88 @@ func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositID str
 		Msg("PawaPay deposit callback processed")
 
 	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+}
+
+// enqueuePaymentCompletedEvent persists the durable
+// "rvpay.payment.completed" outbox event for a just-finalized COMPLETED
+// deposit. It runs inside the callback transaction (after the terminal
+// transition and the PawaPay reference recording) and reads the deposit in
+// its authoritative post-finalization state.
+//
+// The event payload is built exclusively from persisted data: the deposit row
+// plus the customer row scoped by the same (client_name, phone) pair used at
+// deposit creation. The event id is generated once here and stored with the
+// payload, so every later delivery retry reuses the identical identity.
+//
+// The insert is idempotent (unique deposit_id): a concurrent duplicate
+// callback that somehow reaches this point is a silent no-op.
+func (s *Impl) enqueuePaymentCompletedEvent(ctx context.Context, q sqlc.Querier, depositID uuid.UUID) error {
+	if s.transactionsRepo == nil {
+		// Configuration guard: without the transaction repository the event
+		// cannot be made durable. This is logged and surfaced; the payment
+		// state itself is unaffected (the finalize already happened and will
+		// be retried through PawaPay's callback retry).
+		return errors.New("transaction repository is not configured; payment completed event cannot be enqueued")
+	}
+
+	txDepositRepo := repo.NewDepositRepo(q)
+	deposit, err := txDepositRepo.GetByID(ctx, depositID)
+	if err != nil {
+		return err
+	}
+	if deposit.Status != sqlc.DepositStatusCOMPLETED {
+		// Defensive: never emit for a non-terminal or non-successful state.
+		return nil
+	}
+
+	var customer *sqlc.Customer
+	txCustomerRepo := repo.NewCustomerRepo(q)
+	c, err := txCustomerRepo.GetByClientNameAndPhone(ctx, deposit.ClientName, deposit.PayerPhoneNumber)
+	switch {
+	case err == nil:
+		customer = &c
+	case errors.Is(err, repo.ErrNotFound):
+		// The customer row is optional at deposit creation.
+	default:
+		return err
+	}
+
+	// One stable event id: embedded in the payload AND stored on the outbox
+	// row, so every delivery retry reuses the identical event id everywhere.
+	eventID := uuid.New().String()
+	_, payload, err := ghldeliver.BuildPaymentCompletedEvent(deposit, customer, eventID)
+	if err != nil {
+		return err
+	}
+
+	outboxRepo := repo.NewPaymentEventRepo(q)
+	if _, err := outboxRepo.Enqueue(
+		ctx,
+		deposit.ID,
+		eventUUID(eventID),
+		ghldeliver.EventType,
+		deposit.IdempotencyKey.String(),
+		payload,
+	); err != nil {
+		return err
+	}
+
+	s.logger.Info().
+		Str("deposit_id", deposit.ID.String()).
+		Str("event", ghldeliver.EventType).
+		Msg("payment completed event enqueued")
+	return nil
+}
+
+// eventUUID parses a generated event-id string; the ids are always produced
+// by uuid.New(), so the parse cannot fail in practice and a malformed value
+// is treated as a failed enqueue (transaction rollback, PawaPay retry).
+func eventUUID(eventID string) uuid.UUID {
+	parsed, err := uuid.Parse(eventID)
+	if err != nil {
+		return uuid.UUID{}
+	}
+	return parsed
 }
 
 // ProcessPaymentWebhook processes a payment-provider webhook event. It
@@ -367,7 +466,6 @@ func (s *Impl) ProcessPaymentWebhook(ctx context.Context, req *transactionsgrpc.
 
 	return &transactionsgrpc.ProcessPaymentWebhookResponse{}, nil
 }
-
 
 func (s *Impl) ProcessRefundCallback(ctx context.Context, req *transactionsgrpc.ProcessRefundCallbackRequest) (*transactionsgrpc.ProcessRefundCallbackResponse, error) {
 	panic("not implemented: ProcessRefundCallback")

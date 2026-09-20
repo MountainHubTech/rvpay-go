@@ -55,6 +55,10 @@ Parameters:
     Type: String
     Description: ARN of the PawaPay Secrets Manager secret.
 
+  HighLevelInboundWebhookSecretArn:
+    Type: String
+    Description: ARN of the HighLevel inbound workflow webhook URL secret.
+
   ClientsGrpcAddr:
     Type: String
 
@@ -142,6 +146,9 @@ Resources:
             - Name: PAWAPAY_API_KEY
               ValueFrom: !Sub "${PawapaySecretArn}:PAWAPAY_API_KEY::"
 
+            - Name: HIGHLEVEL_INBOUND_WEBHOOK_URL
+              ValueFrom: !Sub "${HighLevelInboundWebhookSecretArn}:HIGHLEVEL_INBOUND_WEBHOOK_URL::"
+
   AppDatabase:
     Type: Custom::PgDatabase
     Properties:
@@ -181,7 +188,8 @@ Resources:
                 Resource:
                   - !Ref AppDatabaseSecret
                   - !Ref DbAdminSecretArn
-                  - !Ref PawapaySecretArn            
+                  - !Ref PawapaySecretArn
+                  - !Ref HighLevelInboundWebhookSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role

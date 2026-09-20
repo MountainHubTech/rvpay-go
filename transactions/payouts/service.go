@@ -202,7 +202,6 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 	}
 }
 
-
 // GetPayoutOverviewStats returns the payout metrics rendered on the Admin
 // Dashboard payouts page. Values come from the payout table; no metrics are
 // fabricated.
@@ -335,8 +334,6 @@ func (s *Impl) GetPayoutOverviewStats(ctx context.Context, _ *transactionsgrpc.G
 
 	return &transactionsgrpc.GetPayoutOverviewStatsResponse{Stats: stats}, nil
 }
-
-
 
 // ListPayouts returns a paginated, searchable, status-filtered list of payouts
 // for the Admin Dashboard payouts page.
@@ -527,7 +524,6 @@ func formatMoney(amount pgtype.Numeric, currency string) string {
 		return fmt.Sprintf("%s %s", currency, strconv.FormatFloat(f.Float64, 'f', 2, 64))
 	}
 }
-
 
 // sqlcPaymentProviderToPawapay maps a persisted payment provider to the
 // string value expected by the PawaPay V2 API.

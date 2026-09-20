@@ -314,7 +314,7 @@ func (r *depositRepo) MarkGhlSyncSuccess(ctx context.Context, id uuid.UUID) (sql
 // MarkGhlSyncRetry re-queues a failed GHL update for its single retry.
 func (r *depositRepo) MarkGhlSyncRetry(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error) {
 	deposit, err := r.q.RecordGhlSyncRetry(ctx, sqlc.RecordGhlSyncRetryParams{
-		ID:             id,
+		ID:               id,
 		GhlSyncLastError: textRef(lastError),
 	})
 	if err != nil {
@@ -327,7 +327,7 @@ func (r *depositRepo) MarkGhlSyncRetry(ctx context.Context, id uuid.UUID, lastEr
 // attempts without altering the authoritative PawaPay terminal deposit status.
 func (r *depositRepo) MarkGhlSyncFailure(ctx context.Context, id uuid.UUID, lastError string) (sqlc.Deposit, error) {
 	deposit, err := r.q.RecordGhlSyncFailure(ctx, sqlc.RecordGhlSyncFailureParams{
-		ID:             id,
+		ID:               id,
 		GhlSyncLastError: textRef(lastError),
 	})
 	if err != nil {

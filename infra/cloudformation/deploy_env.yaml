@@ -232,6 +232,7 @@ Resources:
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
         LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         PawapaySecretArn: !GetAtt ThirdPartySecretsStack.Outputs.PawapaySecretArn
+        HighLevelInboundWebhookSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelInboundWebhookSecretArn
         ClientsGrpcAddr: "clients:80"
         DomainName: !Ref DomainName
       TemplateURL: !Sub

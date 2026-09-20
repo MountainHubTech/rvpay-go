@@ -44,6 +44,21 @@ func (m *MockQuerier) EXPECT() *MockQuerierMockRecorder {
 	return m.recorder
 }
 
+// ClaimDuePaymentEvents mocks base method.
+func (m *MockQuerier) ClaimDuePaymentEvents(ctx context.Context, arg sqlc.ClaimDuePaymentEventsParams) ([]sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClaimDuePaymentEvents", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ClaimDuePaymentEvents indicates an expected call of ClaimDuePaymentEvents.
+func (mr *MockQuerierMockRecorder) ClaimDuePaymentEvents(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClaimDuePaymentEvents", reflect.TypeOf((*MockQuerier)(nil).ClaimDuePaymentEvents), ctx, arg)
+}
+
 // ClaimPendingGhlSync mocks base method.
 func (m *MockQuerier) ClaimPendingGhlSync(ctx context.Context) ([]sqlc.Deposit, error) {
 	m.ctrl.T.Helper()
@@ -419,6 +434,21 @@ func (mr *MockQuerierMockRecorder) GetMerchantBySlug(ctx, slug any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMerchantBySlug", reflect.TypeOf((*MockQuerier)(nil).GetMerchantBySlug), ctx, slug)
 }
 
+// GetPaymentEventByDepositID mocks base method.
+func (m *MockQuerier) GetPaymentEventByDepositID(ctx context.Context, depositID uuid.UUID) (sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetPaymentEventByDepositID", ctx, depositID)
+	ret0, _ := ret[0].(sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetPaymentEventByDepositID indicates an expected call of GetPaymentEventByDepositID.
+func (mr *MockQuerierMockRecorder) GetPaymentEventByDepositID(ctx, depositID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPaymentEventByDepositID", reflect.TypeOf((*MockQuerier)(nil).GetPaymentEventByDepositID), ctx, depositID)
+}
+
 // GetPayoutByExternalReference mocks base method.
 func (m *MockQuerier) GetPayoutByExternalReference(ctx context.Context, externalReference *string) (sqlc.Payout, error) {
 	m.ctrl.T.Helper()
@@ -477,6 +507,21 @@ func (m *MockQuerier) InsertDispute(ctx context.Context, arg sqlc.InsertDisputeP
 func (mr *MockQuerierMockRecorder) InsertDispute(ctx, arg any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertDispute", reflect.TypeOf((*MockQuerier)(nil).InsertDispute), ctx, arg)
+}
+
+// InsertPaymentEvent mocks base method.
+func (m *MockQuerier) InsertPaymentEvent(ctx context.Context, arg sqlc.InsertPaymentEventParams) (sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "InsertPaymentEvent", ctx, arg)
+	ret0, _ := ret[0].(sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// InsertPaymentEvent indicates an expected call of InsertPaymentEvent.
+func (mr *MockQuerierMockRecorder) InsertPaymentEvent(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InsertPaymentEvent", reflect.TypeOf((*MockQuerier)(nil).InsertPaymentEvent), ctx, arg)
 }
 
 // ListCustomersByClientName mocks base method.
@@ -732,6 +777,51 @@ func (m *MockQuerier) RecordGhlSyncSuccess(ctx context.Context, id uuid.UUID) (s
 func (mr *MockQuerierMockRecorder) RecordGhlSyncSuccess(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordGhlSyncSuccess", reflect.TypeOf((*MockQuerier)(nil).RecordGhlSyncSuccess), ctx, id)
+}
+
+// RecordPaymentEventFailure mocks base method.
+func (m *MockQuerier) RecordPaymentEventFailure(ctx context.Context, arg sqlc.RecordPaymentEventFailureParams) (sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPaymentEventFailure", ctx, arg)
+	ret0, _ := ret[0].(sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RecordPaymentEventFailure indicates an expected call of RecordPaymentEventFailure.
+func (mr *MockQuerierMockRecorder) RecordPaymentEventFailure(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPaymentEventFailure", reflect.TypeOf((*MockQuerier)(nil).RecordPaymentEventFailure), ctx, arg)
+}
+
+// RecordPaymentEventRetry mocks base method.
+func (m *MockQuerier) RecordPaymentEventRetry(ctx context.Context, arg sqlc.RecordPaymentEventRetryParams) (sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPaymentEventRetry", ctx, arg)
+	ret0, _ := ret[0].(sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RecordPaymentEventRetry indicates an expected call of RecordPaymentEventRetry.
+func (mr *MockQuerierMockRecorder) RecordPaymentEventRetry(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPaymentEventRetry", reflect.TypeOf((*MockQuerier)(nil).RecordPaymentEventRetry), ctx, arg)
+}
+
+// RecordPaymentEventSuccess mocks base method.
+func (m *MockQuerier) RecordPaymentEventSuccess(ctx context.Context, id uuid.UUID) (sqlc.PaymentEvent, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RecordPaymentEventSuccess", ctx, id)
+	ret0, _ := ret[0].(sqlc.PaymentEvent)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RecordPaymentEventSuccess indicates an expected call of RecordPaymentEventSuccess.
+func (mr *MockQuerierMockRecorder) RecordPaymentEventSuccess(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RecordPaymentEventSuccess", reflect.TypeOf((*MockQuerier)(nil).RecordPaymentEventSuccess), ctx, id)
 }
 
 // RevenueOverTimeInWindow mocks base method.

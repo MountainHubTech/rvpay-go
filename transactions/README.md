@@ -318,3 +318,51 @@ payout, or gRPC behavior was changed.
 ### Tests
 - `config/model_test.go` updated so the defaults test expects the new `info`
   log level (`TestLoadConfigDefaultsApplied`).
+### HighLevel Inbound Webhook Delivery (`ghldeliver`)
+
+Status: IMPLEMENTED (2026-09-20). Durable RVPay → HighLevel Inbound Webhook outbound delivery via an outbox-backed `rvpay.payment.completed` event emitted inside the PawaPay COMPLETED callback transaction, delivered asynchronously by a bounded-retry worker to a Secret Manager-injected `HIGHLEVEL_INBOUND_WEBHOOK_URL`.
+
+- Flow: RVPay POST JSON → HighLevel Inbound Webhook → Create/Update Contact → If/Else (rvpay.payment.completed) → If/Else (status==paid) → If/Else (payment already processed?) → Update Contact → Add "RVPay Payment Completed" → Send confirmation → Send SMS. The GHL workflow is manually configured; RVPay implements only its side (emit event for confirmed payment).
+- Secret (`HIGHLEVEL_INBOUND_WEBHOOK_URL`): loaded from env with empty default; ignored if missing or non-HTTPS (worker runs disabled without config, payments unaffected, delivery resumes after restart with correct config). In production delivered through AWS Secrets Manager via existing ECS task-definition secret-injection architecture. Never hard-coded, never in DB, never in source-controlled files (only empty placeholder in `.env.example`).
+- Event emission: PawaPay COMPLETED callback → `ProcessDepositCallback` → `applyPawaPayCallbackTransition` → `enqueuePaymentCompletedEvent` runs inside the same DB transaction that commits terminal COMPLETED state + GHL sync pending status. Insert is idempotent (unique `deposit_id`); duplicate callback loses race or is no-op.
+- Event contract: `transactions/ghldeliver/event.go` `BuildPaymentCompletedEvent`. Exact agreed JSON field names/structure. Authoritative sourcing per field: payment.id, providerTransactionId (threaded from PawaPay callback via `SetExternalReference`→`external_reference`), amount/paidAmount (deposit amount in minor units), currency, status=paid, customer.id/name/email/phone, order.id/status/orderNumber, location.id/name (parsed from `highlevel-<locationId>` client name convention; non-conforming → empty, never fabricated), products[].name/categories/name, now timestamp, idempotencyKey=event id, eventId (UUID), webhookEventId. `customerEmail` and `productName` confirmed not persisted in RVPay → emitted as "" with in-code comment + test asserting they remain empty.
+- Outbox/worker: `transactions/ghldeliver/` package. Worker polls `payment_events` (delivery_status='pending'), claims due rows atomically (FOR UPDATE SKIP LOCKED), POSTs immutable payload snapshot to configured URL. Marks delivered only after 2xx. HighLevel availability never determines payment success (async after-the-fact; callback does not wait).
+- Retry behavior (bounded): transient (timeout/network/HTTP 5xx/408/429) with attempts<MaxDeliveryAttempts(5) → re-queue 'pending' with backoff 1m/5m/15m/60m; attempts exhausted → 'failed'; permanent HTTP 4xx → 'failed' immediately (no infinite retry for misconfiguration). Retries reuse identical eventId/idempotencyKey/payload bytes from outbox row.
+- Idempotency: duplicate provider callbacks don't duplicate logical event (unique deposit_id). Delivery retries reuse same event ID, idempotency key, and payload.
+- Secrets/logging: configured webhook URL never logged. HTTP poster strips url.Error messages (contain URL) from transport errors; worker logs config VARIABLE NAME ("HIGHLEVEL_INBOUND_WEBHOOK_URL") on validation failure, never its value.
+- Tests: `transactions/ghldeliver/event_test.go`, `transactions/ghldeliver/client_test.go`, `transactions/ghldeliver/worker_test.go`, `transactions/payments/payment_event_test.go`, `transactions/payments/callback_test.go` (updated COMPLETED test expectations to include event enqueue).
+
+#### Files created
+- `transactions/db/migrations/000007_payment_events.{up,down}.sql` — payment_events outbox table
+- `transactions/db/query/payment_events.sql` — 6 sqlc queries (Insert/Claim/RecordSuccess/Retry/Failure/GetByDepositID)
+- `transactions/db/repo/payment_event_repo.go` — PaymentEventRepo interface + implementation
+- `transactions/ghldeliver/event.go` — PaymentCompletedEvent, BuildPaymentCompletedEvent, field sourcing, guards
+- `transactions/ghldeliver/client.go` — HTTPPoster, Poster interface, DeliveryError classification, ValidateInboundWebhookURL
+- `transactions/ghldeliver/worker.go` — Worker, Run/RunOnce, claim/deliver/backoff, disabled-without-config safety
+- `transactions/ghldeliver/{event,client,worker}_test.go` — full test suite
+- `transactions/payments/payment_event_test.go` — enqueue idempotent/rollback/provider_transaction_id tests
+- `infra/cloudformation/components/third_party_secrets.yaml` — HighLevelInboundWebhookSecret resource + output
+
+#### Files modified
+- `transactions/db/sqlc/{payment_events.sql.go,models.go,querier.go}` — sqlc generated code (REGENERATED)
+- `transactions/db/repo/mocks/repo.go` — mock PaymentEventRepo (REGENERATED)
+- `transactions/payments/service.go` — `enqueuePaymentCompletedEvent` method + call site; imports ghldeliver
+- `transactions/payments/callback_test.go` — updated COMPLETED callback test expectations to include event enqueue
+- `transactions/config/model.go` — `HighLevelInboundWebhookURL` config field (env:HIGHLEVEL_INBOUND_WEBHOOK_URL, optional, empty default)
+- `transactions/.env.example` — `HIGHLEVEL_INBOUND_WEBHOOK_URL=` placeholder + comment
+- `transactions/cmd/grpc-service/main.go` — ghldeliver worker constructed from config + started in startup goroutine
+- `infra/cloudformation/services/transactions.yaml` — `HighLevelInboundWebhookSecretArn` param + secret injection in TaskDefinition Secrets
+
+#### Validation
+- `go build ./...` — PASS
+- `go vet ./transactions/...` — PASS
+- `go test ./transactions/...` — PASS (all new + existing tests)
+- `gofmt -l transactions/ transactions/db/` — clean
+- No hard-coded URL anywhere; CFN secret + ECS injection in place; worker disabled-without-config safety confirmed by tests
+
+#### Remaining manual steps
+- AWS deploy `third_party_secrets.yaml` to create secret `/<EnvId>/highlevel_inbound_webhook`
+- Set real HighLevel Inbound Webhook URL value in AWS Secrets Manager (replace placeholder)
+- Deploy `transactions.yaml` so ECS task receives secret injection
+- Confirm task role has `secretsmanager:GetSecretValue` for the highlevel_inbound_webhook secret ARN
+- Live GHL verification of full RVPay → Inbound Webhook → workflow path

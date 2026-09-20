@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
-	repoMocks "github.com/MountainHubTech/rvpay-go/transactions/db/repo/mocks"
-	sqlcMocks "github.com/MountainHubTech/rvpay-go/transactions/db/sqlc/mocks"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
+	repoMocks "github.com/MountainHubTech/rvpay-go/transactions/db/repo/mocks"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
+	sqlcMocks "github.com/MountainHubTech/rvpay-go/transactions/db/sqlc/mocks"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/rs/zerolog"
@@ -77,11 +77,16 @@ func TestProcessDepositCallbackCompleted(t *testing.T) {
 	transactionsRepo.EXPECT().Begin(gomock.Any()).Return(txQuerier, tx, nil)
 	// When ProviderTransactionId is empty, SetExternalReference is NOT called
 	txQuerier.EXPECT().FinalizeDepositAndQueueGhlSync(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: depositID, Status: sqlc.DepositStatusCOMPLETED}, nil)
+	// The payment-completed event enqueue re-reads the finalized deposit and
+	// inserts the durable outbox row.
+	txQuerier.EXPECT().GetDepositByID(gomock.Any(), depositID).Return(completedDeposit(depositID), nil)
+	txQuerier.EXPECT().GetCustomerByClientNameAndPhone(gomock.Any(), gomock.Any()).Return(sqlc.Customer{}, repo.ErrNotFound)
+	txQuerier.EXPECT().InsertPaymentEvent(gomock.Any(), gomock.Any()).Return(sqlc.PaymentEvent{DepositID: depositID}, nil)
 	tx.CommitReturns(nil)
 
 	service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 	if _, err := service.ProcessDepositCallback(context.Background(), callbackRequest(depositID.String(), "COMPLETED")); err != nil {
-		t.Fatalf("ProcessDepositCallback failed: %v", err)
+		t.Fatalf("ProcessDepositCallback failed: %v; transactionsRepo in service: %T", err, service.transactionsRepo)
 	}
 }
 

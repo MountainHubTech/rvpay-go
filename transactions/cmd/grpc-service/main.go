@@ -14,14 +14,15 @@ import (
 
 	"github.com/I-Frostbyte/pawapay_client"
 	"github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
-	"github.com/MountainHubTech/rvpay-go/transactions/auth"
 	commondatabase "github.com/MountainHubTech/rvpay-go/shared/database"
 	commonlogger "github.com/MountainHubTech/rvpay-go/shared/logger"
 	commonobservability "github.com/MountainHubTech/rvpay-go/shared/observability"
+	"github.com/MountainHubTech/rvpay-go/transactions/auth"
 	"github.com/MountainHubTech/rvpay-go/transactions/config"
 	"github.com/MountainHubTech/rvpay-go/transactions/customers"
 	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
 	"github.com/MountainHubTech/rvpay-go/transactions/deposits"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghldeliver"
 	"github.com/MountainHubTech/rvpay-go/transactions/ghlsync"
 	health_check "github.com/MountainHubTech/rvpay-go/transactions/health"
 	"github.com/MountainHubTech/rvpay-go/transactions/merchants"
@@ -124,6 +125,18 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// the Clients PaymentSyncService after the deposit transaction commits.
 	// It runs alongside the servers and shuts down cooperatively with them.
 	ghlSyncWorker := ghlsync.NewWorker(depositRepo, config.ClientsGrpcAddr, logger, ghlsync.DefaultPollInterval)
+	// The HighLevel inbound-webhook delivery worker claims
+	// rvpay.payment.completed events from the payment_events outbox and POSTs
+	// them to HIGHLEVEL_INBOUND_WEBHOOK_URL. A missing or invalid URL runs
+	// the worker safely disabled (the variable NAME is logged, never the
+	// value); successful payments are never affected by HighLevel
+	// availability. paymentEventRepo is registered with the same pool as the
+	// other repositories.
+	paymentEventRepo := repo.NewPaymentEventRepo(queries)
+	hlDeliverWorker, err := ghldeliver.NewWorker(paymentEventRepo, transactionsRepo, config.HighLevelInboundWebhookURL, logger, ghldeliver.DefaultPollInterval)
+	if err != nil {
+		return fmt.Errorf("create highlevel webhook delivery worker: %w", err)
+	}
 
 	svrOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
@@ -224,12 +237,12 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	// The HTTP server listens on a separate port from the gRPC 
-	// server. The gRPC server is used for internal communication 
-	// between services, while the HTTP server is used for 
-	// external communication with clients (e.g., web browsers). 
-	// For now, HTTP server has the same port as the clients 
-	// service because of the TargetGroup. Whenever you're 
+	// The HTTP server listens on a separate port from the gRPC
+	// server. The gRPC server is used for internal communication
+	// between services, while the HTTP server is used for
+	// external communication with clients (e.g., web browsers).
+	// For now, HTTP server has the same port as the clients
+	// service because of the TargetGroup. Whenever you're
 	// testing locally, you can change it to 8081
 	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
@@ -257,7 +270,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		})
 	}
 	wg := &sync.WaitGroup{}
-	wg.Add(3)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		err := grpcServer.Serve(listener)
@@ -277,6 +290,11 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	go func() {
 		defer wg.Done()
 		ghlSyncWorker.Run(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		hlDeliverWorker.Run(ctx)
 	}()
 
 	go func() {

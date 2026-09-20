@@ -37,7 +37,7 @@ func TestVerifyPaymentValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			depositRepo := mocks.NewMockDepositRepo(ctrl)
-	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+			transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
 			service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 			_, err := service.VerifyPayment(context.Background(), tt.req)
@@ -267,7 +267,7 @@ func TestProcessPaymentWebhookValidation(t *testing.T) {
 			defer ctrl.Finish()
 
 			depositRepo := mocks.NewMockDepositRepo(ctrl)
-	transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
+			transactionsRepo := mocks.NewMockTransactionsRepo(ctrl)
 			service := NewPaymentService(depositRepo, transactionsRepo, zerolog.Nop())
 
 			_, err := service.ProcessPaymentWebhook(context.Background(), tt.req)

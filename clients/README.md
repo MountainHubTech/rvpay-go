@@ -382,3 +382,29 @@ registration sequence (`POST /payments/custom-provider/provider` ->
 `GET /payments/custom-provider/connect` verification ->
 `POST /payments/custom-provider/connect` with live/test keys); a failure is
 logged and retried on the next registration without blocking the install.
+
+## RVPay → HighLevel Inbound Webhook Delivery (2026-09-20)
+
+Status: IMPLEMENTED (transactions-side only; clients service not involved).
+
+The RVPay Transactions service now emits a durable `rvpay.payment.completed` event for confirmed successful payments, delivered asynchronously to a HighLevel Inbound Webhook URL through an outbox-backed worker (`transactions/ghldeliver/`).
+
+- The HighLevel Inbound Webhook workflow was already manually configured by the developer; RVPay implements only its side (emit event for confirmed payment).
+- The webhook URL (`HIGHLEVEL_INBOUND_WEBHOOK_URL`) is loaded from environment configuration with an empty default, and in production is delivered through AWS Secrets Manager using the existing ECS task-definition secret-injection architecture. It is never hard-coded, never stored in the database, and never present in source-controlled files (only an empty placeholder in `transactions/.env.example`).
+- Event emission happens inside the PawaPay COMPLETED callback transaction (`transactions/payments/service.go` `enqueuePaymentCompletedEvent`), after the terminal COMPLETED state and GHL sync pending status are committed. The insert is idempotent (unique `deposit_id`).
+- The event uses the exact agreed JSON field names and structure, with authoritative sourcing per field (payment, order, customer, location, products, PawaPay provider transaction ID, etc.). `customerEmail` and `productName` are confirmed not persisted in RVPay and are emitted as empty strings.
+- The worker delivers the event asynchronously with bounded retries (transient: 1m/5m/15m/60m backoff, max 5 attempts; permanent 4xx: fail immediately). HighLevel availability never determines whether RVPay considers the payment successful.
+- Delivery retries reuse the same event ID, idempotency key, and payload bytes.
+- The configured webhook URL is never logged; error messages are URL-free.
+- When the URL is missing or not a valid HTTPS URL, the worker runs disabled — logs the config variable name only, leaves events pending, payments unaffected.
+
+Files created (transactions-side): `transactions/db/migrations/000007_payment_events.{up,down}.sql`, `transactions/db/query/payment_events.sql`, `transactions/db/repo/payment_event_repo.go`, `transactions/ghldeliver/{event,client,worker}.go`, `transactions/ghldeliver/{event,client,worker}_test.go`, `transactions/payments/payment_event_test.go`, `infra/cloudformation/components/third_party_secrets.yaml`.
+
+Files modified (transactions-side): `transactions/db/sqlc/{payment_events.sql.go,models.go,querier.go}`, `transactions/db/repo/mocks/repo.go`, `transactions/payments/service.go`, `transactions/payments/callback_test.go`, `transactions/config/model.go`, `transactions/.env.example`, `transactions/cmd/grpc-service/main.go`, `infra/cloudformation/services/transactions.yaml`.
+
+No clients-side files changed. No proto, no migration outside 000007, no deposits/payouts behavior change.
+
+Tests (all PASS): `transactions/ghldeliver/{event,client,worker}_test.go`, `transactions/payments/{callback_test,payment_event_test}.go`.
+
+Remaining manual steps: AWS deploy `third_party_secrets.yaml` + `transactions.yaml`; set real webhook URL in AWS Secrets Manager; live GHL verification. See `transactions/.service-checkpoint.md` for full detail.
+

@@ -20,6 +20,15 @@ type Config struct {
 	APIURL string `conf:"env:PAWAPAY_API_URL"`
 	APIKey string `conf:"env:PAWAPAY_API_KEY"`
 
+	// HighLevelInboundWebhookURL is the HighLevel Inbound Webhook workflow
+	// URL (HIGHLEVEL_INBOUND_WEBHOOK_URL). It is environment-level secret
+	// configuration supplied by AWS Secrets Manager through the ECS task
+	// definition; it is never stored in the database, never hard-coded and
+	// never logged. It is optional: when missing or not a valid HTTPS URL the
+	// ghldeliver worker runs safely disabled (events stay queued) and a
+	// successful payment is never affected.
+	HighLevelInboundWebhookURL string `conf:"env:HIGHLEVEL_INBOUND_WEBHOOK_URL"`
+
 	// CORSAllowedOrigins is the comma-separated allowlist of browser origins
 	// permitted to call the HTTP gateway cross-origin. The defaults are the
 	// RVPay admin dashboard (which loads the payment checkout in an iframe
