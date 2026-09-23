@@ -299,6 +299,36 @@ func (mr *MockQuerierMockRecorder) GetCustomerByID(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCustomerByID", reflect.TypeOf((*MockQuerier)(nil).GetCustomerByID), ctx, id)
 }
 
+// GetCustomerNameByID mocks base method.
+func (m *MockQuerier) GetCustomerNameByID(ctx context.Context, id uuid.UUID) (sqlc.GetCustomerNameByIDRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCustomerNameByID", ctx, id)
+	ret0, _ := ret[0].(sqlc.GetCustomerNameByIDRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCustomerNameByID indicates an expected call of GetCustomerNameByID.
+func (mr *MockQuerierMockRecorder) GetCustomerNameByID(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCustomerNameByID", reflect.TypeOf((*MockQuerier)(nil).GetCustomerNameByID), ctx, id)
+}
+
+// GetCustomerNamesByID mocks base method.
+func (m *MockQuerier) GetCustomerNamesByID(ctx context.Context, dollar_1 []uuid.UUID) ([]sqlc.GetCustomerNamesByIDRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCustomerNamesByID", ctx, dollar_1)
+	ret0, _ := ret[0].([]sqlc.GetCustomerNamesByIDRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetCustomerNamesByID indicates an expected call of GetCustomerNamesByID.
+func (mr *MockQuerierMockRecorder) GetCustomerNamesByID(ctx, dollar_1 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCustomerNamesByID", reflect.TypeOf((*MockQuerier)(nil).GetCustomerNamesByID), ctx, dollar_1)
+}
+
 // GetDepositByExternalReference mocks base method.
 func (m *MockQuerier) GetDepositByExternalReference(ctx context.Context, externalReference *string) (sqlc.Deposit, error) {
 	m.ctrl.T.Helper()

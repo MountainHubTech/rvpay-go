@@ -197,11 +197,12 @@ type AccessToken struct {
 }
 
 type Client struct {
-	ID         uuid.UUID    `json:"id"`
-	ClientName string       `json:"client_name"`
-	Status     ClientStatus `json:"status"`
-	CreatedAt  time.Time    `json:"created_at"`
-	UpdatedAt  time.Time    `json:"updated_at"`
+	ID          uuid.UUID    `json:"id"`
+	ClientName  string       `json:"client_name"`
+	Status      ClientStatus `json:"status"`
+	CreatedAt   time.Time    `json:"created_at"`
+	UpdatedAt   time.Time    `json:"updated_at"`
+	DisplayName string       `json:"display_name"`
 }
 
 type Integration struct {

@@ -809,6 +809,12 @@ message TransactionListRow {
   string gateway = 8;
   // date is the human-readable initiation time.
   string date = 9;
+  // customer_name is the authoritative customer display name persisted in the
+  // RVPay customers table (the name supplied by the HighLevel payment context
+  // at initiation). It is empty when no authoritative name is known, in which
+  // case the dashboard falls back to `customer` (the identifier). The internal
+  // `customer` identifier is always still populated for correlation.
+  string customer_name = 10;
 }
 
 // ListTransactionsResponse carries a page of transactions (deposits).

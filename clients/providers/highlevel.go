@@ -15,6 +15,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// highLevelOAuthScopes is the single source-controlled definition of the
+// HighLevel OAuth scopes RVPay requests during the Marketplace install /
+// reauthorization flow. `locations.readonly` is required by the authoritative
+// location GET (GET /locations/{locationId}) that resolves the sub-account
+// display name; it is the only scope added by the account/customer name
+// correction work. Existing installations keep working, but a location token
+// granted BEFORE this scope was requested must be reauthorized (reinstalled)
+// for the location GET to succeed — the backfill reports such locations
+// instead of fabricating a name.
+var highLevelOAuthScopes = []string{"read", "write", "locations.readonly"}
+
 // HighLevelProvider implements the unified Provider interface for HighLevel.
 type HighLevelProvider struct {
 	clientID         string
@@ -48,7 +59,7 @@ func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey 
 		authURL:          "https://marketplace.gohighlevel.com/oauth/chooselocation",
 		tokenURL:         "https://services.leadconnectorhq.com/oauth/token",
 		userInfoURL:      "https://services.leadconnectorhq.com/oauth/userinfo",
-		scopes:           []string{"read", "write"},
+		scopes:           highLevelOAuthScopes,
 		// A single shared client is reused across all provider calls so HTTP
 		// connections are pooled and reused rather than recreated per request.
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
@@ -70,7 +81,7 @@ func NewHighLevelProviderWithURLs(clientID, clientSecret, redirectURI, webhookPu
 		authURL:          authURL,
 		tokenURL:         tokenURL,
 		userInfoURL:      userInfoURL,
-		scopes:           []string{"read", "write"},
+		scopes:           highLevelOAuthScopes,
 		httpClient:       &http.Client{Timeout: 10 * time.Second},
 		paymentProvider:  paymentProvider,
 	}

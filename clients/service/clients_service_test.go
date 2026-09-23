@@ -61,6 +61,25 @@ func (m *mockClientRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status 
 	return client, nil
 }
 
+// UpdateDisplayName mirrors the guarded SQL update: only a missing
+// display name is filled; an existing name is never overwritten.
+func (m *mockClientRepo) UpdateDisplayName(ctx context.Context, id uuid.UUID, displayName string) (sqlc.Client, error) {
+	client, ok := m.clients[id.String()]
+	if !ok {
+		return sqlc.Client{}, repo.ErrNotFound
+	}
+	if client.DisplayName == "" {
+		client.DisplayName = displayName
+		m.clients[id.String()] = client
+	}
+	return client, nil
+}
+
+// ListNeedingDisplayName serves the client-name backfill CLI; these tests
+// do not exercise it.
+func (m *mockClientRepo) ListNeedingDisplayName(ctx context.Context, limit, offset int32) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	return nil, nil
+}
 func (m *mockClientRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	if _, ok := m.clients[id.String()]; !ok {
 		return repo.ErrNotFound

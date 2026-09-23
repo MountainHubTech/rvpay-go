@@ -67,6 +67,13 @@ type Querier interface {
 	ListActiveIntegrationsByClient(ctx context.Context, arg ListActiveIntegrationsByClientParams) ([]Integration, error)
 	ListActiveWebhookSubscriptionsByIntegrationID(ctx context.Context, integrationID uuid.UUID) ([]WebhookSubscription, error)
 	ListClients(ctx context.Context, arg ListClientsParams) ([]Client, error)
+	// Backfill/reconciliation source: HighLevel clients whose authoritative
+	// display name has not been persisted yet. Only clients with a real
+	// HighLevel integration mapping (integrations.external_account_id = GHL
+	// locationId) are returned, so the backfill never attempts a client it cannot
+	// resolve a location for. Idempotent by construction: a client whose
+	// display_name is populated by a previous run is no longer returned.
+	ListClientsNeedingDisplayName(ctx context.Context, arg ListClientsNeedingDisplayNameParams) ([]ListClientsNeedingDisplayNameRow, error)
 	ListEnabledPlatforms(ctx context.Context, arg ListEnabledPlatformsParams) ([]Platform, error)
 	ListIntegrationsByClient(ctx context.Context, arg ListIntegrationsByClientParams) ([]Integration, error)
 	ListIntegrationsByPlatform(ctx context.Context, arg ListIntegrationsByPlatformParams) ([]Integration, error)
@@ -76,6 +83,13 @@ type Querier interface {
 	ListWebhookSubscriptionsByIntegrationID(ctx context.Context, arg ListWebhookSubscriptionsByIntegrationIDParams) ([]WebhookSubscription, error)
 	OAuthTokenExistsByIntegrationID(ctx context.Context, integrationID uuid.UUID) (bool, error)
 	PlatformExistsBySlug(ctx context.Context, slug string) (bool, error)
+	// Persists the authoritative HighLevel location/sub-account name for a client.
+	// Guarded so the operation is idempotent and can never destroy a valid name
+	// or degrade a real name into an identifier/error string:
+	//   * only a missing (NULL) or empty display_name is filled;
+	//   * an already-populated display_name is left untouched (0 rows returned);
+	//   * client_name, the client id and external_account_id are never modified.
+	UpdateClientDisplayName(ctx context.Context, arg UpdateClientDisplayNameParams) (Client, error)
 	UpdateClientStatus(ctx context.Context, arg UpdateClientStatusParams) (Client, error)
 	UpdateIntegrationLastSyncAt(ctx context.Context, arg UpdateIntegrationLastSyncAtParams) (Integration, error)
 	UpdateIntegrationStatus(ctx context.Context, arg UpdateIntegrationStatusParams) (Integration, error)

@@ -90,6 +90,25 @@ func (m *testOAuthClientRepo) ExistsByID(ctx context.Context, id uuid.UUID) (boo
 func (m *testOAuthClientRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.ClientStatus) (sqlc.Client, error) {
 	return sqlc.Client{}, nil
 }
+// UpdateDisplayName mirrors the guarded SQL update: only a missing
+// display name is filled; an existing name is never overwritten.
+func (m *testOAuthClientRepo) UpdateDisplayName(ctx context.Context, id uuid.UUID, displayName string) (sqlc.Client, error) {
+	client, ok := m.clients[id.String()]
+	if !ok {
+		return sqlc.Client{}, repo.ErrNotFound
+	}
+	if client.DisplayName == "" {
+		client.DisplayName = displayName
+		m.clients[id.String()] = client
+	}
+	return client, nil
+}
+
+// ListNeedingDisplayName serves the client-name backfill CLI; these tests
+// do not exercise it.
+func (m *testOAuthClientRepo) ListNeedingDisplayName(ctx context.Context, limit, offset int32) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	return nil, nil
+}
 func (m *testOAuthClientRepo) Delete(ctx context.Context, id uuid.UUID) error { return nil }
 
 func (m *testOAuthClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {

@@ -3377,7 +3377,13 @@ type TransactionListRow struct {
 	// gateway identifies the payment provider for the deposit.
 	Gateway string `protobuf:"bytes,8,opt,name=gateway,proto3" json:"gateway,omitempty"`
 	// date is the human-readable initiation time.
-	Date          string `protobuf:"bytes,9,opt,name=date,proto3" json:"date,omitempty"`
+	Date string `protobuf:"bytes,9,opt,name=date,proto3" json:"date,omitempty"`
+	// customer_name is the authoritative customer display name persisted in the
+	// RVPay customers table (the name supplied by the HighLevel payment context
+	// at initiation). It is empty when no authoritative name is known, in which
+	// case the dashboard falls back to `customer` (the identifier). The internal
+	// `customer` identifier is always still populated for correlation.
+	CustomerName  string `protobuf:"bytes,10,opt,name=customer_name,json=customerName,proto3" json:"customer_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3471,6 +3477,13 @@ func (x *TransactionListRow) GetGateway() string {
 func (x *TransactionListRow) GetDate() string {
 	if x != nil {
 		return x.Date
+	}
+	return ""
+}
+
+func (x *TransactionListRow) GetCustomerName() string {
+	if x != nil {
+		return x.CustomerName
 	}
 	return ""
 }
@@ -4213,7 +4226,7 @@ const file_transactions_proto_rawDesc = "" +
 	"\vsub_account\x18\x03 \x01(\tR\n" +
 	"subAccount\x12\x12\n" +
 	"\x04page\x18\x04 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"\x87\x02\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"\xac\x02\n" +
 	"\x12TransactionListRow\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bshort_id\x18\x02 \x01(\tR\ashortId\x12\x1f\n" +
@@ -4224,7 +4237,9 @@ const file_transactions_proto_rawDesc = "" +
 	"\x06amount\x18\x06 \x01(\tR\x06amount\x12\x16\n" +
 	"\x06status\x18\a \x01(\tR\x06status\x12\x18\n" +
 	"\agateway\x18\b \x01(\tR\agateway\x12\x12\n" +
-	"\x04date\x18\t \x01(\tR\x04date\"\x9b\x01\n" +
+	"\x04date\x18\t \x01(\tR\x04date\x12#\n" +
+	"\rcustomer_name\x18\n" +
+	" \x01(\tR\fcustomerName\"\x9b\x01\n" +
 	"\x18ListTransactionsResponse\x128\n" +
 	"\x04rows\x18\x01 \x03(\v2$.transactionsgrpc.TransactionListRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +

@@ -40,7 +40,7 @@ const countSubAccountsFiltered = `-- name: CountSubAccountsFiltered :one
 SELECT COUNT(*)
 FROM clients c
 LEFT JOIN integrations i ON i.client_id = c.id
-WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
+WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR c.display_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
   AND ($2::TEXT = '' OR c.status = $2::client_status)
 `
 
@@ -59,7 +59,7 @@ func (q *Queries) CountSubAccountsFiltered(ctx context.Context, arg CountSubAcco
 const createClient = `-- name: CreateClient :one
 INSERT INTO clients (client_name, status)
 VALUES ($1, $2)
-RETURNING id, client_name, status, created_at, updated_at
+RETURNING id, client_name, status, created_at, updated_at, display_name
 `
 
 type CreateClientParams struct {
@@ -76,6 +76,7 @@ func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Cli
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -93,7 +94,7 @@ func (q *Queries) DeleteClient(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 const getClientByID = `-- name: GetClientByID :one
-SELECT id, client_name, status, created_at, updated_at
+SELECT id, client_name, status, created_at, updated_at, display_name
 FROM clients
 WHERE id = $1
 `
@@ -107,12 +108,13 @@ func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, erro
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getClientByName = `-- name: GetClientByName :one
-SELECT id, client_name, status, created_at, updated_at
+SELECT id, client_name, status, created_at, updated_at, display_name
 FROM clients
 WHERE client_name = $1
 `
@@ -126,12 +128,13 @@ func (q *Queries) GetClientByName(ctx context.Context, clientName string) (Clien
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const listActiveClients = `-- name: ListActiveClients :many
-SELECT id, client_name, status, created_at, updated_at
+SELECT id, client_name, status, created_at, updated_at, display_name
 FROM clients
 WHERE status = 'ACTIVE'
 ORDER BY created_at DESC
@@ -158,6 +161,7 @@ func (q *Queries) ListActiveClients(ctx context.Context, arg ListActiveClientsPa
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DisplayName,
 		); err != nil {
 			return nil, err
 		}
@@ -170,7 +174,7 @@ func (q *Queries) ListActiveClients(ctx context.Context, arg ListActiveClientsPa
 }
 
 const listClients = `-- name: ListClients :many
-SELECT id, client_name, status, created_at, updated_at
+SELECT id, client_name, status, created_at, updated_at, display_name
 FROM clients
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -196,6 +200,7 @@ func (q *Queries) ListClients(ctx context.Context, arg ListClientsParams) ([]Cli
 			&i.Status,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.DisplayName,
 		); err != nil {
 			return nil, err
 		}
@@ -207,17 +212,67 @@ func (q *Queries) ListClients(ctx context.Context, arg ListClientsParams) ([]Cli
 	return items, nil
 }
 
+const listClientsNeedingDisplayName = `-- name: ListClientsNeedingDisplayName :many
+SELECT c.id, c.client_name, i.external_account_id
+FROM clients c
+JOIN integrations i ON i.client_id = c.id
+JOIN platforms p ON p.id = i.platform_id
+WHERE p.slug = 'highlevel'
+  AND i.external_account_id IS NOT NULL
+  AND i.external_account_id <> ''
+  AND (c.display_name IS NULL OR c.display_name = '')
+ORDER BY c.created_at ASC
+LIMIT $1 OFFSET $2
+`
+
+type ListClientsNeedingDisplayNameParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+type ListClientsNeedingDisplayNameRow struct {
+	ID                uuid.UUID `json:"id"`
+	ClientName        string    `json:"client_name"`
+	ExternalAccountID string    `json:"external_account_id"`
+}
+
+// Backfill/reconciliation source: HighLevel clients whose authoritative
+// display name has not been persisted yet. Only clients with a real
+// HighLevel integration mapping (integrations.external_account_id = GHL
+// locationId) are returned, so the backfill never attempts a client it cannot
+// resolve a location for. Idempotent by construction: a client whose
+// display_name is populated by a previous run is no longer returned.
+func (q *Queries) ListClientsNeedingDisplayName(ctx context.Context, arg ListClientsNeedingDisplayNameParams) ([]ListClientsNeedingDisplayNameRow, error) {
+	rows, err := q.db.Query(ctx, listClientsNeedingDisplayName, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListClientsNeedingDisplayNameRow{}
+	for rows.Next() {
+		var i ListClientsNeedingDisplayNameRow
+		if err := rows.Scan(&i.ID, &i.ClientName, &i.ExternalAccountID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listSubAccountsFiltered = `-- name: ListSubAccountsFiltered :many
-SELECT c.id, c.client_name, c.status, c.created_at,
+SELECT c.id, c.client_name, c.status, c.created_at, c.display_name,
        i.external_account_id
 FROM clients c
 LEFT JOIN integrations i ON i.client_id = c.id
-WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
+WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR c.display_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
   AND ($2::TEXT = '' OR c.status = $2::client_status)
 ORDER BY
-  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'asc' THEN c.client_name END ASC,
-  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'desc' THEN c.client_name END DESC,
-  CASE WHEN $3::TEXT = 'name' THEN c.client_name END ASC,
+  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'asc' THEN COALESCE(NULLIF(c.display_name, ''), c.client_name) END ASC,
+  CASE WHEN $3::TEXT = 'name' AND $4::TEXT = 'desc' THEN COALESCE(NULLIF(c.display_name, ''), c.client_name) END DESC,
+  CASE WHEN $3::TEXT = 'name' THEN COALESCE(NULLIF(c.display_name, ''), c.client_name) END ASC,
   CASE WHEN $4::TEXT = 'desc' THEN c.created_at END DESC,
   c.created_at ASC
 LIMIT $5 OFFSET $6
@@ -237,6 +292,7 @@ type ListSubAccountsFilteredRow struct {
 	ClientName        string       `json:"client_name"`
 	Status            ClientStatus `json:"status"`
 	CreatedAt         time.Time    `json:"created_at"`
+	DisplayName       string       `json:"display_name"`
 	ExternalAccountID string       `json:"external_account_id"`
 }
 
@@ -261,6 +317,7 @@ func (q *Queries) ListSubAccountsFiltered(ctx context.Context, arg ListSubAccoun
 			&i.ClientName,
 			&i.Status,
 			&i.CreatedAt,
+			&i.DisplayName,
 			&i.ExternalAccountID,
 		); err != nil {
 			return nil, err
@@ -273,12 +330,46 @@ func (q *Queries) ListSubAccountsFiltered(ctx context.Context, arg ListSubAccoun
 	return items, nil
 }
 
+const updateClientDisplayName = `-- name: UpdateClientDisplayName :one
+UPDATE clients
+SET display_name = $2,
+    updated_at = NOW()
+WHERE id = $1
+  AND (display_name IS NULL OR display_name = '')
+RETURNING id, client_name, status, created_at, updated_at, display_name
+`
+
+type UpdateClientDisplayNameParams struct {
+	ID          uuid.UUID `json:"id"`
+	DisplayName string    `json:"display_name"`
+}
+
+// Persists the authoritative HighLevel location/sub-account name for a client.
+// Guarded so the operation is idempotent and can never destroy a valid name
+// or degrade a real name into an identifier/error string:
+//   - only a missing (NULL) or empty display_name is filled;
+//   - an already-populated display_name is left untouched (0 rows returned);
+//   - client_name, the client id and external_account_id are never modified.
+func (q *Queries) UpdateClientDisplayName(ctx context.Context, arg UpdateClientDisplayNameParams) (Client, error) {
+	row := q.db.QueryRow(ctx, updateClientDisplayName, arg.ID, arg.DisplayName)
+	var i Client
+	err := row.Scan(
+		&i.ID,
+		&i.ClientName,
+		&i.Status,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DisplayName,
+	)
+	return i, err
+}
+
 const updateClientStatus = `-- name: UpdateClientStatus :one
 UPDATE clients
 SET status = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_name, status, created_at, updated_at
+RETURNING id, client_name, status, created_at, updated_at, display_name
 `
 
 type UpdateClientStatusParams struct {
@@ -295,6 +386,7 @@ func (q *Queries) UpdateClientStatus(ctx context.Context, arg UpdateClientStatus
 		&i.Status,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.DisplayName,
 	)
 	return i, err
 }

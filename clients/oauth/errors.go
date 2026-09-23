@@ -69,6 +69,12 @@ var (
 	// ErrProviderCredentialsNotConfigured is returned when no live/test
 	// provider credentials are configured for pushing to HighLevel.
 	ErrProviderCredentialsNotConfigured = status.Error(codes.FailedPrecondition, "provider credentials not configured")
+	// ErrLocationNameUnavailable is returned when HighLevel returns no usable
+	// location/sub-account name for a location. The client's existing display
+	// name is deliberately left untouched: an identifier, an empty string or
+	// an error message is never substituted for the authoritative name.
+	ErrLocationNameUnavailable = status.Error(codes.NotFound, "highlevel location name is unavailable")
+
 	// ErrMissingOrderID is returned when no GHL order ID is provided for the
 	// server-side order status synchronization.
 	ErrMissingOrderID = status.Error(codes.InvalidArgument, "order ID is required")

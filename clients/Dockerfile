@@ -14,12 +14,17 @@ COPY protobuf ./protobuf
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
     -o /out/clients-grpc-service ./clients/cmd/grpc-service
 
+# The client display-name backfill runs as a one-off task against the same image.
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" \
+    -o /out/backfill-client-names ./clients/cmd/backfill-client-names
+
 # Distroless keeps the runtime image small and runs without a shell or root user.
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app/clients
 
 COPY --from=build /out/clients-grpc-service ./clients-grpc-service
+COPY --from=build /out/backfill-client-names ./backfill-client-names
 COPY --from=build /src/clients/db/migrations ./db/migrations
 
 USER nonroot:nonroot

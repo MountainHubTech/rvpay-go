@@ -42,6 +42,21 @@ type PaymentProviderClient interface {
 	// GET /payments/custom-provider/connect?locationId=<id>
 	FetchProviderConfig(ctx context.Context, accessToken, locationID string) (*ProviderConfig, error)
 
+	// FetchLocation fetches the authoritative HighLevel sub-account (location)
+	// body for the supplied locationId, returning its id and its
+	// human-readable name. accessToken is the installed location's OAuth access
+	// token and is used only in the Authorization header; it is never logged or
+	// returned in errors.
+	//
+	// GET /locations/{locationId}
+	// Header: Version: v3 (the shared authenticated v3 client used by every
+	// HighLevel API call in this package)
+	//
+	// This operation requires the locations.readonly OAuth scope. The returned
+	// name is the ONLY authoritative account display name: the locationId is
+	// never used as a name, and a missing name is reported, never fabricated.
+	FetchLocation(ctx context.Context, accessToken, locationID string) (*HighLevelLocation, error)
+
 	// DisconnectProvider disconnects the provider configuration for a location.
 	//
 	// DELETE /payments/custom-provider/connect?locationId=<id>
@@ -75,6 +90,19 @@ type PaymentProviderClient interface {
 	// PUT /payments/custom-provider/capabilities
 	// Body: {locationId, supportsSubscriptionSchedules:false}
 	UpdateProviderCapabilities(ctx context.Context, accessToken, locationID string) error
+}
+
+// HighLevelLocation is the authoritative HighLevel sub-account (location)
+// resource returned by the location GET. The ID is the HighLevel locationId
+// (the correlation identifier RVPay persists as integrations.external_account_id)
+// and is never used as a display name. Name is the human-readable sub-account
+// name supplied by HighLevel; it is empty when HighLevel returns no name, and
+// callers must never substitute the id (or any other identifier) for it.
+type HighLevelLocation struct {
+	// ID is the HighLevel locationId.
+	ID string
+	// Name is the human-readable sub-account name. Empty means "not supplied".
+	Name string
 }
 
 // HighLevelCallDiagnostics captures diagnostic details of a completed

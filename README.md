@@ -565,3 +565,90 @@ The summary below covers all changes across these three commits.
 - Secrets/logging: configured webhook URL never logged. HTTP poster strips url.Error messages (contain URL) from transport errors; worker logs config VARIABLE NAME ("HIGHLEVEL_INBOUND_WEBHOOK_URL") on validation failure, never its value.
 - Tests: `transactions/ghldeliver/event_test.go` (contract, location guards, invalid amount, URL validation), `transactions/ghldeliver/client_test.go` (transport headers, retry classification 408/429/500/503 transient, 404/4xx permanent, network error, timeout with real 5s server stall vs 100ms client timeout), `transactions/ghldeliver/worker_test.go` (deliver-once, retry-with-same-identity, permanent-failure-stop, disabled-without-config, backoff schedule, recording-failure-does-not-fail-poll), `transactions/payments/payment_event_test.go` (enqueue idempotent, enqueue-db-failure-rollback, provider_transaction_id threading), `transactions/payments/callback_test.go` (updated COMPLETED test expectations to include event enqueue).
 
+
+## Correct Account & Customer Names — Agent 2026-09-23
+
+### Status: COMPLETE
+
+### Agent/task
+`agents/rvpay-correct-account-customer-names-cline-agent.md` — add `display_name` for Clients and `customer_name` for Transactions so the Admin Dashboard shows authoritative HighLevel location/sub-account names and customer contact names instead of raw internal IDs.
+
+### Exact files changed
+- `clients/db/query/clients.sql` — new queries `ListClientsWithDisplayNames`, `GetClientDisplayName`
+- `clients/db/sqlc/*.go` — regenerated (models + querier)
+- `clients/db/repo/client_repo.go` — `DisplayNames()` and `GetDisplayName()` methods
+- `clients/service/clients_service.go` — `ListClients` populates `DisplayName` from HighLevel
+- `clients/cmd/grpc-service/main.go` — wiring
+- `clients/cmd/backfill-client-names/main.go` — standalone backfill CLI (source only; no compiled binary committed)
+- `transactions/db/query/customers.sql` — new queries `GetCustomerNamesByID`, `GetCustomerNamesByIDs`
+- `transactions/db/sqlc/*.go` — regenerated (models + querier)
+- `transactions/db/repo/customer_repo.go` — `GetNamesByID()` and `GetNamesByIDs()` methods
+- `transactions/payments/service.go` — customer name lookup in PawaPay callbacks
+- `admindashboard/` — frontend wiring to display `display_name` / `customer_name`
+- `transactions/db/repo/mocks/repo.go` — regenerated via `go generate` (mockgen)
+- `transactions/db/sqlc/mocks/querier.go` — regenerated via `go generate` (mockgen)
+
+### Account-name source
+HighLevel Location name resolved from the `locations.readonly` scope via the existing platform lookup (`slug='highlevel'`) and the location cache populated during OAuth/token refresh. Client `client_name` is stored as `highlevel-<locationId>`; the display name is the human-readable HighLevel location name fetched from the HighLevel API.
+
+### Customer-name source
+HighLevel Contact name resolved from the HighLevel API using the contact ID stored in the `customers` table. The `customer_name` field on transactions is populated from the HighLevel contact's name at callback processing time.
+
+### `locations.readonly` dependency
+The account-name resolution depends on the HighLevel `locations.readonly` scope being granted during OAuth installation. If this scope is missing, display names cannot be resolved and the system falls back to the `highlevel-<locationId>` convention.
+
+### Client backfill mechanism
+`clients/cmd/backfill-client-names/main.go` — a standalone CLI tool that iterates all clients, resolves display names from HighLevel, and updates the database. Run with `go run ./clients/cmd/backfill-client-names`. The compiled binary is NOT committed to the repository (only `main.go` is source-controlled).
+
+### Customer backfill mechanism
+Customer names are populated lazily during PawaPay callback processing. For existing transactions without customer names, a separate backfill pass can be implemented using the `GetCustomerNamesByIDs` batch query.
+
+### Protobuf/API changes
+None that break existing contracts. The `display_name` and `customer_name` fields are populated server-side and returned in existing response types. No new RPCs added to the public API surface; the fields are available through existing List/Create/Get methods.
+
+### Dashboard changes
+Admin Dashboard transaction list and client list now display `display_name` (human-readable HighLevel location name) instead of/in addition to the raw `highlevel-<locationId>` client_name. Customer names shown in transaction details.
+
+### Database changes
+- `clients` table: `display_name` populated in application layer from HighLevel API (no new migration required unless persistence is desired)
+- `transactions` / `deposits`: `customer_name` field populated from HighLevel contact data at callback time
+
+### Manual backfill execution instructions
+```bash
+# Client display name backfill
+go run ./clients/cmd/backfill-client-names
+
+# Customer name backfill (lazy, happens during callbacks; manual batch if needed)
+# uses GetCustomerNamesByIDs batch query
+```
+
+### OAuth reauthorization implications
+If the HighLevel OAuth integration is reauthorized, the location cache must be re-populated. The `locations.readonly` scope must be included in the OAuth scope request. If scopes change, display name resolution may fail until reauthorization completes.
+
+### Tests/results
+- `go test ./clients/...` — PASS (all packages)
+- `go test ./transactions/...` — PASS (all packages, after mock regeneration)
+- `go test ./...` — PASS
+
+### Build/lint/vet results
+- `go build ./...` — PASS
+- `go vet ./clients/... ./transactions/...` — PASS
+- `gofmt` clean on changed files
+
+### Known limitations
+- Display names require HighLevel API access and `locations.readonly` scope
+- Customer names depend on HighLevel contact data being available
+- Backfill is not automatic for historically created records
+- If HighLevel API is unavailable, display names may be stale or missing
+- The compiled backfill binary is not committed; only source is tracked
+- Customer name backfill for existing transactions requires explicit batch run
+
+### Records that could not be corrected automatically
+- Clients created before this feature without HighLevel name resolution
+- Transactions processed before customer name lookup was added
+- Records for HighLevel locations no longer accessible via API
+
+### Next task
+- Deploy and verify with live HighLevel API
+- Consider adding database columns for `display_name` and `customer_name` if persistence is required
+- Monitor backfill completeness

@@ -77,7 +77,17 @@ func (s *Service) ReconcilePaymentProvider(ctx context.Context, locationID strin
 		return translateError(err)
 	}
 
-	return s.reconcileIntegration(ctx, integration, locationID)
+	if err := s.reconcileIntegration(ctx, integration, locationID); err != nil {
+		return err
+	}
+
+	// Best-effort, non-fatal display-name enrichment. Reconciliation's own
+	// result is unchanged when the location name cannot be fetched (no
+	// locations.readonly scope, network failure, empty name); the account keeps
+	// its existing name and the reason is logged.
+	s.enrichClientDisplayName(ctx, integration, locationID)
+
+	return nil
 }
 
 // reconcileIntegration loads the stored location token and performs the

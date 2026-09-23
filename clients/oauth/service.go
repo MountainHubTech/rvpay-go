@@ -552,6 +552,13 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 		}
 	}
 
+	// Enrich the account display name with the authoritative HighLevel location
+	// name now that the location token is persisted. Best-effort and non-fatal:
+	// the installation result is unchanged if the name cannot be fetched (e.g.
+	// the token predates the locations.readonly scope), in which case the
+	// account keeps its existing name until a later reconciliation/backfill.
+	s.enrichClientDisplayName(ctx, integration, tokenResp.LocationID)
+
 	s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Bool("provider_registered", result.ProviderRegistered).Msg("OAuth callback processed successfully")
 
 	// .Str("provider_user_id", providerUserID)

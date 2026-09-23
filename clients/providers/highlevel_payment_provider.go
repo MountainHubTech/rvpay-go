@@ -284,6 +284,47 @@ func (c *HighLevelPaymentProviderClient) UpdateOrderStatus(ctx context.Context, 
 	return nil
 }
 
+// FetchLocation fetches the authoritative HighLevel sub-account (location)
+// body for the supplied locationId.
+//
+// GET /locations/{locationId}
+// Headers: Authorization: Bearer <token>, Version: v3
+//
+// The request uses the shared authenticated v3 client (doJSON), so it carries
+// exactly the same headers, timeout, error classification and credential
+// hygiene as every other HighLevel API call in this package. The request
+// requires the locations.readonly OAuth scope.
+//
+// The response is `{"location":{"id":...,"name":...}}`; the name is returned
+// exactly as HighLevel supplied it (possibly empty) and is never derived from
+// the locationId. Access tokens, credentials and the raw response body are
+// never logged; error bodies are sanitized by the shared error handling.
+func (c *HighLevelPaymentProviderClient) FetchLocation(ctx context.Context, accessToken, locationID string) (*HighLevelLocation, error) {
+	if strings.TrimSpace(accessToken) == "" {
+		return nil, ErrMissingAccessToken
+	}
+	if strings.TrimSpace(locationID) == "" {
+		return nil, ErrMissingLocationID
+	}
+
+	path := "/locations/" + url.PathEscape(locationID)
+
+	var payload struct {
+		Location struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"location"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, path, accessToken, nil, &payload); err != nil {
+		return nil, err
+	}
+
+	return &HighLevelLocation{
+		ID:   payload.Location.ID,
+		Name: payload.Location.Name,
+	}, nil
+}
+
 // doJSON performs an authenticated JSON request to the HighLevel API. It
 // handles 2xx, 400, 401, and 422 responses and returns typed/domain errors.
 // The access token is never logged or included in returned errors.
@@ -454,4 +495,13 @@ var (
 	ErrUnauthorized = errors.New("highlevel: unauthorized")
 	// ErrUnprocessableEntity is returned when HighLevel responds with 422.
 	ErrUnprocessableEntity = errors.New("highlevel: unprocessable entity")
+	// ErrForbidden is returned when HighLevel responds with 403. For the
+	// location lookup this means the OAuth token does not carry the required
+	// locations.readonly scope (reauthorization required).
+	ErrForbidden = errors.New("highlevel: forbidden")
+	// ErrLocationNotFound is returned when HighLevel responds with 404 for a
+	// location lookup: the locationId does not exist for this token/app.
+	ErrLocationNotFound = errors.New("highlevel: location not found")
+	// ErrRateLimited is returned when HighLevel responds with 429.
+	ErrRateLimited = errors.New("highlevel: rate limited")
 )

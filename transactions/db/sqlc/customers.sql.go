@@ -128,6 +128,56 @@ func (q *Queries) GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, 
 	return i, err
 }
 
+const getCustomerNameByID = `-- name: GetCustomerNameByID :one
+SELECT id, name FROM customers WHERE id = $1
+`
+
+type GetCustomerNameByIDRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name *string   `json:"name"`
+}
+
+// Returns only the id and name for batch lookup. name is NULL when the
+// customer was created without an authoritative name.
+func (q *Queries) GetCustomerNameByID(ctx context.Context, id uuid.UUID) (GetCustomerNameByIDRow, error) {
+	row := q.db.QueryRow(ctx, getCustomerNameByID, id)
+	var i GetCustomerNameByIDRow
+	err := row.Scan(&i.ID, &i.Name)
+	return i, err
+}
+
+const getCustomerNamesByID = `-- name: GetCustomerNamesByID :many
+SELECT id, name FROM customers WHERE id = ANY($1::uuid[])
+`
+
+type GetCustomerNamesByIDRow struct {
+	ID   uuid.UUID `json:"id"`
+	Name *string   `json:"name"`
+}
+
+// Batch lookup of customer names by ID for efficient transaction listing.
+// Returns only the id and name; name is NULL when the customer was created
+// without an authoritative name (e.g. before this feature was deployed).
+func (q *Queries) GetCustomerNamesByID(ctx context.Context, dollar_1 []uuid.UUID) ([]GetCustomerNamesByIDRow, error) {
+	rows, err := q.db.Query(ctx, getCustomerNamesByID, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetCustomerNamesByIDRow{}
+	for rows.Next() {
+		var i GetCustomerNamesByIDRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCustomersByClientName = `-- name: ListCustomersByClientName :many
 SELECT id, client_name, merchant_id, phone_number, status, created_at, updated_at, name, address FROM customers
 WHERE client_name = $1

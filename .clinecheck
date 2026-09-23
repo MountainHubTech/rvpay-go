@@ -25,3 +25,34 @@
 - [x] No hard-coded URL anywhere; CFN secret + ECS injection in place; worker disabled-without-config safety confirmed
 
 ## Prior: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
+
+## Correct Account & Customer Names — Agent 2026-09-23
+
+- [x] `clients/db/query/clients.sql` — new queries `ListClientsWithDisplayNames`, `GetClientDisplayName`
+- [x] `clients/db/sqlc/*.go` — regenerated (models + querier)
+- [x] `clients/db/repo/client_repo.go` — `DisplayNames()` and `GetDisplayName()` methods
+- [x] `clients/service/clients_service.go` — `ListClients` populates `DisplayName` from HighLevel
+- [x] `clients/cmd/grpc-service/main.go` — wiring
+- [x] `clients/cmd/backfill-client-names/main.go` — standalone backfill CLI (source only; no compiled binary committed)
+- [x] `transactions/db/query/customers.sql` — new queries `GetCustomerNamesByID`, `GetCustomerNamesByIDs`
+- [x] `transactions/db/sqlc/*.go` — regenerated (models + querier)
+- [x] `transactions/db/repo/customer_repo.go` — `GetNamesByID()` and `GetNamesByIDs()` methods
+- [x] `transactions/payments/service.go` — customer name lookup in PawaPay callbacks
+- [x] `admindashboard/` — frontend wiring to display `display_name` / `customer_name`
+- [x] `transactions/db/repo/mocks/repo.go` — regenerated via `go generate` (mockgen)
+- [x] `transactions/db/sqlc/mocks/querier.go` — regenerated via `go generate` (mockgen)
+- [x] Account-name source: HighLevel Location name via `locations.readonly` scope + platform lookup (`slug='highlevel'`) + location cache from OAuth/token refresh
+- [x] Customer-name source: HighLevel Contact name via contact ID in `customers` table, resolved at callback time
+- [x] `locations.readonly` dependency: required for account-name resolution; falls back to `highlevel-<locationId>` if missing
+- [x] Client backfill: `go run ./clients/cmd/backfill-client-names` (CLI tool; binary NOT committed)
+- [x] Customer backfill: lazy during PawaPay callbacks; batch via `GetCustomerNamesByIDs` if needed
+- [x] Protobuf/API: no breaking changes; fields populated server-side in existing response types
+- [x] Dashboard: Admin Dashboard displays `display_name` and `customer_name` instead of raw IDs
+- [x] Database: `display_name` populated in app layer; `customer_name` populated at callback time
+- [x] Manual backfill: `go run ./clients/cmd/backfill-client-names` for clients; batch query for transactions
+- [x] OAuth reauthorization: location cache must be re-populated; `locations.readonly` scope required
+- [x] Tests: `go test ./clients/...` PASS, `go test ./transactions/...` PASS (after mock regeneration), `go test ./...` PASS
+- [x] Build/vet: `go build ./...` PASS, `go vet ./clients/... ./transactions/...` PASS, `gofmt` clean
+- [ ] Known limitations: requires HighLevel API + `locations.readonly` scope; backfill not automatic for historical records; compiled binary not committed; customer name backfill for existing transactions needs explicit batch run
+- [ ] Records not corrected automatically: clients created before this feature; transactions processed before customer name lookup; inaccessible HighLevel locations
+- [ ] Next: deploy and verify with live HighLevel API; consider DB columns for persistence; monitor backfill completeness

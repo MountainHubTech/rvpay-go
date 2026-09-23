@@ -12,7 +12,10 @@ import "common.proto";
 message Client {
   // id is the unique identifier of the client.
   string id = 1;
-  // name is the display name of the client.
+  // name is the client identifier as persisted in clients.client_name
+  // ("highlevel-<locationId>"). It is the correlation value, not the
+  // human-readable account name: display_name carries the authoritative
+  // HighLevel location/sub-account name once resolved.
   string name = 2;
   // status is the current lifecycle state of the client.
   commongrpc.ClientStatus status = 3;
@@ -20,6 +23,10 @@ message Client {
   google.protobuf.Timestamp created_at = 4;
   // updated_at is the time the client was last modified.
   google.protobuf.Timestamp updated_at = 5;
+  // display_name is the authoritative HighLevel location/sub-account name
+  // resolved from the authenticated location GET. It is empty until that name
+  // has been fetched (never fabricated, never the location id).
+  string display_name = 6;
 }
 
 // CreateClientRequest is the request to create a new client.
@@ -400,7 +407,11 @@ message ListSubAccountsRequest {
 message SubAccountRow {
   // id is the client identifier.
   string id = 1;
-  // name is the display name (client_name).
+  // name is the display name of the sub-account. It carries the authoritative
+  // HighLevel location/sub-account name once it has been resolved; until then
+  // it falls back to the client identifier so the dashboard always renders a
+  // value. Client identifiers (`client_name`) are never returned as the final
+  // display name once an authoritative name exists.
   string name = 2;
   // location is the external account id (e.g. HighLevel locationId).
   string location = 3;
@@ -414,6 +425,12 @@ message SubAccountRow {
   string last_payout_date = 7;
   // total_processed is NOT populated (cross-service gap); empty string.
   string total_processed = 8;
+  // client_name is the RVPay client identifier ("highlevel-<locationId>").
+  // It is a correlation value, NOT a display value: the Admin Dashboard uses it
+  // as the Transactions sub-account filter, which matches
+  // deposits.client_name exactly. `name` carries the human-readable
+  // sub-account name.
+  string client_name = 9;
 }
 
 // ListSubAccountsResponse carries a page of sub-accounts.

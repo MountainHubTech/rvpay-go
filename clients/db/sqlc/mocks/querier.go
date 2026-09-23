@@ -880,6 +880,21 @@ func (mr *MockQuerierMockRecorder) ListClients(ctx, arg any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListClients", reflect.TypeOf((*MockQuerier)(nil).ListClients), ctx, arg)
 }
 
+// ListClientsNeedingDisplayName mocks base method.
+func (m *MockQuerier) ListClientsNeedingDisplayName(ctx context.Context, arg sqlc.ListClientsNeedingDisplayNameParams) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListClientsNeedingDisplayName", ctx, arg)
+	ret0, _ := ret[0].([]sqlc.ListClientsNeedingDisplayNameRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListClientsNeedingDisplayName indicates an expected call of ListClientsNeedingDisplayName.
+func (mr *MockQuerierMockRecorder) ListClientsNeedingDisplayName(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListClientsNeedingDisplayName", reflect.TypeOf((*MockQuerier)(nil).ListClientsNeedingDisplayName), ctx, arg)
+}
+
 // ListEnabledPlatforms mocks base method.
 func (m *MockQuerier) ListEnabledPlatforms(ctx context.Context, arg sqlc.ListEnabledPlatformsParams) ([]sqlc.Platform, error) {
 	m.ctrl.T.Helper()
@@ -1013,6 +1028,21 @@ func (m *MockQuerier) PlatformExistsBySlug(ctx context.Context, slug string) (bo
 func (mr *MockQuerierMockRecorder) PlatformExistsBySlug(ctx, slug any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PlatformExistsBySlug", reflect.TypeOf((*MockQuerier)(nil).PlatformExistsBySlug), ctx, slug)
+}
+
+// UpdateClientDisplayName mocks base method.
+func (m *MockQuerier) UpdateClientDisplayName(ctx context.Context, arg sqlc.UpdateClientDisplayNameParams) (sqlc.Client, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateClientDisplayName", ctx, arg)
+	ret0, _ := ret[0].(sqlc.Client)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateClientDisplayName indicates an expected call of UpdateClientDisplayName.
+func (mr *MockQuerierMockRecorder) UpdateClientDisplayName(ctx, arg any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateClientDisplayName", reflect.TypeOf((*MockQuerier)(nil).UpdateClientDisplayName), ctx, arg)
 }
 
 // UpdateClientStatus mocks base method.

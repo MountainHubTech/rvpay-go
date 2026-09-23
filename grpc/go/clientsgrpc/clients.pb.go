@@ -83,14 +83,21 @@ type Client struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// id is the unique identifier of the client.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// name is the display name of the client.
+	// name is the client identifier as persisted in clients.client_name
+	// ("highlevel-<locationId>"). It is the correlation value, not the
+	// human-readable account name: display_name carries the authoritative
+	// HighLevel location/sub-account name once resolved.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// status is the current lifecycle state of the client.
 	Status commongrpc.ClientStatus `protobuf:"varint,3,opt,name=status,proto3,enum=commongrpc.ClientStatus" json:"status,omitempty"`
 	// created_at is the time the client was created.
 	CreatedAt *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	// updated_at is the time the client was last modified.
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	UpdatedAt *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	// display_name is the authoritative HighLevel location/sub-account name
+	// resolved from the authenticated location GET. It is empty until that name
+	// has been fetched (never fabricated, never the location id).
+	DisplayName   string `protobuf:"bytes,6,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -158,6 +165,13 @@ func (x *Client) GetUpdatedAt() *timestamppb.Timestamp {
 		return x.UpdatedAt
 	}
 	return nil
+}
+
+func (x *Client) GetDisplayName() string {
+	if x != nil {
+		return x.DisplayName
+	}
+	return ""
 }
 
 // CreateClientRequest is the request to create a new client.
@@ -2217,7 +2231,11 @@ type SubAccountRow struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// id is the client identifier.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	// name is the display name (client_name).
+	// name is the display name of the sub-account. It carries the authoritative
+	// HighLevel location/sub-account name once it has been resolved; until then
+	// it falls back to the client identifier so the dashboard always renders a
+	// value. Client identifiers (`client_name`) are never returned as the final
+	// display name once an authoritative name exists.
 	Name string `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	// location is the external account id (e.g. HighLevel locationId).
 	Location string `protobuf:"bytes,3,opt,name=location,proto3" json:"location,omitempty"`
@@ -2231,8 +2249,14 @@ type SubAccountRow struct {
 	LastPayoutDate string `protobuf:"bytes,7,opt,name=last_payout_date,json=lastPayoutDate,proto3" json:"last_payout_date,omitempty"`
 	// total_processed is NOT populated (cross-service gap); empty string.
 	TotalProcessed string `protobuf:"bytes,8,opt,name=total_processed,json=totalProcessed,proto3" json:"total_processed,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	// client_name is the RVPay client identifier ("highlevel-<locationId>").
+	// It is a correlation value, NOT a display value: the Admin Dashboard uses it
+	// as the Transactions sub-account filter, which matches
+	// deposits.client_name exactly. `name` carries the human-readable
+	// sub-account name.
+	ClientName    string `protobuf:"bytes,9,opt,name=client_name,json=clientName,proto3" json:"client_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SubAccountRow) Reset() {
@@ -2317,6 +2341,13 @@ func (x *SubAccountRow) GetLastPayoutDate() string {
 func (x *SubAccountRow) GetTotalProcessed() string {
 	if x != nil {
 		return x.TotalProcessed
+	}
+	return ""
+}
+
+func (x *SubAccountRow) GetClientName() string {
+	if x != nil {
+		return x.ClientName
 	}
 	return ""
 }
@@ -3601,7 +3632,7 @@ var File_clients_proto protoreflect.FileDescriptor
 
 const file_clients_proto_rawDesc = "" +
 	"\n" +
-	"\rclients.proto\x12\vclientsgrpc\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a\fcommon.proto\"\xd4\x01\n" +
+	"\rclients.proto\x12\vclientsgrpc\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/api/annotations.proto\x1a\fcommon.proto\"\xf7\x01\n" +
 	"\x06Client\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x120\n" +
@@ -3609,7 +3640,8 @@ const file_clients_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n" +
 	"\n" +
-	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\")\n" +
+	"updated_at\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\x12!\n" +
+	"\fdisplay_name\x18\x06 \x01(\tR\vdisplayName\")\n" +
 	"\x13CreateClientRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\"C\n" +
 	"\x14CreateClientResponse\x12+\n" +
@@ -3735,7 +3767,7 @@ const file_clients_proto_rawDesc = "" +
 	"\x04sort\x18\x03 \x01(\tR\x04sort\x12\x14\n" +
 	"\x05order\x18\x04 \x01(\tR\x05order\x12\x12\n" +
 	"\x04page\x18\x05 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\"\x8f\x02\n" +
+	"\tpage_size\x18\x06 \x01(\x05R\bpageSize\"\xb0\x02\n" +
 	"\rSubAccountRow\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n" +
@@ -3744,7 +3776,9 @@ const file_clients_proto_rawDesc = "" +
 	"\x06status\x18\x05 \x01(\x0e2\x1d.clientsgrpc.SubAccountStatusR\x06status\x12\x18\n" +
 	"\abalance\x18\x06 \x01(\tR\abalance\x12(\n" +
 	"\x10last_payout_date\x18\a \x01(\tR\x0elastPayoutDate\x12'\n" +
-	"\x0ftotal_processed\x18\b \x01(\tR\x0etotalProcessed\"\x90\x01\n" +
+	"\x0ftotal_processed\x18\b \x01(\tR\x0etotalProcessed\x12\x1f\n" +
+	"\vclient_name\x18\t \x01(\tR\n" +
+	"clientName\"\x90\x01\n" +
 	"\x17ListSubAccountsResponse\x12.\n" +
 	"\x04rows\x18\x01 \x03(\v2\x1a.clientsgrpc.SubAccountRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +

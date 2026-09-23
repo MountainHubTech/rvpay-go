@@ -11,6 +11,11 @@ WHERE client_name = $1 AND phone_number = $2;
 -- name: GetCustomerByID :one
 SELECT * FROM customers WHERE id = $1;
 
+-- name: GetCustomerNameByID :one
+-- Returns only the id and name for batch lookup. name is NULL when the
+-- customer was created without an authoritative name.
+SELECT id, name FROM customers WHERE id = $1;
+
 -- name: GetCustomerByClientAndMerchantAndPhone :one
 SELECT * FROM customers
 WHERE client_name = $1 AND merchant_id = $2 AND phone_number = $3;
@@ -31,3 +36,8 @@ SET status = $2,
     updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+-- name: GetCustomerNamesByID :many
+-- Batch lookup of customer names by ID for efficient transaction listing.
+-- Returns only the id and name; name is NULL when the customer was created
+-- without an authoritative name (e.g. before this feature was deployed).
+SELECT id, name FROM customers WHERE id = ANY($1::uuid[]);

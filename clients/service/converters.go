@@ -15,11 +15,12 @@ import (
 
 func sqlcClientToProto(c sqlc.Client) *clientsgrpc.Client {
 	return &clientsgrpc.Client{
-		Id:        c.ID.String(),
-		Name:      c.ClientName,
-		Status:    commongrpc.ClientStatus(commongrpc.ClientStatus_value[string(c.Status)]),
-		CreatedAt: timestamppb.New(c.CreatedAt),
-		UpdatedAt: timestamppb.New(c.UpdatedAt),
+		Id:          c.ID.String(),
+		Name:        c.ClientName,
+		DisplayName: c.DisplayName,
+		Status:      commongrpc.ClientStatus(commongrpc.ClientStatus_value[string(c.Status)]),
+		CreatedAt:   timestamppb.New(c.CreatedAt),
+		UpdatedAt:   timestamppb.New(c.UpdatedAt),
 	}
 }
 
@@ -139,18 +140,31 @@ func subAccountInitials(name string) string {
 }
 
 // subAccountRowToProto maps a persisted sub-account row to its protobuf
-// representation. balance/last_payout_date/total_processed are intentionally
-// left empty: they require Transactions-owned data the Clients service cannot
-// read directly.
+// representation.
+//
+// name carries the authoritative HighLevel location/sub-account name
+// (clients.display_name) once it has been resolved. Until then it falls back to
+// the client identifier so the dashboard always renders a value; the identifier
+// is therefore never the FINAL account display name, only the interim one.
+// client_name always carries the raw identifier, which the Admin Dashboard uses
+// as the Transactions sub-account filter (it matches deposits.client_name
+// exactly). balance/last_payout_date/total_processed are intentionally left
+// empty: they require Transactions-owned data the Clients service cannot read
+// directly.
 func subAccountRowToProto(row sqlc.ListSubAccountsFilteredRow) *clientsgrpc.SubAccountRow {
+	displayName := strings.TrimSpace(row.DisplayName)
+	if displayName == "" {
+		displayName = row.ClientName
+	}
 	return &clientsgrpc.SubAccountRow{
-		Id:               row.ID.String(),
-		Name:             row.ClientName,
-		Location:         row.ExternalAccountID,
-		Initials:         subAccountInitials(row.ClientName),
-		Status:           subAccountStatusToProto(row.Status),
-		Balance:          "",
-		LastPayoutDate:   "",
-		TotalProcessed:   "",
+		Id:             row.ID.String(),
+		Name:           displayName,
+		ClientName:     row.ClientName,
+		Location:       row.ExternalAccountID,
+		Initials:       subAccountInitials(displayName),
+		Status:         subAccountStatusToProto(row.Status),
+		Balance:        "",
+		LastPayoutDate: "",
+		TotalProcessed: "",
 	}
 }

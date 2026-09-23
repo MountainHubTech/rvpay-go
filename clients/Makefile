@@ -29,6 +29,7 @@ test:
 build:
 	@echo "Building the project..."
 	go build -trimpath -ldflags="-s -w" -o ./bin/clients-grpc-service ./cmd/grpc-service
+	go build -trimpath -ldflags="-s -w" -o ./bin/backfill-client-names ./cmd/backfill-client-names
 
 docker-build:
 	@echo "Building Docker image..."

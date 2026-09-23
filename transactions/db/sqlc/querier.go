@@ -51,6 +51,13 @@ type Querier interface {
 	GetCustomerByClientAndMerchantAndPhone(ctx context.Context, arg GetCustomerByClientAndMerchantAndPhoneParams) (Customer, error)
 	GetCustomerByClientNameAndPhone(ctx context.Context, arg GetCustomerByClientNameAndPhoneParams) (Customer, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
+	// Returns only the id and name for batch lookup. name is NULL when the
+	// customer was created without an authoritative name.
+	GetCustomerNameByID(ctx context.Context, id uuid.UUID) (GetCustomerNameByIDRow, error)
+	// Batch lookup of customer names by ID for efficient transaction listing.
+	// Returns only the id and name; name is NULL when the customer was created
+	// without an authoritative name (e.g. before this feature was deployed).
+	GetCustomerNamesByID(ctx context.Context, dollar_1 []uuid.UUID) ([]GetCustomerNamesByIDRow, error)
 	GetDepositByExternalReference(ctx context.Context, externalReference *string) (Deposit, error)
 	GetDepositByGHLChargeID(ctx context.Context, ghlChargeID *string) (Deposit, error)
 	GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID *string) (Deposit, error)

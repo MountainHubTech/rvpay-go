@@ -176,6 +176,21 @@ func (mr *MockClientRepoMockRecorder) ListActive(ctx, limit, offset any) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActive", reflect.TypeOf((*MockClientRepo)(nil).ListActive), ctx, limit, offset)
 }
 
+// ListNeedingDisplayName mocks base method.
+func (m *MockClientRepo) ListNeedingDisplayName(ctx context.Context, limit, offset int32) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNeedingDisplayName", ctx, limit, offset)
+	ret0, _ := ret[0].([]sqlc.ListClientsNeedingDisplayNameRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNeedingDisplayName indicates an expected call of ListNeedingDisplayName.
+func (mr *MockClientRepoMockRecorder) ListNeedingDisplayName(ctx, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNeedingDisplayName", reflect.TypeOf((*MockClientRepo)(nil).ListNeedingDisplayName), ctx, limit, offset)
+}
+
 // ListSubAccounts mocks base method.
 func (m *MockClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
 	m.ctrl.T.Helper()
@@ -189,6 +204,21 @@ func (m *MockClientRepo) ListSubAccounts(ctx context.Context, search, status, so
 func (mr *MockClientRepoMockRecorder) ListSubAccounts(ctx, search, status, sort, order, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSubAccounts", reflect.TypeOf((*MockClientRepo)(nil).ListSubAccounts), ctx, search, status, sort, order, limit, offset)
+}
+
+// UpdateDisplayName mocks base method.
+func (m *MockClientRepo) UpdateDisplayName(ctx context.Context, id uuid.UUID, displayName string) (sqlc.Client, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDisplayName", ctx, id, displayName)
+	ret0, _ := ret[0].(sqlc.Client)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDisplayName indicates an expected call of UpdateDisplayName.
+func (mr *MockClientRepoMockRecorder) UpdateDisplayName(ctx, id, displayName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDisplayName", reflect.TypeOf((*MockClientRepo)(nil).UpdateDisplayName), ctx, id, displayName)
 }
 
 // UpdateStatus mocks base method.
