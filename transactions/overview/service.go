@@ -22,10 +22,11 @@ import (
 
 // Impl implements the DashboardOverviewService gRPC server.
 type Impl struct {
-	depositRepo repo.DepositRepo
-	payoutRepo  repo.PayoutRepo
-	disputeRepo repo.DisputeRepo
-	logger      zerolog.Logger
+	depositRepo  repo.DepositRepo
+	payoutRepo   repo.PayoutRepo
+	disputeRepo  repo.DisputeRepo
+	customerRepo repo.CustomerRepo
+	logger       zerolog.Logger
 
 	transactionsgrpc.UnimplementedDashboardOverviewServiceServer
 }
@@ -35,13 +36,15 @@ func NewOverviewService(
 	depositRepo repo.DepositRepo,
 	payoutRepo repo.PayoutRepo,
 	disputeRepo repo.DisputeRepo,
+	customerRepo repo.CustomerRepo,
 	logger zerolog.Logger,
 ) *Impl {
 	return &Impl{
-		depositRepo: depositRepo,
-		payoutRepo:  payoutRepo,
-		disputeRepo: disputeRepo,
-		logger:      logger,
+		depositRepo:  depositRepo,
+		payoutRepo:   payoutRepo,
+		disputeRepo:  disputeRepo,
+		customerRepo: customerRepo,
+		logger:       logger,
 	}
 }
 
@@ -286,12 +289,18 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 
 	rows := make([]*transactionsgrpc.TransactionListRow, 0, len(deposits))
 	for _, deposit := range deposits {
+		customerID := textValue(deposit.CustomerID)
+		customerName := ""
+		if name, lookupErr := s.customerRepo.GetNameByClientAndPhone(ctx, deposit.ClientName, deposit.PayerPhoneNumber); lookupErr == nil && name != nil {
+			customerName = strings.TrimSpace(*name)
+		}
 		rows = append(rows, &transactionsgrpc.TransactionListRow{
 			Id:               deposit.ID.String(),
 			ShortId:          shortID(deposit.ID.String()),
 			SubAccount:       deposit.ClientName,
-			Customer:         textValue(deposit.CustomerID),
-			CustomerInitials: initialsFromIdentifier(textValue(deposit.CustomerID)),
+			Customer:         customerID,
+			CustomerName:     customerName,
+			CustomerInitials: initialsFromIdentifier(customerNameOrID(customerName, customerID)),
 			Amount:           formatOverviewAmount(deposit.Amount, deposit.Currency),
 			Status:           transactionListStatus(deposit.Status),
 			Gateway:          gatewayDisplayName(deposit.Provider),
@@ -527,6 +536,13 @@ func textValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+func customerNameOrID(name, id string) string {
+	if name != "" {
+		return name
+	}
+	return id
 }
 
 // shortID renders the first 8 characters of a deposit identifier with an

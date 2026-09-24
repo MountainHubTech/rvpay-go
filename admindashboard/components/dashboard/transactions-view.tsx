@@ -110,6 +110,7 @@ export function TransactionsView({
     shortId: string
     subAccount: string
     customer: string
+    customerName?: string
     customerInitials: string
     amount: string
     status: string
@@ -256,7 +257,7 @@ export function TransactionsView({
                       <span className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
                         {row.customerInitials}
                       </span>
-                      {row.customer}
+                      {row.customerName || row.customer}
                     </span>
                   </TableCell>
                   <TableCell className="text-right">{row.amount}</TableCell>

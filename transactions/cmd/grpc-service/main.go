@@ -118,7 +118,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, customerRepo, logger, *pawapayClient)
 	paymentService := payments.NewPaymentService(depositRepo, transactionsRepo, logger)
 	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
-	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, disputeRepo, logger)
+	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, disputeRepo, customerRepo, logger)
 	healthCheck := health_check.NewHealthService(logger)
 	// The GHL order-status synchronization worker claims terminal deposits
 	// from the durable deposits-table outbox and sends the GHL update through

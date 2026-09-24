@@ -23,6 +23,7 @@ func uuidToPg(id *uuid.UUID) pgtype.UUID {
 type CustomerRepo interface {
 	Create(ctx context.Context, clientName string, merchantID *uuid.UUID, phoneNumber string, name, address *string, status sqlc.CustomerStatus) (sqlc.Customer, error)
 	GetByID(ctx context.Context, id uuid.UUID) (sqlc.Customer, error)
+	GetNameByClientAndPhone(ctx context.Context, clientName, phoneNumber string) (*string, error)
 	GetByClientNameAndPhone(ctx context.Context, clientName, phoneNumber string) (sqlc.Customer, error)
 	GetByClientAndMerchantAndPhone(ctx context.Context, clientName string, merchantID uuid.UUID, phoneNumber string) (sqlc.Customer, error)
 	ListByClientName(ctx context.Context, clientName string) ([]sqlc.Customer, error)
@@ -60,6 +61,17 @@ func (r *customerRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Customer
 		return sqlc.Customer{}, wrapNotFound(err)
 	}
 	return customer, nil
+}
+
+func (r *customerRepo) GetNameByClientAndPhone(ctx context.Context, clientName, phoneNumber string) (*string, error) {
+	customer, err := r.q.GetCustomerByClientNameAndPhone(ctx, sqlc.GetCustomerByClientNameAndPhoneParams{
+		ClientName:  clientName,
+		PhoneNumber: phoneNumber,
+	})
+	if err != nil {
+		return nil, wrapNotFound(err)
+	}
+	return customer.Name, nil
 }
 
 func (r *customerRepo) GetByClientNameAndPhone(ctx context.Context, clientName, phoneNumber string) (sqlc.Customer, error) {

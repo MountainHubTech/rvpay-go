@@ -137,6 +137,7 @@ export type TransactionListRow = {
   shortId: string;
   subAccount: string;
   customer: string;
+  customerName?: string;
   customerInitials: string;
   amount: string;
   status: string;
