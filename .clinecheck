@@ -61,3 +61,8 @@
 - [x] Status wire-label/DB-enum mismatch fixed in Clients list/count path; focused service + gateway tests and Clients suite/vet PASS.
 - [x] Friendly/fallback/friendly multi-account test passes; Dashboard production build PASS; no Dashboard source change.
 - [ ] UNVERIFIED: exact deployed 500, real integration inventory, authenticated HTTP 200/rendering; local configured DB is down and no admin token is available.
+
+## Sub-Accounts HTTP 500 diagnostic — 2026-09-25
+- [x] Actual Dashboard path traced: GET `/v1/public/clients/sub-accounts`; auth required; NULL/friendly multi-account behavior covered by focused tests.
+- [x] Secret-safe temporary row/response tracing added; full Clients tests, vet, and diff checks pass.
+- [ ] Exact deployed 500 still unreproduced: local Clients exits before requests in gRPC channelz `GetsockoptTCPInfo` SIGSEGV; no admin token/session. Stable authenticated runtime verification required.

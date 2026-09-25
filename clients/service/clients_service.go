@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
@@ -240,6 +241,15 @@ func subAccountStatusFilter(status string) string {
 	}
 }
 
+// subAccountResponseNameSource mirrors the existing Sub-Accounts converter
+// fallback for temporary diagnostic logging without logging the display name.
+func subAccountResponseNameSource(row sqlc.ListSubAccountsFilteredRow) string {
+	if strings.TrimSpace(row.DisplayName) != "" {
+		return "display_name"
+	}
+	return "client_name"
+}
+
 // ListSubAccounts lists client/sub-account records for the Admin Dashboard
 // sub-accounts page. balance/last_payout_date/total_processed are not
 // populated (they require Transactions-owned data); the dashboard renders
@@ -340,14 +350,36 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 	}
 
 	protoRows := make([]*clientsgrpc.SubAccountRow, 0, len(rows))
-	for _, row := range rows {
+	for i, row := range rows {
+		// Temporary Sub-Accounts diagnostic: safe row identifiers only. The
+		// display name itself is intentionally not logged, while its presence
+		// and the selected response name make NULL fallback behavior visible.
+		s.logger.Info().
+			Str("request_id", observability.RequestIDFromContext(ctx)).
+			Str("operation", "ListSubAccounts").
+			Str("stage", "row_mapping").
+			Int("row_index", i).
+			Str("client_id", row.ID.String()).
+			Str("external_account_id", row.ExternalAccountID).
+			Str("client_name", row.ClientName).
+			Bool("display_name_present", row.DisplayName != "").
+			Str("response_name_source", subAccountResponseNameSource(row)).
+			Msg("sub-account row mapping started")
+
 		protoRows = append(protoRows, subAccountRowToProto(row))
 	}
 
-	return &clientsgrpc.ListSubAccountsResponse{
+	resp = &clientsgrpc.ListSubAccountsResponse{
 		Rows:     protoRows,
 		Total:    total,
 		Page:     page,
 		PageSize: pageSize,
-	}, nil
+	}
+	s.logger.Info().
+		Str("request_id", observability.RequestIDFromContext(ctx)).
+		Str("operation", "ListSubAccounts").
+		Str("stage", "response_construction").
+		Int("rows_returned", len(resp.GetRows())).
+		Msg("sub-account response construction completed")
+	return resp, nil
 }

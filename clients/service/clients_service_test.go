@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
@@ -270,5 +272,50 @@ func TestListSubAccountsReturnsAllRowsWhenOneDisplayNameIsUnavailable(t *testing
 	}
 	if got := resp.GetRows()[2].GetName(); got != "Account C" {
 		t.Errorf("row C name = %q, want Account C", got)
+	}
+}
+
+func TestListSubAccountsDiagnosticLoggingIsSecretSafe(t *testing.T) {
+	t.Parallel()
+
+	repo := newMockClientRepo()
+	repo.total = 2
+	repo.subAccounts = []sqlc.ListSubAccountsFilteredRow{
+		{ID: uuid.MustParse("11111111-1111-1111-1111-111111111111"), ClientName: "highlevel-location-a", DisplayName: "Account A", Status: sqlc.ClientStatusACTIVE, ExternalAccountID: "location-a"},
+		{ID: uuid.MustParse("22222222-2222-2222-2222-222222222222"), ClientName: "highlevel-location-b", Status: sqlc.ClientStatusACTIVE, ExternalAccountID: "location-b"},
+	}
+	var logs bytes.Buffer
+	logger := zerolog.New(&logs)
+	svc := NewClientsServiceImpl(repo, logger)
+
+	resp, err := svc.ListSubAccounts(context.Background(), &clientsgrpc.ListSubAccountsRequest{
+		Page:     1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListSubAccounts failed: %v", err)
+	}
+	if len(resp.GetRows()) != 2 {
+		t.Fatalf("rows = %d, want 2", len(resp.GetRows()))
+	}
+
+	output := logs.String()
+	for _, want := range []string{
+		`"row_index":0`,
+		`"display_name_present":true`,
+		`"response_name_source":"display_name"`,
+		`"row_index":1`,
+		`"display_name_present":false`,
+		`"response_name_source":"client_name"`,
+		`"stage":"response_construction"`,
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("diagnostic logs missing %s: %s", want, output)
+		}
+	}
+	for _, forbidden := range []string{"access_token", "refresh_token", "client_secret", "authorization", "password", "cookie"} {
+		if strings.Contains(strings.ToLower(output), forbidden) {
+			t.Errorf("diagnostic logs contain forbidden field %q", forbidden)
+		}
 	}
 }
