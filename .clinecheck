@@ -56,3 +56,8 @@
 - [ ] Known limitations: requires HighLevel API + `locations.readonly` scope; backfill not automatic for historical records; compiled binary not committed; customer name backfill for existing transactions needs explicit batch run
 - [ ] Records not corrected automatically: clients created before this feature; transactions processed before customer name lookup; inaccessible HighLevel locations
 - [ ] Next: deploy and verify with live HighLevel API; consider DB columns for persistence; monitor backfill completeness
+
+## Sub-Accounts resilience — 2026-09-25
+- [x] Status wire-label/DB-enum mismatch fixed in Clients list/count path; focused service + gateway tests and Clients suite/vet PASS.
+- [x] Friendly/fallback/friendly multi-account test passes; Dashboard production build PASS; no Dashboard source change.
+- [ ] UNVERIFIED: exact deployed 500, real integration inventory, authenticated HTTP 200/rendering; local configured DB is down and no admin token is available.

@@ -23,7 +23,8 @@ import (
 type fakeClientsService struct {
 	clientsgrpc.UnimplementedClientsServiceServer
 
-	getClientErr error
+	getClientErr  error
+	subAccountReq *clientsgrpc.ListSubAccountsRequest
 }
 
 func (f *fakeClientsService) GetClient(_ context.Context, req *clientsgrpc.GetClientRequest) (*clientsgrpc.GetClientResponse, error) {
@@ -41,6 +42,7 @@ func (f *fakeClientsService) GetClient(_ context.Context, req *clientsgrpc.GetCl
 }
 
 func (f *fakeClientsService) ListSubAccounts(_ context.Context, req *clientsgrpc.ListSubAccountsRequest) (*clientsgrpc.ListSubAccountsResponse, error) {
+	f.subAccountReq = req
 	return &clientsgrpc.ListSubAccountsResponse{
 		Rows: []*clientsgrpc.SubAccountRow{
 			{Id: "sub-1", Name: "Acme Store", Location: "loc_1", Initials: "AS", Status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE},
@@ -145,6 +147,24 @@ func TestGateway_SubAccountsRoute(t *testing.T) {
 	// int64 fields encode as JSON strings in protojson (grpc-gateway default).
 	if got := body["total"]; got != "1" {
 		t.Errorf("total = %v, want \"1\"", got)
+	}
+}
+
+func TestGateway_SubAccountsRoute_ActiveStatusReturnsOK(t *testing.T) {
+	fake := &fakeClientsService{}
+	srv := newClientsGateway(t, fake)
+
+	resp, err := http.Get(srv.URL + "/v1/public/clients/sub-accounts?status=SUB_ACCOUNT_STATUS_ACTIVE&page=1&pageSize=20")
+	if err != nil {
+		t.Fatalf("GET filtered sub-accounts: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if got := fake.subAccountReq.GetStatus(); got != clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String() {
+		t.Errorf("gateway status = %q, want %q", got, clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String())
 	}
 }
 

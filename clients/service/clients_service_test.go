@@ -15,7 +15,13 @@ import (
 
 // mockClientRepo is a test double for ClientRepo
 type mockClientRepo struct {
-	clients map[string]sqlc.Client
+	clients       map[string]sqlc.Client
+	subAccounts   []sqlc.ListSubAccountsFilteredRow
+	subAccountErr error
+	total         int64
+	countErr      error
+	listStatus    string
+	countStatus   string
 }
 
 func newMockClientRepo() *mockClientRepo {
@@ -88,14 +94,14 @@ func (m *mockClientRepo) Delete(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 func (m *mockClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
-	return nil, nil
+	m.listStatus = status
+	return m.subAccounts, m.subAccountErr
 }
 
 func (m *mockClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
-	return 0, nil
+	m.countStatus = status
+	return m.total, m.countErr
 }
-
-
 func (m *mockClientRepo) List(ctx context.Context, limit, offset int32) ([]sqlc.Client, error) {
 	clients := make([]sqlc.Client, 0, len(m.clients))
 	for _, client := range m.clients {
@@ -194,5 +200,75 @@ func TestDeleteClient(t *testing.T) {
 	_, err = clientRepo.GetByID(context.Background(), client.ID)
 	if err != repo.ErrNotFound {
 		t.Fatal("deleted client should not be found")
+	}
+}
+
+func TestListSubAccountsMapsDashboardStatusToDatabaseEnum(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		status     string
+		wantStatus string
+	}{
+		{name: "all", status: "", wantStatus: ""},
+		{name: "active", status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String(), wantStatus: "ACTIVE"},
+		{name: "restricted", status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_RESTRICTED.String(), wantStatus: "SUSPENDED"},
+		{name: "inactive", status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_INACTIVE.String(), wantStatus: "CLOSED"},
+		{name: "unknown", status: "unexpected", wantStatus: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			repo := newMockClientRepo()
+			svc := NewClientsServiceImpl(repo, zerolog.Nop())
+
+			if _, err := svc.ListSubAccounts(context.Background(), &clientsgrpc.ListSubAccountsRequest{
+				Status:   tt.status,
+				Page:     1,
+				PageSize: 20,
+			}); err != nil {
+				t.Fatalf("ListSubAccounts failed: %v", err)
+			}
+			if repo.listStatus != tt.wantStatus {
+				t.Errorf("list status = %q, want %q", repo.listStatus, tt.wantStatus)
+			}
+			if repo.countStatus != tt.wantStatus {
+				t.Errorf("count status = %q, want %q", repo.countStatus, tt.wantStatus)
+			}
+		})
+	}
+}
+
+func TestListSubAccountsReturnsAllRowsWhenOneDisplayNameIsUnavailable(t *testing.T) {
+	t.Parallel()
+	repo := newMockClientRepo()
+	repo.total = 3
+	repo.subAccounts = []sqlc.ListSubAccountsFilteredRow{
+		{ID: uuid.New(), ClientName: "highlevel-location-a", DisplayName: "Account A", Status: sqlc.ClientStatusACTIVE, ExternalAccountID: "location-a"},
+		{ID: uuid.New(), ClientName: "highlevel-location-b", DisplayName: "", Status: sqlc.ClientStatusACTIVE, ExternalAccountID: "location-b"},
+		{ID: uuid.New(), ClientName: "highlevel-location-c", DisplayName: "Account C", Status: sqlc.ClientStatusACTIVE, ExternalAccountID: "location-c"},
+	}
+	svc := NewClientsServiceImpl(repo, zerolog.Nop())
+
+	resp, err := svc.ListSubAccounts(context.Background(), &clientsgrpc.ListSubAccountsRequest{
+		Page:     1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListSubAccounts failed: %v", err)
+	}
+	if len(resp.GetRows()) != 3 {
+		t.Fatalf("rows = %d, want 3", len(resp.GetRows()))
+	}
+	if got := resp.GetRows()[0].GetName(); got != "Account A" {
+		t.Errorf("row A name = %q, want Account A", got)
+	}
+	if got := resp.GetRows()[1].GetName(); got != "highlevel-location-b" {
+		t.Errorf("row B fallback = %q, want highlevel-location-b", got)
+	}
+	if got := resp.GetRows()[2].GetName(); got != "Account C" {
+		t.Errorf("row C name = %q, want Account C", got)
 	}
 }

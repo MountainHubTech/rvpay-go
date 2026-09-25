@@ -222,6 +222,24 @@ func (s *ClientsServiceImpl) DeactivateClient(ctx context.Context, req *clientsg
 	}, nil
 }
 
+// subAccountStatusFilter translates the dashboard-facing status label into the
+// persisted client_status value. SubAccounts listing is backed by client rows;
+// optional display-name enrichment is not performed here and cannot fail a list
+// request. Unknown or empty values intentionally mean "all" rather than being
+// sent to PostgreSQL as an invalid client_status enum.
+func subAccountStatusFilter(status string) string {
+	switch status {
+	case clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String():
+		return "ACTIVE"
+	case clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_RESTRICTED.String():
+		return "SUSPENDED"
+	case clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_INACTIVE.String():
+		return "CLOSED"
+	default:
+		return ""
+	}
+}
+
 // ListSubAccounts lists client/sub-account records for the Admin Dashboard
 // sub-accounts page. balance/last_payout_date/total_processed are not
 // populated (they require Transactions-owned data); the dashboard renders
@@ -232,6 +250,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 	if req == nil {
 		req = &clientsgrpc.ListSubAccountsRequest{}
 	}
+	statusFilter := subAccountStatusFilter(req.GetStatus())
 	s.logger.Info().
 		Str("request_id", observability.RequestIDFromContext(ctx)).
 		Str("endpoint", "/v1/public/clients/sub-accounts").
@@ -286,7 +305,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 	}
 	offset := (page - 1) * pageSize
 
-	rows, err := s.clientsRepo.ListSubAccounts(ctx, req.GetSearch(), req.GetStatus(), req.GetSort(), req.GetOrder(), pageSize, offset)
+	rows, err := s.clientsRepo.ListSubAccounts(ctx, req.GetSearch(), statusFilter, req.GetSort(), req.GetOrder(), pageSize, offset)
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("operation", "ListSubAccounts").
@@ -310,7 +329,7 @@ func (s *ClientsServiceImpl) ListSubAccounts(ctx context.Context, req *clientsgr
 			Int("rows_returned", len(rows)).
 			Msg("repository query completed")
 	}
-	total, err := s.clientsRepo.CountSubAccounts(ctx, req.GetSearch(), req.GetStatus())
+	total, err := s.clientsRepo.CountSubAccounts(ctx, req.GetSearch(), statusFilter)
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("operation", "ListSubAccounts").
