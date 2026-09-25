@@ -78,6 +78,14 @@ type Querier interface {
 	ListIntegrationsByClient(ctx context.Context, arg ListIntegrationsByClientParams) ([]Integration, error)
 	ListIntegrationsByPlatform(ctx context.Context, arg ListIntegrationsByPlatformParams) ([]Integration, error)
 	ListPlatforms(ctx context.Context, arg ListPlatformsParams) ([]Platform, error)
+	// display_name is a nullable column (see migration 000006), so it is coalesced
+	// with the always-present client_name (the deterministic highlevel-<locationId>
+	// identifier) here. The same COALESCE/NULLIF expression is used for ordering
+	// below, and converters.subAccountRowToProto keeps its identical fallback, so
+	// the repository never scans a SQL NULL into the non-null Go string field.
+	// external_account_id comes from a LEFT JOIN and is equally NULL for a client
+	// with no integration row; it is coalesced to '' for the same reason (the
+	// converter already treats an empty location as "no location").
 	ListSubAccountsFiltered(ctx context.Context, arg ListSubAccountsFilteredParams) ([]ListSubAccountsFilteredRow, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error)
 	ListWebhookSubscriptionsByIntegrationID(ctx context.Context, arg ListWebhookSubscriptionsByIntegrationIDParams) ([]WebhookSubscription, error)

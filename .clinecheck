@@ -66,3 +66,9 @@
 - [x] Actual Dashboard path traced: GET `/v1/public/clients/sub-accounts`; auth required; NULL/friendly multi-account behavior covered by focused tests.
 - [x] Secret-safe temporary row/response tracing added; full Clients tests, vet, and diff checks pass.
 - [ ] Exact deployed 500 still unreproduced: local Clients exits before requests in gRPC channelz `GetsockoptTCPInfo` SIGSEGV; no admin token/session. Stable authenticated runtime verification required.
+## Sub-Accounts NULL display_name scan fix — 2026-09-25 (VERIFIED)
+- [x] Root cause: `ListSubAccountsFiltered` selected nullable `c.display_name` (migration 000006) into non-null Go `string`; sqlc `text`→`string` override ⇒ `dest[4] (col: display_name): cannot scan NULL into *string` ⇒ gRPC Internal/HTTP 500.
+- [x] Fix: `clients/db/query/clients.sql` now selects `COALESCE(NULLIF(c.display_name,''), c.client_name) AS display_name`; same defect on the LEFT JOIN `i.external_account_id` coalesced to ''. sqlc regenerated (only clients.sql.go + querier.go changed).
+- [x] No DB backfill, no migration, no proto/Dashboard/infra change; NULL rows are now handled by the application.
+- [x] Tests: 3 new DB-backed repo regression tests (NULL / friendly / multi-account) PASS; `go test ./clients/... -count=1` PASS; `go vet ./clients/...` PASS; `git diff --check` PASS.
+- [x] Runtime VERIFIED with real auth: pre-fix HTTP 500 (`dest[4] display_name`) → post-fix HTTP 200, 2 accounts, friendly name preserved, NULL row rendered as `highlevel-<locationId>`. Test token + scratch DB removed; Clients service stopped.

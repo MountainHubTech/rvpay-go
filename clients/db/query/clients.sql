@@ -37,8 +37,17 @@ WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR c.display_name I
   AND ($2::TEXT = '' OR c.status = $2::client_status);
 
 -- name: ListSubAccountsFiltered :many
-SELECT c.id, c.client_name, c.status, c.created_at, c.display_name,
-       i.external_account_id
+-- display_name is a nullable column (see migration 000006), so it is coalesced
+-- with the always-present client_name (the deterministic highlevel-<locationId>
+-- identifier) here. The same COALESCE/NULLIF expression is used for ordering
+-- below, and converters.subAccountRowToProto keeps its identical fallback, so
+-- the repository never scans a SQL NULL into the non-null Go string field.
+-- external_account_id comes from a LEFT JOIN and is equally NULL for a client
+-- with no integration row; it is coalesced to '' for the same reason (the
+-- converter already treats an empty location as "no location").
+SELECT c.id, c.client_name, c.status, c.created_at,
+       COALESCE(NULLIF(c.display_name, ''), c.client_name) AS display_name,
+       COALESCE(i.external_account_id, '') AS external_account_id
 FROM clients c
 LEFT JOIN integrations i ON i.client_id = c.id
 WHERE ($1::TEXT = '' OR c.client_name ILIKE '%' || $1 || '%' OR c.display_name ILIKE '%' || $1 || '%' OR i.external_account_id ILIKE '%' || $1 || '%')
