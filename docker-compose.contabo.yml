@@ -1,0 +1,168 @@
+# Contabo VPS stack: PostgreSQL, one-shot migrations per service, the Clients
+# and Transactions gRPC services, and a non-root TLS proxy. Mirrors the OCI
+# stack in docker-compose.yml but targets a plain x86_64 VPS and the current
+# (non-legacy) services.
+name: rvpay
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/contabo/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.00"
+          memory: 1G
+
+  migration-clients:
+    # A separate, one-shot migration job prevents application replicas from migrating independently.
+    image: migrate/migrate:v4.19.1
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./clients/db/migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/clients?sslmode=disable"
+      - up
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  migration-transactions:
+    image: migrate/migrate:v4.19.1
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./transactions/db/migrations:/migrations:ro
+    command:
+      - "-path=/migrations"
+      - "-database=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/transactions?sslmode=disable"
+      - up
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+  transactions:
+    # TRANSACTIONS_IMAGE is set by CI; the default supports a local production build.
+    image: ${TRANSACTIONS_IMAGE:-rvpay/transactions:local}
+    build:
+      context: .
+      dockerfile: transactions/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: transactions
+      DB_TLS_DISABLED: "true"
+      MIGRATION_PATH: /app/transactions/db/migrations
+      RUN_MIGRATIONS: "false"
+      LISTEN_PORT: "50051"
+      HTTP_PORT: "8080"
+      # Admin-token validation (auth.NewValidator) and the GHL sync worker
+      # both dial Clients directly; gRPC clients connect lazily, so this
+      # does not require depends_on ordering against the clients service.
+      CLIENTS_GRPC_ADDR: clients:50051
+    depends_on:
+      migration-transactions:
+        condition: service_completed_successfully
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  clients:
+    # CLIENTS_IMAGE is set by CI; the default supports a local production build.
+    image: ${CLIENTS_IMAGE:-rvpay/clients:local}
+    build:
+      context: .
+      dockerfile: clients/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: clients
+      DB_TLS_DISABLED: "true"
+      MIGRATION_PATH: /app/clients/db/migrations
+      RUN_MIGRATIONS: "false"
+      LISTEN_PORT: "50051"
+      HTTP_PORT: "8080"
+      TRANSACTIONS_GRPC_ADDR: transactions:50051
+    depends_on:
+      migration-clients:
+        condition: service_completed_successfully
+      transactions:
+        condition: service_started
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
+  nginx:
+    # Nginx terminates public TLS and forwards the HTTP/REST gateway of each
+    # service, routed by subdomain, over the private Compose network. Raw
+    # gRPC between clients and transactions stays internal and is never
+    # exposed publicly.
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - clients
+      - transactions
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./deploy/contabo/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./certs:/etc/nginx/certs:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+
+volumes:
+  postgres-data:
