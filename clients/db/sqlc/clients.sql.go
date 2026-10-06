@@ -59,7 +59,8 @@ func (q *Queries) CountSubAccountsFiltered(ctx context.Context, arg CountSubAcco
 const createClient = `-- name: CreateClient :one
 INSERT INTO clients (client_name, status)
 VALUES ($1, $2)
-RETURNING id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 `
 
 type CreateClientParams struct {
@@ -67,11 +68,12 @@ type CreateClientParams struct {
 	Status     ClientStatus `json:"status"`
 }
 
-// display_name is nullable (migration 000006) and is NULL for every newly
-// created client, but sqlc.yaml maps nullable text to a plain Go string,
-// which pgx cannot scan NULL into. Every query that returns a Client
-// therefore coalesces it to the empty string (already treated as "no name
-// yet" by UpdateClientDisplayName and the converters) instead of RETURNING *.
+// clients.display_name is nullable (migration 000006) and is intentionally not
+// set on insert: the HighLevel OAuth install path creates the client before the
+// location name is fetched. The RETURNING list therefore coalesces a NULL/empty
+// display_name to client_name so the generated code never scans a SQL NULL into
+// the non-null Go string (the NULL-scan regression that aborted OAuth callback
+// persistence for fresh HighLevel installations).
 func (q *Queries) CreateClient(ctx context.Context, arg CreateClientParams) (Client, error) {
 	row := q.db.QueryRow(ctx, createClient, arg.ClientName, arg.Status)
 	var i Client
@@ -99,11 +101,14 @@ func (q *Queries) DeleteClient(ctx context.Context, id uuid.UUID) (int64, error)
 }
 
 const getClientByID = `-- name: GetClientByID :one
-SELECT id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE id = $1
 `
 
+// display_name is nullable (migration 000006); coalesced to client_name at the
+// query boundary so pgx never scans NULL into the non-null Go string.
 func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, error) {
 	row := q.db.QueryRow(ctx, getClientByID, id)
 	var i Client
@@ -119,11 +124,14 @@ func (q *Queries) GetClientByID(ctx context.Context, id uuid.UUID) (Client, erro
 }
 
 const getClientByName = `-- name: GetClientByName :one
-SELECT id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE client_name = $1
 `
 
+// Same NULL-safe display_name boundary as GetClientByID: this is the lookup the
+// OAuth installation path performs before CreateClient for a fresh location.
 func (q *Queries) GetClientByName(ctx context.Context, clientName string) (Client, error) {
 	row := q.db.QueryRow(ctx, getClientByName, clientName)
 	var i Client
@@ -139,7 +147,8 @@ func (q *Queries) GetClientByName(ctx context.Context, clientName string) (Clien
 }
 
 const listActiveClients = `-- name: ListActiveClients :many
-SELECT id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE status = 'ACTIVE'
 ORDER BY created_at DESC
@@ -179,7 +188,8 @@ func (q *Queries) ListActiveClients(ctx context.Context, arg ListActiveClientsPa
 }
 
 const listClients = `-- name: ListClients :many
-SELECT id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -350,7 +360,8 @@ SET display_name = $2,
     updated_at = NOW()
 WHERE id = $1
   AND (display_name IS NULL OR display_name = '')
-RETURNING id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 `
 
 type UpdateClientDisplayNameParams struct {
@@ -383,7 +394,8 @@ UPDATE clients
 SET status = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_name, status, created_at, updated_at, COALESCE(display_name, '') AS display_name
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 `
 
 type UpdateClientStatusParams struct {
