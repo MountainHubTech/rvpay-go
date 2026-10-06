@@ -72,3 +72,6 @@
 - [x] No DB backfill, no migration, no proto/Dashboard/infra change; NULL rows are now handled by the application.
 - [x] Tests: 3 new DB-backed repo regression tests (NULL / friendly / multi-account) PASS; `go test ./clients/... -count=1` PASS; `go vet ./clients/...` PASS; `git diff --check` PASS.
 - [x] Runtime VERIFIED with real auth: pre-fix HTTP 500 (`dest[4] display_name`) → post-fix HTTP 200, 2 accounts, friendly name preserved, NULL row rendered as `highlevel-<locationId>`. Test token + scratch DB removed; Clients service stopped.
+## 2026-10-06 — Clients display_name NULL-scan fix (HighLevel OAuth install) — IMPLEMENTED + LOCALLY VERIFIED
+- [x] clients/db/query/clients.sql: all display_name-returning client queries COALESCE(NULLIF(display_name,''), client_name); sqlc regen (clients.sql.go + querier.go doc comments only); new DB-backed regression tests all PASS (scratch DB on local clients-postgres); go vet PASS; full ./clients suite PASS.
+- [ ] NOT verified: production/testing DB + HighLevel fresh install (no access); orphan row highlevel-t18WTYAIBHPz2uHtbcvR UNVERIFIED; local absence of that location ID is expected.

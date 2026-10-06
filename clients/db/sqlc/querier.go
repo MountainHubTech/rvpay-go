@@ -21,6 +21,12 @@ type Querier interface {
 	CountUsers(ctx context.Context, arg CountUsersParams) (int64, error)
 	CountWebhookSubscriptionsByIntegrationID(ctx context.Context, integrationID uuid.UUID) (int64, error)
 	CreateAccessToken(ctx context.Context, arg CreateAccessTokenParams) (AccessToken, error)
+	// clients.display_name is nullable (migration 000006) and is intentionally not
+	// set on insert: the HighLevel OAuth install path creates the client before the
+	// location name is fetched. The RETURNING list therefore coalesces a NULL/empty
+	// display_name to client_name so the generated code never scans a SQL NULL into
+	// the non-null Go string (the NULL-scan regression that aborted OAuth callback
+	// persistence for fresh HighLevel installations).
 	CreateClient(ctx context.Context, arg CreateClientParams) (Client, error)
 	CreateIntegration(ctx context.Context, arg CreateIntegrationParams) (Integration, error)
 	CreateOAuthState(ctx context.Context, arg CreateOAuthStateParams) (OauthState, error)
@@ -43,7 +49,11 @@ type Querier interface {
 	DeleteWebhookSubscription(ctx context.Context, id uuid.UUID) (int64, error)
 	GetAccessTokenByRefreshTokenHash(ctx context.Context, refreshTokenHash string) (AccessToken, error)
 	GetAccessTokenByTokenHash(ctx context.Context, tokenHash string) (AccessToken, error)
+	// display_name is nullable (migration 000006); coalesced to client_name at the
+	// query boundary so pgx never scans NULL into the non-null Go string.
 	GetClientByID(ctx context.Context, id uuid.UUID) (Client, error)
+	// Same NULL-safe display_name boundary as GetClientByID: this is the lookup the
+	// OAuth installation path performs before CreateClient for a fresh location.
 	GetClientByName(ctx context.Context, clientName string) (Client, error)
 	GetIntegrationByClientAndPlatform(ctx context.Context, arg GetIntegrationByClientAndPlatformParams) (Integration, error)
 	GetIntegrationByExternalAccountID(ctx context.Context, externalAccountID string) (Integration, error)
