@@ -1,26 +1,41 @@
 -- name: CreateClient :one
+-- clients.display_name is nullable (migration 000006) and is intentionally not
+-- set on insert: the HighLevel OAuth install path creates the client before the
+-- location name is fetched. The RETURNING list therefore coalesces a NULL/empty
+-- display_name to client_name so the generated code never scans a SQL NULL into
+-- the non-null Go string (the NULL-scan regression that aborted OAuth callback
+-- persistence for fresh HighLevel installations).
 INSERT INTO clients (client_name, status)
 VALUES ($1, $2)
-RETURNING *;
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name;
 
 -- name: GetClientByID :one
-SELECT id, client_name, status, created_at, updated_at, display_name
+-- display_name is nullable (migration 000006); coalesced to client_name at the
+-- query boundary so pgx never scans NULL into the non-null Go string.
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE id = $1;
 
 -- name: GetClientByName :one
-SELECT id, client_name, status, created_at, updated_at, display_name
+-- Same NULL-safe display_name boundary as GetClientByID: this is the lookup the
+-- OAuth installation path performs before CreateClient for a fresh location.
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE client_name = $1;
 
 -- name: ListClients :many
-SELECT id, client_name, status, created_at, updated_at, display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2;
 
 -- name: ListActiveClients :many
-SELECT id, client_name, status, created_at, updated_at, display_name
+SELECT id, client_name, status, created_at, updated_at,
+       COALESCE(NULLIF(display_name, ''), client_name) AS display_name
 FROM clients
 WHERE status = 'ACTIVE'
 ORDER BY created_at DESC
@@ -70,7 +85,8 @@ UPDATE clients
 SET status = $2,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, client_name, status, created_at, updated_at, display_name;
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name;
 
 -- name: UpdateClientDisplayName :one
 -- Persists the authoritative HighLevel location/sub-account name for a client.
@@ -84,7 +100,8 @@ SET display_name = $2,
     updated_at = NOW()
 WHERE id = $1
   AND (display_name IS NULL OR display_name = '')
-RETURNING id, client_name, status, created_at, updated_at, display_name;
+RETURNING id, client_name, status, created_at, updated_at,
+          COALESCE(NULLIF(display_name, ''), client_name) AS display_name;
 
 -- name: ListClientsNeedingDisplayName :many
 -- Backfill/reconciliation source: HighLevel clients whose authoritative
