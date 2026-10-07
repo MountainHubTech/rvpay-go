@@ -9,7 +9,12 @@
 //
 // Do NOT hardcode these URLs anywhere else in the application.
 
-export type DashboardEnvironment = "local" | "testing" | "production";
+export type DashboardEnvironment =
+  | "local"
+  | "testing"
+  | "production"
+  | "contabo-testing"
+  | "contabo-production";
 
 export const DEFAULT_ENVIRONMENT: DashboardEnvironment = "testing";
 
@@ -37,12 +42,26 @@ export const ENVIRONMENTS: Record<DashboardEnvironment, EnvironmentConfig> = {
     clientsBaseUrl: "https://api.rvpay.co",
     transactionsBaseUrl: "https://api.rvpay.co",
   },
+  // Contabo VPS environments, served under temporary sslip.io hostnames
+  // until the real domains are pointed at them (see deploy/contabo/SETUP.md).
+  "contabo-testing": {
+    label: "Contabo Testing",
+    clientsBaseUrl: "https://api.testing.75-119-147-69.sslip.io",
+    transactionsBaseUrl: "https://api.testing.75-119-147-69.sslip.io",
+  },
+  "contabo-production": {
+    label: "Contabo Production",
+    clientsBaseUrl: "https://api.production.75-119-147-69.sslip.io",
+    transactionsBaseUrl: "https://api.production.75-119-147-69.sslip.io",
+  },
 };
 
 const ENVIRONMENT_IDS: readonly DashboardEnvironment[] = [
   "local",
   "testing",
   "production",
+  "contabo-testing",
+  "contabo-production",
 ];
 
 // isDashboardEnvironment narrows an arbitrary string (e.g. a value read back

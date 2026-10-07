@@ -1,5 +1,8 @@
 # Contabo VPS deployment
 
+> For how our actual Contabo server is set up and operated (shared host,
+> ports, secrets, runbook, open items), see [SETUP.md](SETUP.md).
+
 These artifacts deploy the current Clients and Transactions gRPC/HTTP
 services, the admindashboard Next.js app, PostgreSQL, and a TLS-terminating
 nginx proxy on a single Contabo VPS. It mirrors the OCI Compose stack
@@ -42,6 +45,25 @@ own hostname. See `nginx.conf` for the exact prefixes.
 9. Install the systemd unit so the stack survives reboots:
    `sudo cp deploy/contabo/systemd/rvpay-go.service /etc/systemd/system/`,
    then `sudo systemctl daemon-reload && sudo systemctl enable --now rvpay-go`.
+
+## Hosts that already run nginx
+
+If the VPS already serves other sites from a host-level nginx on 80/443
+(the case on the current Contabo box), the bundled `nginx` container cannot
+bind those ports. Layer `docker-compose.contabo.hostnginx.yml` on top of the
+base file: it disables the bundled proxy and publishes the gateways on
+loopback only, at the host ports set in `.env` (`CLIENTS_HOST_PORT`,
+`TRANSACTIONS_HOST_PORT`, `ADMINDASHBOARD_HOST_PORT`; defaults 8080 / 8081 /
+3002), for the host nginx to proxy to with the same path split as
+`nginx.conf`:
+
+    docker compose -p rvpay-testing -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml up -d
+
+Several environments can run side by side this way, each with its own
+checkout, `.env`, project name (`-p`) and host ports. The `rvpay@.service`
+unit and `deploy-contabo.yml` both work like this. In that mode, steps 6–7
+above apply to `deploy/contabo/nginx-host-site.<env>.conf` instead of
+`deploy/contabo/nginx.conf`. See [SETUP.md](SETUP.md) for our server.
 
 ## First boot
 

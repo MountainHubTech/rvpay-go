@@ -1,0 +1,32 @@
+# Override for a Contabo VPS that already runs nginx on the host (ports 80/443
+# serving other sites). Layer it on top of the base stack, once per
+# environment, each with its own project name and checkout:
+#
+#   cd /opt/rvpay-testing
+#   docker compose -p rvpay-testing -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml up -d
+#
+# It disables the bundled nginx container and publishes each HTTP gateway on
+# loopback only, so the host nginx can proxy to them and nothing is reachable
+# from the internet directly. Docker-published ports bypass ufw, which is why
+# every mapping below is pinned to 127.0.0.1. Raw gRPC (50051) stays on the
+# private Compose network, as in the base file.
+#
+# Host ports come from the environment's .env so testing and production can
+# run side by side (see deploy/contabo/SETUP.md). The defaults are testing's.
+services:
+  nginx:
+    # Only started when explicitly requested with --profile bundled-nginx.
+    profiles: ["bundled-nginx"]
+
+  clients:
+    ports:
+      - "127.0.0.1:${CLIENTS_HOST_PORT:-8080}:8080"
+
+  transactions:
+    ports:
+      - "127.0.0.1:${TRANSACTIONS_HOST_PORT:-8081}:8080"
+
+  admindashboard:
+    # Host ports 3000/3001 are already used by other apps on this VPS.
+    ports:
+      - "127.0.0.1:${ADMINDASHBOARD_HOST_PORT:-3002}:3000"

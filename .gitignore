@@ -8,6 +8,8 @@
 # Ignore previous oci configuration
 deploy-oci-bootstrap.sh
 systemd/
+# ...but keep the Contabo unit, which deploy/contabo/README.md installs
+!deploy/contabo/systemd/
 
 # Supplied design PNG references for the new dashboard pages (not committed)
 admindashboard/new-pages/
