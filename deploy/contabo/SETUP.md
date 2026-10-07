@@ -124,7 +124,7 @@ API routing (same prefixes in every `nginx*.conf`):
 | Path prefix | Goes to |
 |---|---|
 | `/v1/public/auth`, `/v1/public/clients`, `/v1/public/integrations`, `/v1/public/platforms`, `/oauth/callback`, `/payments/custom-provider`, `/webhooks/highlevel` | clients |
-| `/v1/public/merchants`, `/customers`, `/deposits`, `/payments`, `/payouts`, `/transactions` | transactions |
+| `/v1/public/merchants`, `/v1/public/customers`, `/v1/public/deposits`, `/v1/public/payments`, `/v1/public/payouts`, `/v1/public/transactions` | transactions |
 | anything else on `api.*` | 404 |
 | everything on `admindashboard.*` | admindashboard |
 
