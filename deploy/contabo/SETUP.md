@@ -12,8 +12,9 @@ First brought up: 2026-10-07, from the `contabo-migration` branch.
 uses its own branches (`contabo/testing`, `contabo/production`), its own
 GitHub Environments (`contabo-testing`, `contabo-production`) and temporary
 hostnames. Nothing here touches `main`, `release/**`, `cd/environments.yaml`
-or the AWS/Render workflows. The real domains (`rvpay.xyz`, `rvpay.co`) still
-point at AWS until we cut over (section 10).
+or the AWS/Render workflows. Production is served on `rvpay.co`, which was
+never configured in AWS. Testing stays on a temporary sslip.io hostname,
+because `rvpay.xyz` still points at AWS until we cut over (section 10).
 
 ---
 
@@ -92,8 +93,31 @@ traffic. Nothing in this setup changes except `CONTABO_HOST`.
   └─────────────────────────────────────┘ └──────────────────────────────────────┘
 ```
 
-Each Compose project has its own network, containers and Postgres volume.
-Testing cannot reach production's database, and the reverse.
+### Database separation
+
+Each environment has a **completely separate database**: not two databases
+on one server, but a separate Postgres server each.
+
+| | Testing | Production |
+|---|---|---|
+| Postgres container | `rvpay-testing-postgres-1` | `rvpay-production-postgres-1` |
+| Data volume | `rvpay-testing_postgres-data` | `rvpay-production_postgres-data` |
+| Private network | `rvpay-testing_default` | `rvpay-production_default` |
+| `DB_PASSWORD` | its own (in `/opt/rvpay-testing/.env`) | a different one (in `/opt/rvpay-production/.env`) |
+
+Each Postgres holds that environment's own `clients` and `transactions`
+databases. The separation works on four layers:
+
+1. **Separate servers:** each environment runs its own Postgres container.
+2. **Separate storage:** wiping or restoring one volume can't affect the
+   other.
+3. **Separate networks:** production's Postgres can't even be resolved
+   from testing's network. Checked on 2026-10-07 with
+   `docker run --rm --network rvpay-testing_default postgres:16-alpine getent hosts rvpay-production-postgres-1`,
+   which finds nothing.
+4. **Separate passwords:** testing's credentials don't work on production.
+
+Testing can be reset or reloaded freely without any risk to production.
 
 API routing (same prefixes in every `nginx*.conf`):
 
@@ -202,6 +226,42 @@ Each deploy SSHes into the server and runs these steps in `/opt/rvpay-<env>`:
 4. Log out of GHCR, then run the health checks.
 
 Deploys to the same environment are queued, never run in parallel.
+
+If `contabo-production` has required reviewers, a production run pauses
+before deploying. To approve it, go to **Actions → Deploy to Contabo → (the
+run) → Review deployments → Approve and deploy**.
+
+The first CI deploy to testing (commit `76cdd02`, 2026-10-07) reached the
+server about 3 minutes after the push.
+
+### 5.1a Deploys never clear the database
+
+A deploy only replaces the **app** containers. Data is kept:
+
+- Data lives in the environment's Docker **volume**
+  (`rvpay-<env>_postgres-data`), not in a container. Containers are
+  replaced on every deploy; the volume stays.
+- The workflow only runs `pull` and `up -d`. It never runs `down`, `-v`,
+  `docker volume rm` or `prune`.
+- The Postgres image (`postgres:16-alpine`) doesn't change between deploys,
+  so Compose usually doesn't even restart Postgres.
+- The migration jobs apply only new `*.up.sql` files and skip ones already
+  applied. `*.down.sql` files are never run by a deploy.
+- `git checkout` doesn't touch `.env` or the data. Both are outside git.
+
+Verified on the first CI deploy: testing's admin user survived, and Postgres
+stayed up throughout, while clients, transactions and the dashboard were
+replaced.
+
+What **can** lose or hide data (all manual, and none of it is in the
+pipeline):
+
+| Action | Effect |
+|---|---|
+| `$C down -v` | **Deletes the volume.** Never add `-v`. |
+| `docker volume rm ...`, `docker system prune --volumes` | Deletes volumes |
+| A new migration that drops a table or column | Changes the data, but only because that code says so. Review migrations in PRs. |
+| Running compose **without `-p rvpay-<env>`**, or from another folder | Deletes nothing, but starts a *new, empty* database, so the data looks gone |
 
 These branch names don't match `main` or `release/**`, so they never trigger
 the AWS (`build_and_publish.yaml`, `ci.yaml`) or Render pipelines.
@@ -322,6 +382,24 @@ HTTP→HTTPS redirect. When you change routing later, edit the installed file
 in place (and mirror the change in the repo); don't copy the repo file over
 it. Certificates renew automatically.
 
+The long sslip.io hostnames need a larger nginx server-name table. This is
+set once per server in its own file, so the main `nginx.conf`, which the
+other sites also use, stays untouched:
+
+```bash
+printf 'server_names_hash_bucket_size 128;\n' > /etc/nginx/conf.d/server-names-hash.conf
+```
+
+Without it, `nginx -t` fails with "could not build server_names_hash".
+
+Production's certificate covers all four of its names:
+
+```bash
+certbot --nginx --non-interactive --redirect --expand --cert-name api.production.75-119-147-69.sslip.io \
+  -d api.production.75-119-147-69.sslip.io -d admindashboard.production.75-119-147-69.sslip.io \
+  -d api.rvpay.co -d admindashboard.rvpay.co
+```
+
 ### 6.6 First admin user
 
 Admins are database-managed users. There's no signup and no env-var admin.
@@ -341,9 +419,14 @@ script lives on the server only. It follows the procedure documented in
 ## 7. Using the dashboard
 
 1. Open the environment's dashboard `/settings` page (no login needed).
-2. Select **Contabo Testing** or **Contabo Production**. The default is
-   **Testing** (AWS, `api.rvpay.xyz`), which rejects these origins, and
-   sign-in fails with "clients could not be reached from this browser".
+2. Select the matching environment:
+   - on `admindashboard.rvpay.co`: **Production** (`api.rvpay.co`);
+   - on the testing sslip.io dashboard: **Contabo Testing**;
+   - on the production sslip.io dashboard: **Contabo Production**.
+
+   The default is **Testing** (AWS, `api.rvpay.xyz`), which rejects these
+   origins, and sign-in fails with "clients could not be reached from this
+   browser".
 3. Go to `/sign-in` and log in.
 
 The selection is stored per browser and per site, so you pick it once on each
@@ -414,15 +497,28 @@ systemctl status 'rvpay@*' --no-pager; docker ps; pm2 list
 | "Welcome to nginx!" page | Hit before the site and certificate were installed, or a cached response | Hard refresh (Ctrl+F5) |
 | systemd unit missing after clone | `.gitignore` ignored every `systemd/` dir | Added `!deploy/contabo/systemd/` |
 | CI image push rejected | GHCR needs lowercase names; the owner is `MountainHubTech` | Workflow lowercases the owner |
+| `nginx -t`: "could not build server_names_hash" | sslip.io hostnames longer than the default 64-byte bucket | `/etc/nginx/conf.d/server-names-hash.conf` (section 6.5) |
+| New domain works from the server but not from your PC | Your PC or router cached "not found" from before the DNS records existed | `ipconfig /flushdns`, or restart the router/hotspot, or wait a few minutes |
+| Dashboard on `admindashboard.rvpay.co` can't sign in | "Production" isn't selected in Settings | Select **Production**. It points at `api.rvpay.co`. |
 
 ---
 
 ## 10. Cutting over to the real domains
 
 **Production is on `rvpay.co` (2026-10-07).** The domain wasn't configured
-in AWS, so nothing moved. DNS is at Namecheap (Advanced DNS): A records
-`api` and `admindashboard` → `75.119.147.69`. The `@` and `www` records are
-still Namecheap parking. Production's `.env` URLs (`PUBLIC_BASE_URL`,
+in AWS, so nothing moved. DNS is at Namecheap (**Domain List → Manage →
+Advanced DNS → Host Records**):
+
+| Type | Host | Value | TTL |
+|---|---|---|---|
+| A Record | `api` | `75.119.147.69` | Automatic |
+| A Record | `admindashboard` | `75.119.147.69` | Automatic |
+
+`@` (`rvpay.co`) and `www` were deliberately left on Namecheap parking,
+because nothing in RVPay uses them. Don't point them at the server without
+also adding an nginx site for them, or visitors get "Welcome to nginx!". To
+make `rvpay.co` redirect to the dashboard, add a redirect site and a
+certificate for those names first. Production's `.env` URLs (`PUBLIC_BASE_URL`,
 `HIGHLEVEL_REDIRECT_URL`, `HIGHLEVEL_QUERY_URL`, `HIGHLEVEL_PAYMENT_URL`)
 point at `rvpay.co`. The HighLevel app must be updated to match (step 6).
 
@@ -450,13 +546,41 @@ Steps, per environment:
 
 ---
 
-## 11. Open items
+## 11. Leftovers from the original single-stack setup
+
+Before the testing/production split (2026-10-07), one stack ran from
+`/opt/rvpay-go` as Compose project `rvpay`. Its data was copied into
+testing. These are kept until we're sure nothing is missing, and can then
+be removed:
+
+| Leftover | State |
+|---|---|
+| `/opt/rvpay-go` (checkout and `.env`) | Unused |
+| Docker volume `rvpay_postgres-data` | Unused. Data is in testing now. |
+| `rvpay-go.service` | Disabled |
+| `/root/backups/pre-split-{clients,transactions}-2026-10-07.dump` | The dump used to seed testing |
+| `/root/backups/production.env.*`, `/root/nginx-backup/` | Copies taken before edits |
+
+The old hostnames (`api.` / `admindashboard.75-119-147-69.sslip.io`) and
+their certificate were removed.
+
+---
+
+## 12. Open items
+
+- [ ] **Production has no admin user yet:**
+      `/root/rvpay-create-admin.sh production`, with a strong password.
+- [ ] **HighLevel app:** production's `.env` now uses
+      `https://api.rvpay.co/oauth/callback`,
+      `https://api.rvpay.co/payments/custom-provider/query` and
+      `https://admindashboard.rvpay.co/payment`. Update the HighLevel
+      Marketplace app to match, or OAuth installs and payment queries won't
+      reach production.
 
 - [ ] **PawaPay keys:** testing should use sandbox keys
       (`https://api.sandbox.pawapay.io`); production uses live keys.
-- [ ] **HighLevel:** both environments currently share one HighLevel app
-      and its URLs still point at `api.rvpay.xyz`. Ideally, use a separate
-      test app for testing.
+- [ ] **HighLevel:** both environments currently share one HighLevel app.
+      Ideally, use a separate test app for testing.
 - [ ] Disable SSH password login (`PasswordAuthentication no`) and install
       fail2ban. Key login is already confirmed working.
 - [ ] Reboot for pending kernel/package updates (quiet time; briefly takes
