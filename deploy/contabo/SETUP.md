@@ -29,9 +29,9 @@ point at AWS until we cut over (section 10).
 
 | | Testing | Production |
 |---|---|---|
-| Dashboard | https://admindashboard.testing.75-119-147-69.sslip.io | https://admindashboard.production.75-119-147-69.sslip.io |
-| API | https://api.testing.75-119-147-69.sslip.io | https://api.production.75-119-147-69.sslip.io |
-| Dashboard environment to select | **Contabo Testing** | **Contabo Production** |
+| Dashboard | https://admindashboard.testing.75-119-147-69.sslip.io | **https://admindashboard.rvpay.co** (also `admindashboard.production.75-119-147-69.sslip.io`) |
+| API | https://api.testing.75-119-147-69.sslip.io | **https://api.rvpay.co** (also `api.production.75-119-147-69.sslip.io`) |
+| Dashboard environment to select | **Contabo Testing** | **Production** on `admindashboard.rvpay.co`; **Contabo Production** on the sslip.io host |
 | Checkout | `/opt/rvpay-testing` | `/opt/rvpay-production` |
 | Secrets | `/opt/rvpay-testing/.env` | `/opt/rvpay-production/.env` |
 | Compose project | `rvpay-testing` | `rvpay-production` |
@@ -417,10 +417,18 @@ systemctl status 'rvpay@*' --no-pager; docker ps; pm2 list
 
 ---
 
-## 10. Cutting over to the real domains (later)
+## 10. Cutting over to the real domains
 
-Only when Contabo is properly tested. Until then the AWS setup stays live
-and unchanged.
+**Production is on `rvpay.co` (2026-10-07).** The domain wasn't configured
+in AWS, so nothing moved. DNS is at Namecheap (Advanced DNS): A records
+`api` and `admindashboard` → `75.119.147.69`. The `@` and `www` records are
+still Namecheap parking. Production's `.env` URLs (`PUBLIC_BASE_URL`,
+`HIGHLEVEL_REDIRECT_URL`, `HIGHLEVEL_QUERY_URL`, `HIGHLEVEL_PAYMENT_URL`)
+point at `rvpay.co`. The HighLevel app must be updated to match (step 6).
+
+Testing (`rvpay.xyz`) still points at AWS. Move it only when Contabo testing
+is properly tested; until then the AWS setup stays live and unchanged.
+Steps, per environment:
 
 1. Decide the mapping: testing → `api.rvpay.xyz` / `admindashboard.rvpay.xyz`,
    production → `api.rvpay.co` / `admindashboard.rvpay.co` (same as
