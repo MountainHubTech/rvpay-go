@@ -1,7 +1,7 @@
 # Contabo VPS stack: PostgreSQL, one-shot migrations per service, the Clients
-# and Transactions gRPC services, and a non-root TLS proxy. Mirrors the OCI
-# stack in docker-compose.yml but targets a plain x86_64 VPS and the current
-# (non-legacy) services.
+# and Transactions gRPC services, the admindashboard Next.js app, and a
+# non-root TLS proxy. Mirrors the OCI stack in docker-compose.yml but targets
+# a plain x86_64 VPS and the current (non-legacy) services.
 name: rvpay
 
 services:
@@ -133,16 +133,34 @@ services:
           cpus: "0.50"
           memory: 512M
 
+  admindashboard:
+    # ADMINDASHBOARD_IMAGE is set by CI; the default supports a local production build.
+    image: ${ADMINDASHBOARD_IMAGE:-rvpay/admindashboard:local}
+    build:
+      context: ./admindashboard
+    restart: unless-stopped
+    # The dashboard's Clients/Transactions base URLs are hardcoded per
+    # environment in admindashboard/lib/environments.ts, not read from env
+    # vars — see deploy/contabo/README.md for what needs updating there
+    # before this points at the Contabo-hosted API.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+
   nginx:
     # Nginx terminates public TLS and forwards the HTTP/REST gateway of each
-    # service, routed by subdomain, over the private Compose network. Raw
-    # gRPC between clients and transactions stays internal and is never
-    # exposed publicly.
+    # service, routed per the real AWS ALB model (api.* split by path prefix
+    # between clients/transactions, admindashboard.* on its own host), over
+    # the private Compose network. Raw gRPC between clients and transactions
+    # stays internal and is never exposed publicly.
     image: nginxinc/nginx-unprivileged:1.27-alpine
     restart: unless-stopped
     depends_on:
       - clients
       - transactions
+      - admindashboard
     ports:
       - "80:8080"
       - "443:8443"
