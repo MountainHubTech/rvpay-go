@@ -450,6 +450,85 @@ curl -s http://127.0.0.1:8080/v1/public/clients/healthcheck        # testing; pr
 curl -s http://127.0.0.1:8081/v1/public/transactions/healthcheck   # testing; production 8091
 ```
 
+### Logs
+
+SSH in (`ssh rvpay-vps`), then set `$ENV` and `$C` as in section 3:
+
+```bash
+ENV=production        # or testing
+cd /opt/rvpay-$ENV
+C="docker compose -p rvpay-$ENV -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml"
+```
+
+**App logs** (clients, transactions, dashboard, postgres):
+
+```bash
+$C logs -f --tail=100 clients                 # follow live; Ctrl+C to stop
+$C logs -f --tail=100 clients transactions    # both services together
+$C logs --since 1h transactions               # last hour
+$C logs --since 2026-10-08T09:00:00 clients   # since a specific time (UTC)
+$C logs admindashboard                        # Next.js dashboard
+$C logs postgres                              # database
+$C logs migration-clients                     # result of the last migration run
+```
+
+**Finding problems.** The Go services log one JSON line per event
+(zerolog), so filter by level:
+
+```bash
+$C logs --since 24h --no-log-prefix clients transactions | grep -E '"level":"(error|fatal)"'
+$C logs --since 24h --no-log-prefix clients transactions | grep '"level":"warn"'
+```
+
+`jq` is installed on the server, which makes the lines readable:
+
+```bash
+$C logs --since 1h --no-log-prefix transactions | jq -rR 'fromjson? | "\(.time) \(.level) \(.message) \(.error // "")"'
+```
+
+To search for one thing, such as a deposit ID or a client ID:
+
+```bash
+$C logs --since 24h --no-log-prefix clients transactions | grep '<deposit-or-client-id>'
+```
+
+**Web traffic (nginx).** These logs are shared with the other two sites on
+the box, so filter for RVPay's hostnames:
+
+```bash
+tail -f /var/log/nginx/access.log | grep -E 'rvpay\.co|sslip\.io'    # live requests
+tail -50 /var/log/nginx/error.log                                    # proxy errors (e.g. 502 if a service is down)
+```
+
+**Server and service-level logs:**
+
+```bash
+systemctl status rvpay@$ENV --no-pager     # did the stack start at boot?
+journalctl -u rvpay@$ENV --since today     # its start/stop history
+journalctl -u docker --since today         # Docker itself
+```
+
+**Without SSHing in first,** from an operator PC:
+
+```powershell
+ssh rvpay-vps "docker logs --tail 100 rvpay-production-clients-1"
+ssh rvpay-vps "docker logs -f rvpay-production-transactions-1"
+```
+
+Container names follow the pattern `rvpay-<env>-<service>-1`, e.g.
+`rvpay-testing-admindashboard-1`.
+
+**Good to know:**
+
+- **How far back logs go:** each container keeps about 30 MB of logs (3 ×
+  10 MB, set in `/etc/docker/daemon.json`). Older lines are deleted
+  automatically, so the disk can't fill. For long-term history or alerting,
+  add a log service later.
+- **Recreating a container clears its logs.** That happens on every deploy,
+  so if you're investigating a problem, save the logs before deploying:
+  `$C logs --no-log-prefix clients > /root/clients-$(date +%F-%H%M).log`
+- **Times are in UTC.**
+
 ### Database access
 
 ```bash
