@@ -189,8 +189,29 @@ How it works:
 - `HTTP_CORS_ALLOWED_ORIGINS` must include that environment's dashboard
   origin, e.g. `https://admindashboard.testing.75-119-147-69.sslip.io`.
 
-Deploys (`git checkout`) never touch `.env`. After editing it, apply with
-`$C up -d`, which recreates only the containers whose config changed.
+Deploys never touch the secrets in `.env`. The only lines a CI deploy
+writes are the image pins, `CLIENTS_IMAGE`, `TRANSACTIONS_IMAGE` and
+`ADMINDASHBOARD_IMAGE`, set to the GHCR images of the deployed commit. That
+way a later manual `$C up -d` keeps running the deployed images instead of
+falling back to the `rvpay/<service>:local` defaults. After editing `.env`,
+apply it with `$C up -d --no-build`, which recreates only the containers
+whose config changed.
+
+### Rotating the database password
+
+The services connect as the `rvpay` Postgres role. To change its password
+in one environment (about 2 minutes, plus a short restart of the apps):
+
+```bash
+NEW=$(openssl rand -hex 24)
+$C exec -T postgres sh -c "psql -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d postgres -c \"ALTER ROLE \\\"\$POSTGRES_USER\\\" PASSWORD '$NEW'\""
+sed -i "s/^DB_PASSWORD=.*/DB_PASSWORD=$NEW/" .env; unset NEW
+$C up -d --no-build      # recreates the containers with the new password
+```
+
+Both environments were rotated on 2026-10-08, after the services had been
+found printing the connection string (password included) to their logs.
+That logging was removed in commit `0e28e78`.
 
 ---
 
@@ -294,11 +315,13 @@ using the built-in `GITHUB_TOKEN`. No extra registry secret is needed.
 ENV=testing; cd /opt/rvpay-$ENV
 C="docker compose -p rvpay-$ENV -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml"
 git fetch && git checkout --detach origin/contabo/$ENV
+sed -i '/^\(CLIENTS\|TRANSACTIONS\|ADMINDASHBOARD\)_IMAGE=/d' .env   # drop the CI image pins
 nice -n 10 $C up -d --build
 ```
 
 This builds locally as `rvpay/<service>:local` images, instead of pulling
-from GHCR.
+from GHCR. Removing the image pins is required: otherwise Compose keeps
+using the last CI-deployed images. The next CI deploy writes the pins back.
 
 ---
 

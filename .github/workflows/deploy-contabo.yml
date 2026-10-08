@@ -141,9 +141,13 @@ jobs:
           cd /opt/rvpay-$ENV_ID
           git fetch --quiet origin
           git checkout --quiet --detach ${GITHUB_SHA}
-          export CLIENTS_IMAGE=$PREFIX-clients:${GITHUB_SHA}
-          export TRANSACTIONS_IMAGE=$PREFIX-transactions:${GITHUB_SHA}
-          export ADMINDASHBOARD_IMAGE=$PREFIX-admindashboard:${GITHUB_SHA}
+          # Pin the deployed images in .env, so a later manual
+          # "docker compose up -d" (e.g. after editing a secret) keeps running
+          # them instead of falling back to the rvpay/<service>:local defaults.
+          for pair in CLIENTS_IMAGE=$PREFIX-clients TRANSACTIONS_IMAGE=$PREFIX-transactions ADMINDASHBOARD_IMAGE=$PREFIX-admindashboard; do
+            sed -i "/^\${pair%%=*}=/d" .env
+            echo "\${pair}:${GITHUB_SHA}" >> .env
+          done
           C="docker compose -p rvpay-$ENV_ID -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml"
           \$C pull --quiet clients transactions admindashboard </dev/null
           \$C up -d --no-build --remove-orphans </dev/null
