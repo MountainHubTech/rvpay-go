@@ -76,20 +76,41 @@ export function isDashboardEnvironment(
   );
 }
 
+// The environment each known dashboard hostname talks to when the visitor
+// has not picked one in Settings, so e.g. admindashboard.rvpay.co works
+// without a manual switch. localStorage is per-origin, so a choice made on
+// one hostname never leaks into another.
+const HOSTNAME_ENVIRONMENTS: Record<string, DashboardEnvironment> = {
+  "admindashboard.rvpay.co": "production",
+  "admindashboard.rvpay.xyz": "testing",
+  "admindashboard.testing.75-119-147-69.sslip.io": "contabo-testing",
+  "admindashboard.production.75-119-147-69.sslip.io": "contabo-production",
+  localhost: "local",
+  "127.0.0.1": "local",
+};
+
+// defaultEnvironmentForHost returns the environment matching the hostname
+// the dashboard is served from, or DEFAULT_ENVIRONMENT for unknown hosts.
+export function defaultEnvironmentForHost(hostname: string): DashboardEnvironment {
+  return HOSTNAME_ENVIRONMENTS[hostname.toLowerCase()] ?? DEFAULT_ENVIRONMENT;
+}
+
 // getSelectedEnvironment returns the environment currently selected in this
-// browser, defaulting to "testing" on first visit. Safe to call during SSR:
-// window/localStorage are only touched when they exist, and the module never
-// reads storage at import time.
+// browser, defaulting on first visit to the one matching the current hostname
+// (see HOSTNAME_ENVIRONMENTS). Safe to call during SSR: window/localStorage
+// are only touched when they exist, and the module never reads storage at
+// import time.
 export function getSelectedEnvironment(): DashboardEnvironment {
   if (typeof window === "undefined") {
     return DEFAULT_ENVIRONMENT;
   }
+  const hostDefault = defaultEnvironmentForHost(window.location.hostname);
   try {
     const stored = window.localStorage.getItem(ENVIRONMENT_STORAGE_KEY);
-    return isDashboardEnvironment(stored) ? stored : DEFAULT_ENVIRONMENT;
+    return isDashboardEnvironment(stored) ? stored : hostDefault;
   } catch {
     // Storage can be unavailable (private mode, permissions); fail safe.
-    return DEFAULT_ENVIRONMENT;
+    return hostDefault;
   }
 }
 
