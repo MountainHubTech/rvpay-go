@@ -775,6 +775,9 @@ service HealthService {
 // ListTransactionsRequest requests a paginated deposit (transaction) list for
 // the Admin Dashboard transactions page. Filters mirror the payouts list:
 // free-text search, lifecycle status and the RVPay client (sub-account) name.
+// A sub-account can additionally be identified by its RVPay client id or its
+// HighLevel locationId; both are resolved server-side to the canonical RVPay
+// client name before the database filter is applied.
 message ListTransactionsRequest {
   // search filters by client_name or customer_id (case-insensitive).
   string search = 1;
@@ -787,6 +790,18 @@ message ListTransactionsRequest {
   int32 page = 4;
   // page_size is the maximum number of rows per page.
   int32 page_size = 5;
+  // client_id filters by the RVPay client/sub-account primary key
+  // (clients.id, a UUID owned by the Clients service). It is resolved to
+  // the canonical RVPay client name through the Clients service before
+  // filtering; an unknown id returns NOT_FOUND. Must not conflict with
+  // location_id or sub_account when supplied together. Empty means unset.
+  string client_id = 6;
+  // location_id filters by the HighLevel locationId of the sub-account. It
+  // is mapped to the canonical RVPay client name convention
+  // ("highlevel-<locationId>") before filtering; an unknown location simply
+  // matches no transactions. Must not conflict with client_id or sub_account
+  // when supplied together. Empty means unset.
+  string location_id = 7;
 }
 
 // TransactionListRow is a single row of the transactions list.
