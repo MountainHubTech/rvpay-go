@@ -13,8 +13,9 @@ uses its own branches (`contabo/testing`, `contabo/production`), its own
 GitHub Environments (`contabo-testing`, `contabo-production`) and temporary
 hostnames. Nothing here touches `main`, `release/**`, `cd/environments.yaml`
 or the AWS/Render workflows. Production is served on `rvpay.co`, which was
-never configured in AWS. Testing stays on a temporary sslip.io hostname,
-because `rvpay.xyz` still points at AWS until we cut over (section 10).
+never configured in AWS. Testing has been served on `rvpay.xyz` since
+2026-10-09, when its `api` and `admindashboard` records were moved off the
+AWS load balancer, which took AWS testing off those hostnames (section 10).
 
 ---
 
@@ -30,9 +31,9 @@ because `rvpay.xyz` still points at AWS until we cut over (section 10).
 
 | | Testing | Production |
 |---|---|---|
-| Dashboard | https://admindashboard.testing.75-119-147-69.sslip.io | **https://admindashboard.rvpay.co** (also `admindashboard.production.75-119-147-69.sslip.io`) |
-| API | https://api.testing.75-119-147-69.sslip.io | **https://api.rvpay.co** (also `api.production.75-119-147-69.sslip.io`) |
-| Dashboard environment to select | **Contabo Testing** | **Production** on `admindashboard.rvpay.co`; **Contabo Production** on the sslip.io host |
+| Dashboard | **https://admindashboard.rvpay.xyz** (also `admindashboard.testing.75-119-147-69.sslip.io`) | **https://admindashboard.rvpay.co** (also `admindashboard.production.75-119-147-69.sslip.io`) |
+| API | **https://api.rvpay.xyz** (also `api.testing.75-119-147-69.sslip.io`) | **https://api.rvpay.co** (also `api.production.75-119-147-69.sslip.io`) |
+| Dashboard environment | picked automatically from the hostname (**Testing** on `rvpay.xyz`, **Contabo Testing** on sslip.io) | picked automatically (**Production** on `rvpay.co`, **Contabo Production** on sslip.io) |
 | Checkout | `/opt/rvpay-testing` | `/opt/rvpay-production` |
 | Secrets | `/opt/rvpay-testing/.env` | `/opt/rvpay-production/.env` |
 | Compose project | `rvpay-testing` | `rvpay-production` |
@@ -624,9 +625,23 @@ certificate for those names first. Production's `.env` URLs (`PUBLIC_BASE_URL`,
 `HIGHLEVEL_REDIRECT_URL`, `HIGHLEVEL_QUERY_URL`, `HIGHLEVEL_PAYMENT_URL`)
 point at `rvpay.co`. The HighLevel app must be updated to match (step 6).
 
-Testing (`rvpay.xyz`) still points at AWS. Move it only when Contabo testing
-is properly tested; until then the AWS setup stays live and unchanged.
-Steps, per environment:
+**Testing is on `rvpay.xyz` (2026-10-09).** The domain is registered at
+Namecheap. Its DNS was hosted in AWS Route 53 (testing account), with the
+`api` and `admindashboard` records as aliases to the AWS testing load
+balancer. Both were changed to `A 75.119.147.69` (TTL 60) in Route 53, and
+the nameservers were then moved to **Namecheap BasicDNS**, with the same
+two A records under Advanced DNS. Both providers give the same answer, so
+the nameserver move (which can take up to 48 hours to spread) causes no
+interruption. After that, the Route 53 hosted zone can be deleted. The zone
+had no MX or TXT records. Moving off Route 53 means AWS testing's
+CloudFormation root record and its ACM certificate validation records no
+longer work, which is fine as AWS testing is being retired.
+
+Testing's `.env` URLs already pointed at `rvpay.xyz`, and its
+`HTTP_CORS_ALLOWED_ORIGINS` includes `https://admindashboard.rvpay.xyz`.
+Testing's certificate covers all four of its names.
+
+Generic steps, per environment:
 
 1. Decide the mapping: testing → `api.rvpay.xyz` / `admindashboard.rvpay.xyz`,
    production → `api.rvpay.co` / `admindashboard.rvpay.co` (same as
