@@ -1,11 +1,74 @@
 # RVPay Go — Stage Checkpoint
+## Stage: HighLevel Inbound Webhook Delivery — IMPLEMENTATION START (2026-09-18)
+- [ ] New task: agents/rvpay-highlevel-inbound-webhook-agent.md (env-secret delivery, supersedes ghl-workflow-workaround.md)
+- [x] Required reading done (`.project-context.md` at repo root DOES NOT EXIST — reported, not invented)
+- [ ] Outbox migration + sqlc + emission hook in PawaPay callback + ghldeliver worker + config + CFN
+## Prior: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
+- [x] Transactions page wired to GET /v1/public/transactions (fetchTransactions + table/pagination + subAccount id→name mapping)
+- [x] Settings Team Management wired to GET /v1/public/clients/users (ListUsers RPC; proto/sqlc/repo/service/protected route; fetchUsers + team table)
+- [x] Disputes page wired to GET /v1/public/transactions/disputes*,/stats (full stack: migration + proto/sqlc/repo/service/protected routes; fetchDisputes/fetchDisputeStats + stats/table)
+- [x] build/vet/test transactions+clients PASS; npm run build PASS (type-check clean, all 3 pages prerendered)
+## Prior: Admin auth COMPLETE (2026-09-08); dashboard pages committed 576d8f5; module-path migration MountainHubTech COMPLETE.
+## Stage: HighLevel Inbound Webhook Delivery — IMPLEMENTED (2026-09-20)
+- [x] Stage complete: RVPay → HighLevel Inbound Webhook durable outbox delivery (rvpay.payment.completed)
+- [x] Outbox table + sqlc: `transactions/db/migrations/000007_payment_events.{up,down}.sql`, `transactions/db/query/payment_events.sql`, sqlc regenerated
+- [x] Repository: `transactions/db/repo/payment_event_repo.go` + mockgen regenerated
+- [x] Event contract: `transactions/ghldeliver/event.go` + test
+- [x] HTTP poster: `transactions/ghldeliver/client.go` + test (bounded timeout, URL-free errors, retry classification)
+- [x] Worker: `transactions/ghldeliver/worker.go` + test (atomic claim, bounded retry, permanent-failure stop, disabled-without-config safety)
+- [x] Emission hook: `transactions/payments/service.go` `enqueuePaymentCompletedEvent` in PawaPay COMPLETED callback transaction + tests
+- [x] Config: `transactions/config/model.go` `HighLevelInboundWebhookURL` field
+- [x] Wiring: `transactions/cmd/grpc-service/main.go` worker created + started
+- [x] Infra: `infra/cloudformation/components/third_party_secrets.yaml` (HighLevelInboundWebhookSecret), `infra/cloudformation/services/transactions.yaml` (secret injection), `transactions/.env.example` (placeholder)
+- [x] Validation: go build ./... PASS, go vet ./transactions/... PASS, go test ./transactions/... PASS, gofmt clean
+- [ ] Remaining: AWS deploy of third_party_secrets.yaml + transactions.yaml; set real webhook URL in AWS Secrets Manager; live GHL verification
+- [x] No hard-coded URL anywhere; CFN secret + ECS injection in place; worker disabled-without-config safety confirmed
 
-## Stage: Final Task — HighLevel OAuth v3 Migration — COMPLETE
-- [x] highlevel.go: ExchangeCode/RefreshToken use v3 camelCase fields (clientId, clientSecret, grantType, redirectUri, refreshToken, userType)
-- [x] highlevel.go: Version: v3 + Accept: application/json headers on token endpoint
-- [x] highlevel.go: v3 camelCase response parsing (accessToken, refreshToken, expiresIn, tokenType); locationId preserved
-- [x] service_test.go mock verifies v3 fields sent and obsolete snake_case NOT sent
-- [x] gofmt PASS; go build ./clients/... PASS; go test ./clients/... PASS; go vet ./clients/... PASS; go test ./... PASS
-- [x] Diff scope clean (only clients/providers/highlevel.go + clients/oauth/service_test.go)
+## Prior: Admin Dashboard New Pages — ALL WIRED (2026-09-10)
 
-## Next: Fresh real GHL Marketplace installation test against deployed service
+## Correct Account & Customer Names — Agent 2026-09-23
+
+- [x] `clients/db/query/clients.sql` — new queries `ListClientsWithDisplayNames`, `GetClientDisplayName`
+- [x] `clients/db/sqlc/*.go` — regenerated (models + querier)
+- [x] `clients/db/repo/client_repo.go` — `DisplayNames()` and `GetDisplayName()` methods
+- [x] `clients/service/clients_service.go` — `ListClients` populates `DisplayName` from HighLevel
+- [x] `clients/cmd/grpc-service/main.go` — wiring
+- [x] `clients/cmd/backfill-client-names/main.go` — standalone backfill CLI (source only; no compiled binary committed)
+- [x] `transactions/db/query/customers.sql` — new queries `GetCustomerNamesByID`, `GetCustomerNamesByIDs`
+- [x] `transactions/db/sqlc/*.go` — regenerated (models + querier)
+- [x] `transactions/db/repo/customer_repo.go` — `GetNamesByID()` and `GetNamesByIDs()` methods
+- [x] `transactions/payments/service.go` — customer name lookup in PawaPay callbacks
+- [x] `admindashboard/` — frontend wiring to display `display_name` / `customer_name`
+- [x] `transactions/db/repo/mocks/repo.go` — regenerated via `go generate` (mockgen)
+- [x] `transactions/db/sqlc/mocks/querier.go` — regenerated via `go generate` (mockgen)
+- [x] Account-name source: HighLevel Location name via `locations.readonly` scope + platform lookup (`slug='highlevel'`) + location cache from OAuth/token refresh
+- [x] Customer-name source: HighLevel Contact name via contact ID in `customers` table, resolved at callback time
+- [x] `locations.readonly` dependency: required for account-name resolution; falls back to `highlevel-<locationId>` if missing
+- [x] Client backfill: `go run ./clients/cmd/backfill-client-names` (CLI tool; binary NOT committed)
+- [x] Customer backfill: lazy during PawaPay callbacks; batch via `GetCustomerNamesByIDs` if needed
+- [x] Protobuf/API: no breaking changes; fields populated server-side in existing response types
+- [x] Dashboard: Admin Dashboard displays `display_name` and `customer_name` instead of raw IDs
+- [x] Database: `display_name` populated in app layer; `customer_name` populated at callback time
+- [x] Manual backfill: `go run ./clients/cmd/backfill-client-names` for clients; batch query for transactions
+- [x] OAuth reauthorization: location cache must be re-populated; `locations.readonly` scope required
+- [x] Tests: `go test ./clients/...` PASS, `go test ./transactions/...` PASS (after mock regeneration), `go test ./...` PASS
+- [x] Build/vet: `go build ./...` PASS, `go vet ./clients/... ./transactions/...` PASS, `gofmt` clean
+- [ ] Known limitations: requires HighLevel API + `locations.readonly` scope; backfill not automatic for historical records; compiled binary not committed; customer name backfill for existing transactions needs explicit batch run
+- [ ] Records not corrected automatically: clients created before this feature; transactions processed before customer name lookup; inaccessible HighLevel locations
+- [ ] Next: deploy and verify with live HighLevel API; consider DB columns for persistence; monitor backfill completeness
+
+## Sub-Accounts resilience — 2026-09-25
+- [x] Status wire-label/DB-enum mismatch fixed in Clients list/count path; focused service + gateway tests and Clients suite/vet PASS.
+- [x] Friendly/fallback/friendly multi-account test passes; Dashboard production build PASS; no Dashboard source change.
+- [ ] UNVERIFIED: exact deployed 500, real integration inventory, authenticated HTTP 200/rendering; local configured DB is down and no admin token is available.
+
+## Sub-Accounts HTTP 500 diagnostic — 2026-09-25
+- [x] Actual Dashboard path traced: GET `/v1/public/clients/sub-accounts`; auth required; NULL/friendly multi-account behavior covered by focused tests.
+- [x] Secret-safe temporary row/response tracing added; full Clients tests, vet, and diff checks pass.
+- [ ] Exact deployed 500 still unreproduced: local Clients exits before requests in gRPC channelz `GetsockoptTCPInfo` SIGSEGV; no admin token/session. Stable authenticated runtime verification required.
+## Sub-Accounts NULL display_name scan fix — 2026-09-25 (VERIFIED)
+- [x] Root cause: `ListSubAccountsFiltered` selected nullable `c.display_name` (migration 000006) into non-null Go `string`; sqlc `text`→`string` override ⇒ `dest[4] (col: display_name): cannot scan NULL into *string` ⇒ gRPC Internal/HTTP 500.
+- [x] Fix: `clients/db/query/clients.sql` now selects `COALESCE(NULLIF(c.display_name,''), c.client_name) AS display_name`; same defect on the LEFT JOIN `i.external_account_id` coalesced to ''. sqlc regenerated (only clients.sql.go + querier.go changed).
+- [x] No DB backfill, no migration, no proto/Dashboard/infra change; NULL rows are now handled by the application.
+- [x] Tests: 3 new DB-backed repo regression tests (NULL / friendly / multi-account) PASS; `go test ./clients/... -count=1` PASS; `go vet ./clients/...` PASS; `git diff --check` PASS.
+- [x] Runtime VERIFIED with real auth: pre-fix HTTP 500 (`dest[4] display_name`) → post-fix HTTP 200, 2 accounts, friendly name preserved, NULL row rendered as `highlevel-<locationId>`. Test token + scratch DB removed; Clients service stopped.

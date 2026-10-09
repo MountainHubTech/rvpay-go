@@ -11,7 +11,20 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/rs/zerolog"
 )
+
+// highLevelOAuthScopes is the single source-controlled definition of the
+// HighLevel OAuth scopes RVPay requests during the Marketplace install /
+// reauthorization flow. `locations.readonly` is required by the authoritative
+// location GET (GET /locations/{locationId}) that resolves the sub-account
+// display name; it is the only scope added by the account/customer name
+// correction work. Existing installations keep working, but a location token
+// granted BEFORE this scope was requested must be reauthorized (reinstalled)
+// for the location GET to succeed — the backfill reports such locations
+// instead of fabricating a name.
+var highLevelOAuthScopes = []string{"read", "write", "locations.readonly"}
 
 // HighLevelProvider implements the unified Provider interface for HighLevel.
 type HighLevelProvider struct {
@@ -25,6 +38,7 @@ type HighLevelProvider struct {
 	scopes           []string
 	httpClient       *http.Client
 	paymentProvider  PaymentProviderClient
+	logger           zerolog.Logger
 }
 
 // NewHighLevelProvider creates a new HighLevel provider. webhookPublicKey is
@@ -36,7 +50,7 @@ type HighLevelProvider struct {
 // paymentProvider is the Custom Payment Provider client used for outbound
 // HighLevel provider registration/configuration calls. It may be nil if the
 // provider does not support Custom Payment Provider operations.
-func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey string, paymentProvider PaymentProviderClient) *HighLevelProvider {
+func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey string, paymentProvider PaymentProviderClient, logger zerolog.Logger) *HighLevelProvider {
 	return &HighLevelProvider{
 		clientID:         clientID,
 		clientSecret:     clientSecret,
@@ -45,11 +59,12 @@ func NewHighLevelProvider(clientID, clientSecret, redirectURI, webhookPublicKey 
 		authURL:          "https://marketplace.gohighlevel.com/oauth/chooselocation",
 		tokenURL:         "https://services.leadconnectorhq.com/oauth/token",
 		userInfoURL:      "https://services.leadconnectorhq.com/oauth/userinfo",
-		scopes:           []string{"read", "write"},
+		scopes:           highLevelOAuthScopes,
 		// A single shared client is reused across all provider calls so HTTP
 		// connections are pooled and reused rather than recreated per request.
 		httpClient:      &http.Client{Timeout: 10 * time.Second},
 		paymentProvider: paymentProvider,
+		logger:          logger,
 	}
 }
 
@@ -66,7 +81,7 @@ func NewHighLevelProviderWithURLs(clientID, clientSecret, redirectURI, webhookPu
 		authURL:          authURL,
 		tokenURL:         tokenURL,
 		userInfoURL:      userInfoURL,
-		scopes:           []string{"read", "write"},
+		scopes:           highLevelOAuthScopes,
 		httpClient:       &http.Client{Timeout: 10 * time.Second},
 		paymentProvider:  paymentProvider,
 	}
@@ -135,6 +150,7 @@ func (p *HighLevelProvider) GenerateAuthorizationURL(ctx context.Context, state 
 }
 
 func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redirectURI string) (*TokenResponse, error) {
+	p.logger.Info().Msg("\n HighLevelProvider ExchangeCode method initiated...")
 	data := url.Values{}
 	// HighLevel OAuth v3 contract uses camelCase property names.
 	data.Set("clientId", p.clientID)
@@ -184,6 +200,8 @@ func (p *HighLevelProvider) ExchangeCode(ctx context.Context, code string, redir
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
+
+	// p.logger.Info().Msgf("\n Response from token exhange: %v \n", tokenResp)
 
 	return &TokenResponse{
 		AccessToken:  tokenResp.AccessToken,
@@ -251,11 +269,14 @@ func (p *HighLevelProvider) RefreshToken(ctx context.Context, refreshToken strin
 }
 
 func (p *HighLevelProvider) GetUserInfo(ctx context.Context, accessToken string) (string, error) {
+	p.logger.Info().Msg("Get User Info Initiated...")
 	req, err := http.NewRequestWithContext(ctx, "GET", p.userInfoURL, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create user info request: %w", err)
 	}
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", accessToken))
+
+	p.logger.Info().Msg("\n Request about to be made... \n")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

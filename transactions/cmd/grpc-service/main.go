@@ -12,17 +12,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	commondatabase "github.com/I-Frostbyte/rvpay-go/shared/database"
-	commonlogger "github.com/I-Frostbyte/rvpay-go/shared/logger"
-	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
-	"github.com/I-Frostbyte/rvpay-go/transactions/config"
-	"github.com/I-Frostbyte/rvpay-go/transactions/customers"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/transactions/deposits"
-	"github.com/I-Frostbyte/rvpay-go/transactions/merchants"
-	"github.com/I-Frostbyte/rvpay-go/transactions/payments"
-	"github.com/I-Frostbyte/rvpay-go/transactions/payouts"
+	"github.com/I-Frostbyte/pawapay_client"
+	"github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	commondatabase "github.com/MountainHubTech/rvpay-go/shared/database"
+	commonlogger "github.com/MountainHubTech/rvpay-go/shared/logger"
+	commonobservability "github.com/MountainHubTech/rvpay-go/shared/observability"
+	"github.com/MountainHubTech/rvpay-go/transactions/auth"
+	"github.com/MountainHubTech/rvpay-go/transactions/config"
+	"github.com/MountainHubTech/rvpay-go/transactions/customers"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
+	"github.com/MountainHubTech/rvpay-go/transactions/deposits"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghldeliver"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghlsync"
+	health_check "github.com/MountainHubTech/rvpay-go/transactions/health"
+	"github.com/MountainHubTech/rvpay-go/transactions/merchants"
+	"github.com/MountainHubTech/rvpay-go/transactions/overview"
+	"github.com/MountainHubTech/rvpay-go/transactions/payments"
+	"github.com/MountainHubTech/rvpay-go/transactions/payouts"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/rs/zerolog"
@@ -97,12 +103,40 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	customerRepo := repo.NewCustomerRepo(queries)
 	depositRepo := repo.NewDepositRepo(queries)
 	payoutRepo := repo.NewPayoutRepo(queries)
+	disputeRepo := repo.NewDisputeRepo(queries)
+
+	/* This block is only to be used for local testing
+	logger.Info().Msg("Declaring PawaPay client...")
+	logger.Info().Msgf("PawaPay API URL: %s", config.APIURL)
+	logger.Info().Msgf("PawaPay API Key: %s", config.APIKey)
+	*/
+
+	pawapayClient := pawapay_client.NewClient(config.APIURL, config.APIKey)
 
 	merchantService := merchants.NewMerchantService(merchantRepo, logger)
 	customerService := customers.NewCustomerService(customerRepo, logger)
-	depositService := deposits.NewDepositService(depositRepo, customerRepo, logger)
-	paymentService := payments.NewPaymentService(depositRepo, logger)
-	payoutService := payouts.NewPayoutService(payoutRepo, logger)
+	depositService := deposits.NewDepositService(depositRepo, transactionsRepo, customerRepo, logger, *pawapayClient)
+	paymentService := payments.NewPaymentService(depositRepo, transactionsRepo, logger)
+	payoutService := payouts.NewPayoutService(payoutRepo, logger, *pawapayClient)
+	overviewService := overview.NewOverviewService(depositRepo, payoutRepo, disputeRepo, customerRepo, logger)
+	healthCheck := health_check.NewHealthService(logger)
+	// The GHL order-status synchronization worker claims terminal deposits
+	// from the durable deposits-table outbox and sends the GHL update through
+	// the Clients PaymentSyncService after the deposit transaction commits.
+	// It runs alongside the servers and shuts down cooperatively with them.
+	ghlSyncWorker := ghlsync.NewWorker(depositRepo, config.ClientsGrpcAddr, logger, ghlsync.DefaultPollInterval)
+	// The HighLevel inbound-webhook delivery worker claims
+	// rvpay.payment.completed events from the payment_events outbox and POSTs
+	// them to HIGHLEVEL_INBOUND_WEBHOOK_URL. A missing or invalid URL runs
+	// the worker safely disabled (the variable NAME is logged, never the
+	// value); successful payments are never affected by HighLevel
+	// availability. paymentEventRepo is registered with the same pool as the
+	// other repositories.
+	paymentEventRepo := repo.NewPaymentEventRepo(queries)
+	hlDeliverWorker, err := ghldeliver.NewWorker(paymentEventRepo, transactionsRepo, config.HighLevelInboundWebhookURL, logger, ghldeliver.DefaultPollInterval)
+	if err != nil {
+		return fmt.Errorf("create highlevel webhook delivery worker: %w", err)
+	}
 
 	svrOpts := []grpc.ServerOption{
 		grpc.ChainUnaryInterceptor(
@@ -121,6 +155,8 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	transactionsgrpc.RegisterDepositServiceServer(grpcServer, depositService)
 	transactionsgrpc.RegisterPaymentServiceServer(grpcServer, paymentService)
 	transactionsgrpc.RegisterPayoutServiceServer(grpcServer, payoutService)
+	transactionsgrpc.RegisterDashboardOverviewServiceServer(grpcServer, overviewService)
+	transactionsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered Transactions services...")
 
@@ -145,12 +181,47 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	if err := transactionsgrpc.RegisterPayoutServiceHandlerServer(ctx, gatewayMux, payoutService); err != nil {
 		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
 	}
+	if err := transactionsgrpc.RegisterDashboardOverviewServiceHandlerServer(ctx, gatewayMux, overviewService); err != nil {
+		return fmt.Errorf("register grpc-gateway overview handler: %w", err)
+	}
+	if err := transactionsgrpc.RegisterHealthServiceHandlerServer(ctx, gatewayMux, healthCheck); err != nil {
+		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	httpMux := http.NewServeMux()
-	httpMux.Handle("/", commonobservability.AccessLog(logger)(gatewayMux))
+	// CORS: the gateway serves browser clients (the RVPay Admin Dashboard,
+	// including its payment checkout iframe). The effective allowlist is
+	// resolved by the shared layer (configured origins + the local dev
+	// origin; documented defaults when the configuration is empty) and
+	// logged at startup so the runtime configuration is provable.
+	corsOrigins := commonobservability.ResolveAllowedOrigins(config.CORSAllowedOrigins)
+	logger.Info().Strs("allowed_origins", corsOrigins).Msg("cors configuration loaded")
+
+	// Admin authorization: the Dashboard read endpoints (overview snapshot,
+	// payout stats, payout list) are administrator-only. They RETAIN their
+	// already-permitted /v1/public* ALB prefixes and are protected here at
+	// the transport layer by delegating access-token validation to the
+	// Clients service over the internal ValidateAccessToken RPC. Payment
+	// page (InitiateDeposit, verify, callbacks) and health endpoints stay
+	// public and are never intercepted.
+	validateAccessToken, closeValidator, err := auth.NewValidator(config.ClientsGrpcAddr, logger)
+	if err != nil {
+		return fmt.Errorf("connect to clients service for token validation: %w", err)
+	}
+	defer closeValidator()
+	protectedRoutes := []auth.AdminRoute{
+		{Method: http.MethodGet, Path: "/v1/public/transactions/overview/snapshot"},
+		{Method: http.MethodGet, Path: "/v1/public/transactions"},
+		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes/stats"},
+		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes"},
+		{Method: http.MethodPost, Path: "/v1/public/transactions/disputes/evidence"},
+		{Method: http.MethodGet, Path: "/v1/public/payouts/overview/stats"},
+		{Method: http.MethodGet, Path: "/v1/public/payouts"},
+	}
+	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, auth.AdminAuthMiddleware(validateAccessToken, protectedRoutes, logger)(commonobservability.AccessLog(logger)(gatewayMux))))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -166,7 +237,14 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	httpPort := os.Getenv("PORT")
+	// The HTTP server listens on a separate port from the gRPC
+	// server. The gRPC server is used for internal communication
+	// between services, while the HTTP server is used for
+	// external communication with clients (e.g., web browsers).
+	// For now, HTTP server has the same port as the clients
+	// service because of the TargetGroup. Whenever you're
+	// testing locally, you can change it to 8081
+	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
 		httpPort = "8080"
 	}
@@ -192,7 +270,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		})
 	}
 	wg := &sync.WaitGroup{}
-	wg.Add(2)
+	wg.Add(4)
 	go func() {
 		defer wg.Done()
 		err := grpcServer.Serve(listener)
@@ -207,6 +285,16 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			reportStartupErr(fmt.Errorf("httpServer.ListenAndServe: %w", err))
 		}
+	}()
+
+	go func() {
+		defer wg.Done()
+		ghlSyncWorker.Run(ctx)
+	}()
+
+	go func() {
+		defer wg.Done()
+		hlDeliverWorker.Run(ctx)
 	}()
 
 	go func() {

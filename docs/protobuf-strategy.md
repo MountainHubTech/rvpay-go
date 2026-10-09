@@ -113,9 +113,9 @@ Package naming follows the existing repository convention: `<service>grpc`.
 
 | Package | Go Package Option |
 |---------|-------------------|
-| `clientsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc` |
-| `transactionsgrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc` |
-| `commongrpc` | `github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc` |
+| `clientsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc` |
+| `transactionsgrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc` |
+| `commongrpc` | `github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc` |
 
 Rules:
 
@@ -124,7 +124,7 @@ Rules:
 - Service packages may import only `commongrpc` and well-known types
   (`google/protobuf/*.proto`, `google/api/annotations.proto`).
 - `go_package` must always match the repository Go module
-  (`github.com/I-Frostbyte/rvpay-go`) to keep generated code importable.
+  (`github.com/MountainHubTech/rvpay-go`) to keep generated code importable.
 
 ## 6. Shared Messages and Enums
 
@@ -309,7 +309,7 @@ Generated files are never edited by hand.
 - `commongrpc` is a new shared package; no existing contract is modified to
   extract shared types until the new contracts are introduced.
 - The `go_package` option always matches the repository Go module
-  (`github.com/I-Frostbyte/rvpay-go`).
+  (`github.com/MountainHubTech/rvpay-go`).
 - Public REST paths remain under `/v1/public/...`; administrative paths are
   introduced under `/v1/admin/...` when needed.
 

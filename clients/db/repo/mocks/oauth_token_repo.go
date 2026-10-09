@@ -14,7 +14,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	sqlc "github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
+	sqlc "github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
 	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )

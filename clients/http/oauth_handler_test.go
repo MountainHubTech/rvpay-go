@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/clients/oauth"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
@@ -90,7 +90,34 @@ func (m *testOAuthClientRepo) ExistsByID(ctx context.Context, id uuid.UUID) (boo
 func (m *testOAuthClientRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.ClientStatus) (sqlc.Client, error) {
 	return sqlc.Client{}, nil
 }
+// UpdateDisplayName mirrors the guarded SQL update: only a missing
+// display name is filled; an existing name is never overwritten.
+func (m *testOAuthClientRepo) UpdateDisplayName(ctx context.Context, id uuid.UUID, displayName string) (sqlc.Client, error) {
+	client, ok := m.clients[id.String()]
+	if !ok {
+		return sqlc.Client{}, repo.ErrNotFound
+	}
+	if client.DisplayName == "" {
+		client.DisplayName = displayName
+		m.clients[id.String()] = client
+	}
+	return client, nil
+}
+
+// ListNeedingDisplayName serves the client-name backfill CLI; these tests
+// do not exercise it.
+func (m *testOAuthClientRepo) ListNeedingDisplayName(ctx context.Context, limit, offset int32) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	return nil, nil
+}
 func (m *testOAuthClientRepo) Delete(ctx context.Context, id uuid.UUID) error { return nil }
+
+func (m *testOAuthClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	return nil, nil
+}
+
+func (m *testOAuthClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	return 0, nil
+}
 
 // testOAuthPlatformRepo is an in-memory PlatformRepo for handler tests.
 type testOAuthPlatformRepo struct {
@@ -228,7 +255,7 @@ func newTestOAuthHandler(t *testing.T) (*OAuthHandler, *testOAuthStateRepo, *tes
 	stateRepo := newTestOAuthStateRepo()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	svc := oauth.NewService(
 		newTestOAuthIntegrationRepo(),

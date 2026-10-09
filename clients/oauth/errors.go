@@ -3,7 +3,7 @@ package oauth
 import (
 	"errors"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -66,6 +66,31 @@ var (
 	// ErrAPIKeyGenerationFailed is returned when generating the provider API
 	// key fails.
 	ErrAPIKeyGenerationFailed = status.Error(codes.Internal, "provider API key generation failed")
+	// ErrProviderCredentialsNotConfigured is returned when no live/test
+	// provider credentials are configured for pushing to HighLevel.
+	ErrProviderCredentialsNotConfigured = status.Error(codes.FailedPrecondition, "provider credentials not configured")
+	// ErrLocationNameUnavailable is returned when HighLevel returns no usable
+	// location/sub-account name for a location. The client's existing display
+	// name is deliberately left untouched: an identifier, an empty string or
+	// an error message is never substituted for the authoritative name.
+	ErrLocationNameUnavailable = status.Error(codes.NotFound, "highlevel location name is unavailable")
+
+	// ErrMissingOrderID is returned when no GHL order ID is provided for the
+	// server-side order status synchronization.
+	ErrMissingOrderID = status.Error(codes.InvalidArgument, "order ID is required")
+	// ErrUnsupportedGhlOrderStatus is returned when the synchronization status
+	// is not one of the two PawaPay-authoritative terminal results.
+	ErrUnsupportedGhlOrderStatus = status.Error(codes.InvalidArgument, "ghl order status must be completed or failed")
+	// ErrReconciliationUnauthorized is returned when provider reconciliation
+	// cannot proceed because the location OAuth token is unauthorized (401):
+	// invalid, expired beyond refresh, or missing the required scope. It is
+	// deliberately distinct from "provider already exists" so an
+	// authorization problem is never mislabeled as a remote state result.
+	ErrReconciliationUnauthorized = status.Error(codes.PermissionDenied, "provider reconciliation unauthorized")
+	// ErrReconciliationFailed is returned when provider reconciliation fails
+	// for a transient, malformed, or rejected remote response that is not a
+	// confirmed authorization problem. The failure is safe to retry.
+	ErrReconciliationFailed = status.Error(codes.Internal, "provider reconciliation failed")
 )
 
 // translateError converts repository errors to business errors.

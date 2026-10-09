@@ -320,3 +320,178 @@ secret and the pawaPay API key.
 - Token refresh is manual; no automatic scheduling is implemented.
 - Webhook deduplication is enforced via the `webhook_events` table.
 - No authentication or authorization is implemented at the transport layer.
+
+## Recent changes (unpushed local commits)
+
+Changes below apply only to the Clients service across the three most recent
+(unpushed) commits.
+
+### OAuth callback logging (`http/oauth_handler.go`)
+- Added structured `zerolog` logging to `GET /oauth/callback`.
+- The `state` query parameter is now parsed explicitly so a *missing* parameter is
+  distinguishable from a *present-but-empty* one (HighLevel Marketplace callbacks do not
+  return `state`).
+
+### Configuration (`config/model.go`)
+- `Config`, `DBConfig`, and `HighLevelConfig` converted to `ardanlabs/conf/v3` struct
+  tags: required variables fail config load when missing, secrets are masked, defaults are
+  declared (`LOG_LEVEL` default `info`, `RUN_MIGRATIONS` default `true`,
+  `DB_TLS_DISABLED` no default → `false`).
+- New binding `TRANSACTIONS_GRPC_ADDR` → `Config.TransactionsAddr` added.
+- `config/model_test.go` rewritten to cover defaults, environment overrides, and
+  missing-required-variable failures.
+
+### HighLevel provider (`providers/highlevel.go`)
+- `NewHighLevelProvider` now takes a `zerolog.Logger` argument.
+- `ExchangeCode` and `GetUserInfo` instrumented with logging; the raw token-exchange
+  response log was later commented out to avoid leaking tokens.
+
+### OAuth flow / installation (`oauth/service.go`)
+- The stateless Marketplace callback (no `state`) now provisions the tenant during
+  install: exchanges code once → obtains the GHL `locationId`, resolves the existing
+  HighLevel platform by slug (never creates it), idempotently creates the tenant client
+  `highlevel-<locationId>` (ACTIVE) and the client's integration with
+  `external_account_id = locationId` (status CREATED), then continues with the token.
+- New `processCallbackWithToken` convergence point makes both flows exchange the code
+  exactly once (double-exchange fixed), reuses/activates a CREATED integration, persists
+  the OAuth token, and best-effort registers the HighLevel payment provider. `GetUserInfo`
+  commented out. `oauth/service_test.go` updated accordingly.
+
+### Main wiring (`cmd/grpc-service/main.go`)
+- Transactions gRPC connection uses `cfg.TransactionsAddr` (typed config) instead of
+  `os.Getenv`. Active `godotenv.Load(".env")` and `fmt.Println` debug output of the GHL
+  client id/secret were removed (kept commented out).
+
+### GHL Custom Payment Provider (`providers/highlevel_payment_provider.go`)
+- Outbound GHL payment-provider calls now set `Version: v3`. Registration is being
+  worked on ("partially fixed").
+## HighLevel v3 Custom Provider capability configuration
+
+During provider registration the Clients service now first enables the
+RVPay Custom Payment Provider capabilities for the installed location:
+
+```
+PUT /payments/custom-provider/capabilities   (Version: v3, Bearer OAuth token)
+Body: {"locationId":"<locationId>","supportsSubscriptionSchedules":false}
+```
+
+`locationId` is taken from the already-resolved OAuth token response; no
+`companyId` is sent and subscription schedules are not supported (one-time
+payments only). The call is best-effort and runs before the existing provider
+registration sequence (`POST /payments/custom-provider/provider` ->
+`GET /payments/custom-provider/connect` verification ->
+`POST /payments/custom-provider/connect` with live/test keys); a failure is
+logged and retried on the next registration without blocking the install.
+
+## RVPay → HighLevel Inbound Webhook Delivery (2026-09-20)
+
+Status: IMPLEMENTED (transactions-side only; clients service not involved).
+
+The RVPay Transactions service now emits a durable `rvpay.payment.completed` event for confirmed successful payments, delivered asynchronously to a HighLevel Inbound Webhook URL through an outbox-backed worker (`transactions/ghldeliver/`).
+
+- The HighLevel Inbound Webhook workflow was already manually configured by the developer; RVPay implements only its side (emit event for confirmed payment).
+- The webhook URL (`HIGHLEVEL_INBOUND_WEBHOOK_URL`) is loaded from environment configuration with an empty default, and in production is delivered through AWS Secrets Manager using the existing ECS task-definition secret-injection architecture. It is never hard-coded, never stored in the database, and never present in source-controlled files (only an empty placeholder in `transactions/.env.example`).
+- Event emission happens inside the PawaPay COMPLETED callback transaction (`transactions/payments/service.go` `enqueuePaymentCompletedEvent`), after the terminal COMPLETED state and GHL sync pending status are committed. The insert is idempotent (unique `deposit_id`).
+- The event uses the exact agreed JSON field names and structure, with authoritative sourcing per field (payment, order, customer, location, products, PawaPay provider transaction ID, etc.). `customerEmail` and `productName` are confirmed not persisted in RVPay and are emitted as empty strings.
+- The worker delivers the event asynchronously with bounded retries (transient: 1m/5m/15m/60m backoff, max 5 attempts; permanent 4xx: fail immediately). HighLevel availability never determines whether RVPay considers the payment successful.
+- Delivery retries reuse the same event ID, idempotency key, and payload bytes.
+- The configured webhook URL is never logged; error messages are URL-free.
+- When the URL is missing or not a valid HTTPS URL, the worker runs disabled — logs the config variable name only, leaves events pending, payments unaffected.
+
+Files created (transactions-side): `transactions/db/migrations/000007_payment_events.{up,down}.sql`, `transactions/db/query/payment_events.sql`, `transactions/db/repo/payment_event_repo.go`, `transactions/ghldeliver/{event,client,worker}.go`, `transactions/ghldeliver/{event,client,worker}_test.go`, `transactions/payments/payment_event_test.go`, `infra/cloudformation/components/third_party_secrets.yaml`.
+
+Files modified (transactions-side): `transactions/db/sqlc/{payment_events.sql.go,models.go,querier.go}`, `transactions/db/repo/mocks/repo.go`, `transactions/payments/service.go`, `transactions/payments/callback_test.go`, `transactions/config/model.go`, `transactions/.env.example`, `transactions/cmd/grpc-service/main.go`, `infra/cloudformation/services/transactions.yaml`.
+
+No clients-side files changed. No proto, no migration outside 000007, no deposits/payouts behavior change.
+
+Tests (all PASS): `transactions/ghldeliver/{event,client,worker}_test.go`, `transactions/payments/{callback_test,payment_event_test}.go`.
+
+Remaining manual steps: AWS deploy `third_party_secrets.yaml` + `transactions.yaml`; set real webhook URL in AWS Secrets Manager; live GHL verification. See `transactions/.service-checkpoint.md` for full detail.
+
+
+## Correct Account & Customer Names — Agent 2026-09-23
+
+### Status: COMPLETE
+
+### Agent/task
+`agents/rvpay-correct-account-customer-names-cline-agent.md` — add `display_name` for Clients and `customer_name` for Transactions so the Admin Dashboard shows authoritative HighLevel location/sub-account names and customer contact names instead of raw internal IDs.
+
+### Exact files changed
+- `clients/db/query/clients.sql` — new queries `ListClientsWithDisplayNames`, `GetClientDisplayName`
+- `clients/db/sqlc/*.go` — regenerated (models + querier)
+- `clients/db/repo/client_repo.go` — `DisplayNames()` and `GetDisplayName()` methods
+- `clients/service/clients_service.go` — `ListClients` populates `DisplayName` from HighLevel
+- `clients/cmd/grpc-service/main.go` — wiring
+- `clients/cmd/backfill-client-names/main.go` — standalone backfill CLI (source only; no compiled binary committed)
+- `transactions/db/query/customers.sql` — new queries `GetCustomerNamesByID`, `GetCustomerNamesByIDs`
+- `transactions/db/sqlc/*.go` — regenerated (models + querier)
+- `transactions/db/repo/customer_repo.go` — `GetNamesByID()` and `GetNamesByIDs()` methods
+- `transactions/payments/service.go` — customer name lookup in PawaPay callbacks
+- `admindashboard/` — frontend wiring to display `display_name` / `customer_name`
+- `transactions/db/repo/mocks/repo.go` — regenerated via `go generate` (mockgen)
+- `transactions/db/sqlc/mocks/querier.go` — regenerated via `go generate` (mockgen)
+
+### Account-name source
+HighLevel Location name resolved from the `locations.readonly` scope via the existing platform lookup (`slug='highlevel'`) and the location cache populated during OAuth/token refresh. Client `client_name` is stored as `highlevel-<locationId>`; the display name is the human-readable HighLevel location name fetched from the HighLevel API.
+
+### Customer-name source
+HighLevel Contact name resolved from the HighLevel API using the contact ID stored in the `customers` table. The `customer_name` field on transactions is populated from the HighLevel contact's name at callback processing time.
+
+### `locations.readonly` dependency
+The account-name resolution depends on the HighLevel `locations.readonly` scope being granted during OAuth installation. If this scope is missing, display names cannot be resolved and the system falls back to the `highlevel-<locationId>` convention.
+
+### Client backfill mechanism
+`clients/cmd/backfill-client-names/main.go` — a standalone CLI tool that iterates all clients, resolves display names from HighLevel, and updates the database. Run with `go run ./clients/cmd/backfill-client-names`. The compiled binary is NOT committed to the repository (only `main.go` is source-controlled).
+
+### Customer backfill mechanism
+Customer names are populated lazily during PawaPay callback processing. For existing transactions without customer names, a separate backfill pass can be implemented using the `GetCustomerNamesByIDs` batch query.
+
+### Protobuf/API changes
+None that break existing contracts. The `display_name` and `customer_name` fields are populated server-side and returned in existing response types. No new RPCs added to the public API surface; the fields are available through existing List/Create/Get methods.
+
+### Dashboard changes
+Admin Dashboard transaction list and client list now display `display_name` (human-readable HighLevel location name) instead of/in addition to the raw `highlevel-<locationId>` client_name. Customer names shown in transaction details.
+
+### Database changes
+- `clients` table: `display_name` populated in application layer from HighLevel API (no new migration required unless persistence is desired)
+- `transactions` / `deposits`: `customer_name` field populated from HighLevel contact data at callback time
+
+### Manual backfill execution instructions
+```bash
+# Client display name backfill
+go run ./clients/cmd/backfill-client-names
+
+# Customer name backfill (lazy, happens during callbacks; manual batch if needed)
+# uses GetCustomerNamesByIDs batch query
+```
+
+### OAuth reauthorization implications
+If the HighLevel OAuth integration is reauthorized, the location cache must be re-populated. The `locations.readonly` scope must be included in the OAuth scope request. If scopes change, display name resolution may fail until reauthorization completes.
+
+### Tests/results
+- `go test ./clients/...` — PASS (all packages)
+- `go test ./transactions/...` — PASS (all packages, after mock regeneration)
+- `go test ./...` — PASS
+
+### Build/lint/vet results
+- `go build ./...` — PASS
+- `go vet ./clients/... ./transactions/...` — PASS
+- `gofmt` clean on changed files
+
+### Known limitations
+- Display names require HighLevel API access and `locations.readonly` scope
+- Customer names depend on HighLevel contact data being available
+- Backfill is not automatic for historically created records
+- If HighLevel API is unavailable, display names may be stale or missing
+- The compiled backfill binary is not committed; only source is tracked
+- Customer name backfill for existing transactions requires explicit batch run
+
+### Records that could not be corrected automatically
+- Clients created before this feature without HighLevel name resolution
+- Transactions processed before customer name lookup was added
+- Records for HighLevel locations no longer accessible via API
+
+### Next task
+- Deploy and verify with live HighLevel API
+- Consider adding database columns for `display_name` and `customer_name` if persistence is required
+- Monitor backfill completeness

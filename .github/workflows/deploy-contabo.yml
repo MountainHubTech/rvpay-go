@@ -1,0 +1,170 @@
+# Contabo delivery pipeline: test Go, publish clients, transactions and
+# admindashboard images to GHCR once per commit, then deploy them to one
+# Contabo environment over SSH. Modeled on the AWS flow (build once, promote
+# the same images): pushing a commit to contabo/testing deploys it to
+# testing; pushing the SAME commit to contabo/production reuses those images.
+#
+# Triggers deliberately avoid main and release/**, which drive the live AWS
+# and Render pipelines (build_and_publish.yaml, ci.yaml, render-deploy.yml).
+# See deploy/contabo/SETUP.md.
+name: Deploy to Contabo
+
+on:
+  push:
+    branches:
+      - contabo/testing
+      - contabo/production
+  # Only offered in the Actions UI once this file is on the default branch.
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Contabo environment to deploy
+        required: true
+        type: choice
+        options:
+          - testing
+          - production
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      env_id: ${{ steps.env.outputs.env_id }}
+      image_prefix: ${{ steps.env.outputs.image_prefix }}
+    steps:
+      - id: env
+        env:
+          INPUT_ENV: ${{ inputs.environment }}
+          REF_NAME: ${{ github.ref_name }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          ENV_ID="${INPUT_ENV:-${REF_NAME#contabo/}}"
+          case "$ENV_ID" in testing|production) ;; *) echo "unknown environment: $ENV_ID"; exit 1;; esac
+          echo "env_id=$ENV_ID" >> "$GITHUB_OUTPUT"
+          # GHCR repository names must be lowercase.
+          echo "image_prefix=${REGISTRY}/${OWNER,,}/rvpay-go" >> "$GITHUB_OUTPUT"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+
+  build-and-push:
+    needs: [resolve, test]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: clients
+            context: .
+            file: clients/Dockerfile
+          - service: transactions
+            context: .
+            file: transactions/Dockerfile
+          - service: admindashboard
+            context: ./admindashboard
+            file: admindashboard/Dockerfile
+    env:
+      IMAGE: ${{ needs.resolve.outputs.image_prefix }}-${{ matrix.service }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Promotion: when this commit was already built (e.g. deployed to
+      # testing first), production reuses the exact same image.
+      - id: exists
+        run: |
+          if docker manifest inspect "$IMAGE" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.exists.outputs.found != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}
+
+  deploy:
+    needs: [resolve, build-and-push]
+    runs-on: ubuntu-latest
+    # Separate from the AWS "testing"/"production" GitHub Environments so
+    # their secrets and protection rules are untouched. Add required
+    # reviewers to contabo-production.
+    environment:
+      name: contabo-${{ needs.resolve.outputs.env_id }}
+    concurrency:
+      group: contabo-${{ needs.resolve.outputs.env_id }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    env:
+      ENV_ID: ${{ needs.resolve.outputs.env_id }}
+      PREFIX: ${{ needs.resolve.outputs.image_prefix }}
+      CONTABO_HOST: ${{ secrets.CONTABO_HOST }}
+      CONTABO_USER: ${{ secrets.CONTABO_USER }}
+    steps:
+      - uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.CONTABO_SSH_PRIVATE_KEY }}
+
+      - name: Log the server in to GHCR for this deploy
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=accept-new "$CONTABO_USER@$CONTABO_HOST" \
+            "docker login ghcr.io -u '${{ github.actor }}' --password-stdin"
+
+      - name: Check out the commit, pull images and restart
+        run: |
+          ssh "$CONTABO_USER@$CONTABO_HOST" 'bash -s' <<EOF
+          set -euo pipefail
+          cd /opt/rvpay-$ENV_ID
+          git fetch --quiet origin
+          git checkout --quiet --detach ${GITHUB_SHA}
+          # Pin the deployed images in .env, so a later manual
+          # "docker compose up -d" (e.g. after editing a secret) keeps running
+          # them instead of falling back to the rvpay/<service>:local defaults.
+          for pair in CLIENTS_IMAGE=$PREFIX-clients TRANSACTIONS_IMAGE=$PREFIX-transactions ADMINDASHBOARD_IMAGE=$PREFIX-admindashboard; do
+            sed -i "/^\${pair%%=*}=/d" .env
+            echo "\${pair}:${GITHUB_SHA}" >> .env
+          done
+          C="docker compose -p rvpay-$ENV_ID -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml"
+          \$C pull --quiet clients transactions admindashboard </dev/null
+          \$C up -d --no-build --remove-orphans </dev/null
+          EOF
+
+      - name: Log the server out of GHCR
+        if: always()
+        run: ssh "$CONTABO_USER@$CONTABO_HOST" "docker logout ghcr.io" || true
+
+      - name: Health check
+        run: |
+          ssh "$CONTABO_USER@$CONTABO_HOST" "ENV_ID=$ENV_ID bash -s" <<'EOF'
+          set -euo pipefail
+          cd "/opt/rvpay-$ENV_ID"
+          port() { grep -E "^$1=" .env | cut -d= -f2; }
+          sleep 10
+          curl -fsS "http://127.0.0.1:$(port CLIENTS_HOST_PORT)/v1/public/clients/healthcheck"; echo
+          curl -fsS "http://127.0.0.1:$(port TRANSACTIONS_HOST_PORT)/v1/public/transactions/healthcheck"; echo
+          curl -fsS -o /dev/null "http://127.0.0.1:$(port ADMINDASHBOARD_HOST_PORT)/healthcheck" && echo "admindashboard ok"
+          EOF

@@ -5,11 +5,11 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	clientshttp "github.com/I-Frostbyte/rvpay-go/clients/http"
-	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
-	"github.com/I-Frostbyte/rvpay-go/clients/payments"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
-	"github.com/I-Frostbyte/rvpay-go/clients/webhooks"
+	clientshttp "github.com/MountainHubTech/rvpay-go/clients/http"
+	"github.com/MountainHubTech/rvpay-go/clients/oauth"
+	"github.com/MountainHubTech/rvpay-go/clients/payments"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/webhooks"
 	"github.com/rs/zerolog"
 )
 
@@ -20,10 +20,10 @@ func newRuntimeMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 
 	registry := providers.NewProviderRegistry()
-	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil))
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", "", nil, zerolog.Nop()))
 
 	oauthService := oauth.NewService(nil, nil, nil, nil, nil, nil, registry, "https://example.com/callback", oauth.ProviderConfigSettings{}, zerolog.Nop())
-	webhookService := webhooks.NewService(nil, nil, nil, nil, nil, registry, nil, zerolog.Nop())
+	webhookService := webhooks.NewService(nil, nil, nil, nil, nil, nil, registry, nil, zerolog.Nop())
 	// Payment service wired with nil repos for route registration test only.
 	paymentService := payments.NewService(nil, nil, nil, nil, zerolog.Nop())
 	oauthHandler := clientshttp.NewOAuthHandler(oauthService, zerolog.Nop())

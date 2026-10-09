@@ -2,21 +2,81 @@ package deposits
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo/mocks"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/I-Frostbyte/pawapay_client"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
+	repomocks "github.com/MountainHubTech/rvpay-go/transactions/db/repo/mocks"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
+	sqlcmocks "github.com/MountainHubTech/rvpay-go/transactions/db/sqlc/mocks"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
+
+// fakeTx is a minimal pgx.Tx recording Commit/Rollback calls so tests can
+// assert the transaction boundary behaviour of InitiateDeposit.
+type fakeTx struct {
+	pgx.Tx
+	committed  bool
+	rolledBack bool
+	commitErr  error
+}
+
+func (f *fakeTx) Commit(context.Context) error {
+	if f.commitErr != nil {
+		return f.commitErr
+	}
+	f.committed = true
+	return nil
+}
+
+func (f *fakeTx) Rollback(context.Context) error {
+	f.rolledBack = true
+	return nil
+}
+
+// beginTx wires a TransactionsRepo mock to a fake pgx.Tx and a mock Querier,
+// mirroring the production Begin(ctx) -> (Querier, Tx) contract.
+func beginTx(ctrl *gomock.Controller, tx *fakeTx) (*sqlcmocks.MockQuerier, *repomocks.MockTransactionsRepo) {
+	txRepo := repomocks.NewMockTransactionsRepo(ctrl)
+	querier := sqlcmocks.NewMockQuerier(ctrl)
+	txRepo.EXPECT().Begin(gomock.Any()).Return(querier, tx, nil).AnyTimes()
+	return querier, txRepo
+}
+
+func newTestService(depositRepo repo.DepositRepo, txRepo repo.TransactionsRepo, client pawapay_client.Client) *Impl {
+	return newTestServiceWithCustomers(depositRepo, txRepo, nil, client)
+}
+
+// newTestServiceWithCustomers allows tests to inject a customer repo so the
+// transactional customer step can be exercised and verified.
+func newTestServiceWithCustomers(depositRepo repo.DepositRepo, txRepo repo.TransactionsRepo, customerRepo repo.CustomerRepo, client pawapay_client.Client) *Impl {
+	return NewDepositService(depositRepo, txRepo, customerRepo, zerolog.Nop(), client)
+}
+
+func validCreateRequest() *transactionsgrpc.CreateDepositRequest {
+	return &transactionsgrpc.CreateDepositRequest{
+		ClientName:       "highlevel-abc123",
+		CustomerId:       "ghl-contact-123",
+		MerchantId:       "+237654131027", // payer phone number (temporary mapping)
+		GhlTransactionId: "6a981bf9111e4879c418ffee",
+		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
+		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
+		PayerPhoneNumber: "+237600000000",
+		Provider:         commongrpc.Provider_PROVIDER_MTN_MOMO,
+	}
+}
 
 func TestInitiateDepositValidation(t *testing.T) {
 	t.Parallel()
@@ -27,10 +87,8 @@ func TestInitiateDepositValidation(t *testing.T) {
 		code codes.Code
 	}{
 		{name: "missing request", code: codes.InvalidArgument},
-		{name: "invalid client id", req: &transactionsgrpc.CreateDepositRequest{ClientId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "invalid customer id", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "invalid merchant id", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: uuid.New().String(), MerchantId: "not-a-uuid"}, code: codes.InvalidArgument},
-		{name: "missing amount", req: &transactionsgrpc.CreateDepositRequest{ClientId: uuid.New().String(), CustomerId: uuid.New().String(), MerchantId: uuid.New().String()}, code: codes.InvalidArgument},
+		{name: "missing client name", req: &transactionsgrpc.CreateDepositRequest{}, code: codes.InvalidArgument},
+		{name: "blank client name", req: &transactionsgrpc.CreateDepositRequest{ClientName: "   "}, code: codes.InvalidArgument},
 	}
 
 	for _, tt := range tests {
@@ -40,9 +98,7 @@ func TestInitiateDepositValidation(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
-			depositRepo := mocks.NewMockDepositRepo(ctrl)
-			customerRepo := mocks.NewMockCustomerRepo(ctrl)
-			service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+			service := newTestService(repomocks.NewMockDepositRepo(ctrl), repomocks.NewMockTransactionsRepo(ctrl), pawapay_client.Client{})
 
 			_, err := service.InitiateDeposit(context.Background(), tt.req)
 			if got := status.Code(err); got != tt.code {
@@ -58,86 +114,214 @@ func TestInitiateDepositZeroAmount(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), repomocks.NewMockTransactionsRepo(ctrl), pawapay_client.Client{})
 
-	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:   uuid.New().String(),
-		CustomerId: uuid.New().String(),
-		MerchantId: uuid.New().String(),
-		Amount: &commongrpc.Money{
-			Amount:   "0",
-			Currency: "XAF",
-		},
-	})
+	req := validCreateRequest()
+	req.Amount = &commongrpc.Money{Amount: "0", Currency: "XAF"}
+
+	_, err := service.InitiateDeposit(context.Background(), req)
 	if got := status.Code(err); got != codes.InvalidArgument {
 		t.Fatalf("status code = %s, want %s", got, codes.InvalidArgument)
 	}
 }
 
-func TestInitiateDepositCustomerNotFound(t *testing.T) {
+// TestInitiateDepositBeginFailure verifies that a failed transaction begin
+// results in an Internal error with no database mutation attempted.
+func TestInitiateDepositBeginFailure(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	txRepo := repomocks.NewMockTransactionsRepo(ctrl)
+	txRepo.EXPECT().Begin(gomock.Any()).Return(nil, nil, errors.New("pool exhausted"))
 
-	customerRepo.EXPECT().GetByClientAndMerchantAndPhone(gomock.Any(), gomock.Any(), gomock.Any(), "+237600000000").
-		Return(sqlc.Customer{}, repo.ErrNotFound)
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, pawapay_client.Client{})
 
-	_, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:         uuid.New().String(),
-		CustomerId:       uuid.New().String(),
-		MerchantId:       uuid.New().String(),
-		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
-		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
-		PayerPhoneNumber: "+237600000000",
-		Provider:         commongrpc.Provider_PROVIDER_MTN_MOMO,
-	})
-	if got := status.Code(err); got != codes.NotFound {
-		t.Fatalf("status code = %s, want %s", got, codes.NotFound)
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
 	}
 }
 
-func TestInitiateDepositSuccess(t *testing.T) {
+// TestInitiateDepositExternalIdentifiersPersisted verifies that valid
+// HighLevel-style external identifiers (NOT UUIDs) pass validation and are
+// forwarded unchanged to persistence; a create failure rolls back.
+func TestInitiateDepositExternalIdentifiersPersisted(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(_ context.Context, arg sqlc.CreateDepositParams) (sqlc.Deposit, error) {
+			if arg.ClientName != "highlevel-abc123" {
+				t.Errorf("client_name = %q, want %q", arg.ClientName, "highlevel-abc123")
+			}
+			if arg.CustomerID == nil || *arg.CustomerID != "ghl-contact-123" {
+				t.Errorf("customer_id = %v, want exact external value", arg.CustomerID)
+			}
+			if arg.MerchantID == nil || *arg.MerchantID != "+237654131027" {
+				t.Errorf("merchant_id = %v, want the payer phone number", arg.MerchantID)
+			}
+			if arg.GhlTransactionID == nil || *arg.GhlTransactionID != "6a981bf9111e4879c418ffee" {
+				t.Errorf("ghl_transaction_id = %v, want the HighLevel transactionId", arg.GhlTransactionID)
+			}
+			if arg.MerchantID != nil && arg.GhlTransactionID != nil && *arg.MerchantID == *arg.GhlTransactionID {
+				t.Error("merchant_id must not carry the HighLevel transactionId")
+			}
+			return sqlc.Deposit{}, errors.New("db down")
+		})
 
-	var amount pgtype.Numeric
-	if err := amount.Scan("1000.00"); err != nil {
-		t.Fatalf("failed to scan amount: %v", err)
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, pawapay_client.Client{})
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
 	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed")
+	}
+}
 
-	customerRepo.EXPECT().GetByClientAndMerchantAndPhone(gomock.Any(), gomock.Any(), gomock.Any(), "+237600000000").
-		Return(sqlc.Customer{ID: uuid.New()}, nil)
+// TestInitiateDepositDuplicate verifies that a duplicate deposit surfaces as
+// AlreadyExists and the transaction is rolled back.
+func TestInitiateDepositDuplicate(t *testing.T) {
+	t.Parallel()
 
-	depositRepo.EXPECT().Create(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), "XAF", sqlc.PaymentTypeMMO, "+237600000000", sqlc.PaymentProviderMTNMOMO, sqlc.DepositStatusINITIATED, gomock.Any()).
-		Return(sqlc.Deposit{ID: uuid.New()}, nil)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	resp, err := service.InitiateDeposit(context.Background(), &transactionsgrpc.CreateDepositRequest{
-		ClientId:         uuid.New().String(),
-		CustomerId:       uuid.New().String(),
-		MerchantId:       uuid.New().String(),
-		Amount:           &commongrpc.Money{Amount: "1000.00", Currency: "XAF"},
-		PaymentType:      commongrpc.PaymentType_PAYMENT_TYPE_MMO,
-		PayerPhoneNumber: "+237600000000",
-		Provider:         commongrpc.Provider_PROVIDER_MTN_MOMO,
-	})
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{}, repo.ErrDuplicate)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, pawapay_client.Client{})
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.AlreadyExists {
+		t.Fatalf("status code = %s, want %s", got, codes.AlreadyExists)
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed")
+	}
+}
+
+// TestInitiateDepositPawapayFailureRollsBack verifies the core requirement:
+// when the deposit INSERT succeeds but PawaPay initiation fails, the
+// transaction is rolled back and the deposit is NOT committed.
+func TestInitiateDepositPawapayFailureRollsBack(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"failureCode":"INTERNAL","failureMessage":"boom"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if !tx.rolledBack {
+		t.Fatal("transaction should have been rolled back after PawaPay failure")
+	}
+	if tx.committed {
+		t.Fatal("transaction must not be committed when PawaPay initiation fails")
+	}
+}
+
+// TestInitiateDepositCommitFailure verifies that a commit failure surfaces as
+// an Internal error even when the INSERT and PawaPay initiation succeeded.
+func TestInitiateDepositCommitFailure(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{commitErr: errors.New("commit failed")}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if tx.committed {
+		t.Fatal("transaction should not be reported committed on commit failure")
+	}
+}
+
+// TestInitiateDepositSuccess verifies the happy path: INSERT inside the
+// transaction, successful PawaPay initiation, then COMMIT.
+func TestInitiateDepositSuccess(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v2/deposits" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		// Assert the serialized request: the payer phone number must reach
+		// PawaPay in MSISDN format (no leading '+').
+		var body struct {
+			Payer struct {
+				AccountDetails struct {
+					PhoneNumber string `json:"phoneNumber"`
+				} `json:"accountDetails"`
+			} `json:"payer"`
+		}
+		dec := json.NewDecoder(r.Body)
+		if err := dec.Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		if body.Payer.AccountDetails.PhoneNumber != "237600000000" {
+			t.Errorf("payer phone number = %q, want MSISDN 237600000000 without '+'", body.Payer.AccountDetails.PhoneNumber)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	resp, err := service.InitiateDeposit(context.Background(), validCreateRequest())
 	if err != nil {
 		t.Fatalf("InitiateDeposit failed: %v", err)
 	}
 	if resp.Deposit == nil {
 		t.Fatal("deposit should not be nil")
+	}
+	if !tx.committed {
+		t.Fatal("transaction should have been committed after successful initiation")
+	}
+	if tx.rolledBack {
+		t.Fatal("transaction should not have been rolled back on the happy path")
 	}
 }
 
@@ -147,9 +331,8 @@ func TestGetDeposit(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	depositRepo := repomocks.NewMockDepositRepo(ctrl)
+	service := newTestService(depositRepo, repomocks.NewMockTransactionsRepo(ctrl), pawapay_client.Client{})
 
 	depositID := uuid.New()
 	depositRepo.EXPECT().GetByID(gomock.Any(), depositID).
@@ -172,9 +355,8 @@ func TestGetDepositNotFound(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	depositRepo := repomocks.NewMockDepositRepo(ctrl)
+	service := newTestService(depositRepo, repomocks.NewMockTransactionsRepo(ctrl), pawapay_client.Client{})
 
 	depositRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Deposit{}, repo.ErrNotFound)
@@ -193,9 +375,8 @@ func TestGetDepositRepositoryError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	depositRepo := mocks.NewMockDepositRepo(ctrl)
-	customerRepo := mocks.NewMockCustomerRepo(ctrl)
-	service := NewDepositService(depositRepo, customerRepo, zerolog.Nop())
+	depositRepo := repomocks.NewMockDepositRepo(ctrl)
+	service := newTestService(depositRepo, repomocks.NewMockTransactionsRepo(ctrl), pawapay_client.Client{})
 
 	depositRepo.EXPECT().GetByID(gomock.Any(), gomock.Any()).
 		Return(sqlc.Deposit{}, errors.New("database down"))
@@ -205,5 +386,196 @@ func TestGetDepositRepositoryError(t *testing.T) {
 	})
 	if got := status.Code(err); got != codes.Internal {
 		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+}
+
+// TestInitiateDepositPawapayRejectedRollsBack verifies that a PawaPay HTTP
+// 200 response with status REJECTED is treated as a failed initiation: the
+// transaction is rolled back, not committed, and the RPC returns an error.
+func TestInitiateDepositPawapayRejectedRollsBack(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"REJECTED","failureReason":{"failureCode":"INVALID_AMOUNT","failureMessage":"amount below minimum"}}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if !tx.rolledBack {
+		t.Fatal("transaction should have been rolled back after PawaPay REJECTED response")
+	}
+	if tx.committed {
+		t.Fatal("transaction must not be committed when PawaPay rejects the deposit")
+	}
+}
+
+// TestInitiateDepositPawapayUnexpectedStatusRollsBack verifies that an
+// unexpected PawaPay status is never treated as success: rollback, no commit,
+// RPC error.
+func TestInitiateDepositPawapayUnexpectedStatusRollsBack(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"UNKNOWN_STATUS"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	_, err := service.InitiateDeposit(context.Background(), validCreateRequest())
+	if got := status.Code(err); got != codes.Internal {
+		t.Fatalf("status code = %s, want %s", got, codes.Internal)
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed, on unexpected status")
+	}
+}
+
+// TestPawapayAmountString verifies the PawaPay amount serialization rules:
+// XAF is zero-decimal (whole numbers only, no decimal places), fractional
+// XAF amounts are rejected, and other currencies keep two decimals.
+func TestPawapayAmountString(t *testing.T) {
+	t.Parallel()
+
+	mustNumeric := func(t *testing.T, s string) pgtype.Numeric {
+		t.Helper()
+		var n pgtype.Numeric
+		if err := n.Scan(s); err != nil {
+			t.Fatalf("scan %q: %v", s, err)
+		}
+		return n
+	}
+
+	tests := []struct {
+		name      string
+		numeric   pgtype.Numeric
+		currency  string
+		want      string
+		wantError bool
+	}{
+		{name: "XAF 25.00 serializes as 25", numeric: mustNumeric(t, "25.00"), currency: "XAF", want: "25"},
+		{name: "XAF 1000.00 serializes as 1000", numeric: mustNumeric(t, "1000.00"), currency: "XAF", want: "1000"},
+		{name: "XAF 25.50 rejected", numeric: mustNumeric(t, "25.50"), currency: "XAF", wantError: true},
+		{name: "XAF 25.05 rejected", numeric: mustNumeric(t, "25.05"), currency: "XAF", wantError: true},
+		{name: "XAF integer 25 serializes as 25", numeric: mustNumeric(t, "25"), currency: "XAF", want: "25"},
+		{name: "non-XAF keeps two decimals", numeric: mustNumeric(t, "25.50"), currency: "USD", want: "25.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := pawapayAmountString(tt.numeric, tt.currency)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("pawapayAmountString(%s, %s) = %q, want error", tt.numeric.Int, tt.currency, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("pawapayAmountString(%s, %s) error: %v", tt.numeric.Int, tt.currency, err)
+			}
+			if got != tt.want {
+				t.Fatalf("pawapayAmountString(%s, %s) = %q, want %q", tt.numeric.Int, tt.currency, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestInitiateDepositZeroDecimalAmount verifies that a whole-number XAF
+// deposit (25.00) is serialized to PawaPay as "25" with no decimal places.
+func TestInitiateDepositZeroDecimalAmount(t *testing.T) {
+	t.Parallel()
+
+	var gotAmount string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Amount string `json:"amount"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		gotAmount = body.Amount
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	req := validCreateRequest()
+	req.Amount = &commongrpc.Money{Amount: "25.00", Currency: "XAF"}
+
+	if _, err := service.InitiateDeposit(context.Background(), req); err != nil {
+		t.Fatalf("InitiateDeposit failed: %v", err)
+	}
+	if gotAmount != "25" {
+		t.Fatalf("pawapay amount = %q, want %q", gotAmount, "25")
+	}
+}
+
+// TestInitiateDepositFractionalXAFRejectedBeforePawapay verifies that a
+// fractional XAF amount (25.50) is rejected before any PawaPay call: the
+// provider is never contacted, the transaction is rolled back, and the RPC
+// returns an error.
+func TestInitiateDepositFractionalXAFRejectedBeforePawapay(t *testing.T) {
+	t.Parallel()
+
+	pawapayCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pawapayCalled = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"depositId":"dep-1","status":"ACCEPTED"}`))
+	}))
+	defer srv.Close()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	tx := &fakeTx{}
+	querier, txRepo := beginTx(ctrl, tx)
+	querier.EXPECT().CreateDeposit(gomock.Any(), gomock.Any()).Return(sqlc.Deposit{ID: uuid.New()}, nil)
+
+	service := newTestService(repomocks.NewMockDepositRepo(ctrl), txRepo, *pawapay_client.NewClient(srv.URL, "test-key"))
+
+	req := validCreateRequest()
+	req.Amount = &commongrpc.Money{Amount: "25.50", Currency: "XAF"}
+
+	if _, err := service.InitiateDeposit(context.Background(), req); err == nil {
+		t.Fatal("InitiateDeposit should fail for a fractional XAF amount")
+	}
+	if pawapayCalled {
+		t.Fatal("PawaPay must not be called for a fractional XAF amount")
+	}
+	if !tx.rolledBack || tx.committed {
+		t.Fatal("transaction should have been rolled back, not committed")
 	}
 }

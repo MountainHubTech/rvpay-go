@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package clientsgrpc;
 
-option go_package = "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc";
+option go_package = "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc";
 
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
@@ -12,7 +12,10 @@ import "common.proto";
 message Client {
   // id is the unique identifier of the client.
   string id = 1;
-  // name is the display name of the client.
+  // name is the client identifier as persisted in clients.client_name
+  // ("highlevel-<locationId>"). It is the correlation value, not the
+  // human-readable account name: display_name carries the authoritative
+  // HighLevel location/sub-account name once resolved.
   string name = 2;
   // status is the current lifecycle state of the client.
   commongrpc.ClientStatus status = 3;
@@ -20,6 +23,10 @@ message Client {
   google.protobuf.Timestamp created_at = 4;
   // updated_at is the time the client was last modified.
   google.protobuf.Timestamp updated_at = 5;
+  // display_name is the authoritative HighLevel location/sub-account name
+  // resolved from the authenticated location GET. It is empty until that name
+  // has been fetched (never fabricated, never the location id).
+  string display_name = 6;
 }
 
 // CreateClientRequest is the request to create a new client.
@@ -357,6 +364,84 @@ service ClientsService {
       body : "*"
     };
   }
+
+  // ListSubAccounts lists client/sub-account records for the Admin Dashboard
+  // sub-accounts page. balance/last_payout_date/total_processed are not
+  // populated here: they require Transactions-owned data the Clients service
+  // cannot read directly. They are documented in dashboard-setup.md as
+  // cross-service gaps until a cross-service capability is wired up.
+  rpc ListSubAccounts(ListSubAccountsRequest)
+      returns (ListSubAccountsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/clients/sub-accounts"
+    };
+  }
+}
+
+// SubAccountStatus enumerates the lifecycle states a sub-account can show in
+// the dashboard. It mirrors commongrpc.ClientStatus labels for wire display.
+enum SubAccountStatus {
+  SUB_ACCOUNT_STATUS_UNSPECIFIED = 0;
+  SUB_ACCOUNT_STATUS_ACTIVE = 1;
+  SUB_ACCOUNT_STATUS_RESTRICTED = 2;
+  SUB_ACCOUNT_STATUS_INACTIVE = 3;
+}
+
+// ListSubAccountsRequest requests a paginated sub-account list.
+message ListSubAccountsRequest {
+  // search filters by name or location (external account id).
+  string search = 1;
+  // status filters by lifecycle status. Empty means all.
+  string status = 2;
+  // sort is the sort field. Supported: dateJoined, name.
+  string sort = 3;
+  // order is asc or desc.
+  string order = 4;
+  // page is the 1-based page number.
+  int32 page = 5;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 6;
+}
+
+// SubAccountRow is a single sub-account row.
+message SubAccountRow {
+  // id is the client identifier.
+  string id = 1;
+  // name is the display name of the sub-account. It carries the authoritative
+  // HighLevel location/sub-account name once it has been resolved; until then
+  // it falls back to the client identifier so the dashboard always renders a
+  // value. Client identifiers (`client_name`) are never returned as the final
+  // display name once an authoritative name exists.
+  string name = 2;
+  // location is the external account id (e.g. HighLevel locationId).
+  string location = 3;
+  // initials are derived from the name.
+  string initials = 4;
+  // status is the lifecycle status.
+  SubAccountStatus status = 5;
+  // balance is NOT populated (cross-service gap); empty string.
+  string balance = 6;
+  // last_payout_date is NOT populated (cross-service gap); empty string.
+  string last_payout_date = 7;
+  // total_processed is NOT populated (cross-service gap); empty string.
+  string total_processed = 8;
+  // client_name is the RVPay client identifier ("highlevel-<locationId>").
+  // It is a correlation value, NOT a display value: the Admin Dashboard uses it
+  // as the Transactions sub-account filter, which matches
+  // deposits.client_name exactly. `name` carries the human-readable
+  // sub-account name.
+  string client_name = 9;
+}
+
+// ListSubAccountsResponse carries a page of sub-accounts.
+message ListSubAccountsResponse {
+  repeated SubAccountRow rows = 1;
+  // total is the total number of sub-accounts matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
 }
 
 // PlatformsService manages supported marketplace platforms.
@@ -454,4 +539,275 @@ service IntegrationsService {
       body : "*"
     };
   }
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse { string status = 1; }
+
+service HealthService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/clients/healthcheck"
+    };
+  }
+}
+
+// AdminUser is the authenticated administrator identity returned by the
+// authentication endpoints. It never carries password or token material.
+message AdminUser {
+  // id is the unique identifier of the administrator.
+  string id = 1;
+  // name is the display name of the administrator.
+  string name = 2;
+  // email is the sign-in email address.
+  string email = 3;
+  // user_role is the role used by the backend for authorization.
+  string user_role = 4;
+}
+
+// SignInRequest authenticates an administrator with email and password.
+message SignInRequest {
+  // email is the administrator's sign-in email address.
+  string email = 1;
+  // password is the administrator's plaintext password (never logged,
+  // never persisted in plaintext).
+  string password = 2;
+}
+
+// SignInResponse issues a new opaque access/refresh token pair.
+message SignInResponse {
+  // user is the authenticated administrator identity.
+  AdminUser user = 1;
+  // access_token is the opaque bearer token for the Authorization header.
+  string access_token = 2;
+  // refresh_token rotates the access token when it expires.
+  string refresh_token = 3;
+  // access_token_expires_at is when the access token expires.
+  google.protobuf.Timestamp access_token_expires_at = 4;
+}
+
+// RefreshTokenRequest rotates an access token using a refresh token.
+message RefreshTokenRequest {
+  // refresh_token is the refresh token issued at sign-in or the previous
+  // refresh.
+  string refresh_token = 1;
+}
+
+// RefreshTokenResponse issues a rotated token pair.
+message RefreshTokenResponse {
+  // user is the authenticated administrator identity.
+  AdminUser user = 1;
+  // access_token is the new opaque bearer token.
+  string access_token = 2;
+  // refresh_token is the new rotated refresh token.
+  string refresh_token = 3;
+  // access_token_expires_at is when the new access token expires.
+  google.protobuf.Timestamp access_token_expires_at = 4;
+}
+
+// SignOutRequest revokes the caller's token pair.
+message SignOutRequest {
+  // refresh_token identifies the session to revoke; when empty only the
+  // bearer access token is revoked.
+  string refresh_token = 1;
+}
+
+// SignOutResponse confirms the revocation.
+message SignOutResponse {}
+
+// ValidateAccessTokenRequest is the internal service-to-service token check.
+message ValidateAccessTokenRequest {
+  // access_token is the raw bearer token presented by the HTTP caller.
+  string access_token = 1;
+}
+
+// ValidateAccessTokenResponse reports the validation result.
+message ValidateAccessTokenResponse {
+  // valid is true when the token is live, unexpired and admin-backed.
+  bool valid = 1;
+  // user_id is the authenticated administrator's id (when valid).
+  string user_id = 2;
+  // user_role is the authenticated administrator's role (when valid).
+  string user_role = 3;
+}
+
+// CreateUserRequest provisions a new database-managed user. It is a
+// gRPC-only administration method: it intentionally has NO HTTP binding and
+// never appears in the grpc-gateway route inventory, so the first
+// administrator is created after deployment via a direct gRPC request.
+message CreateUserRequest {
+  // name is the display name of the user.
+  string name = 1;
+  // email is the sign-in email address (unique across users).
+  string email = 2;
+  // password is the plaintext password input; it is Argon2id-hashed before
+  // storage and is never logged, persisted in plaintext, or echoed back.
+  string password = 3;
+  // user_role must be USER_ROLE_USER or USER_ROLE_ADMIN.
+  string user_role = 4;
+}
+
+// CreateUserResponse returns the created user's safe identity fields only.
+message CreateUserResponse {
+  // user is the created user (never carries password or token material).
+  AdminUser user = 1;
+}
+
+// UpdateUserRequest modifies an existing user's name, email and password.
+// user_role is intentionally immutable through this method. Empty fields are
+// treated as "not supplied" and left unchanged. gRPC-only: no HTTP binding.
+message UpdateUserRequest {
+  // id is the unique identifier of the user to update.
+  string id = 1;
+  // name is the updated display name (empty = unchanged).
+  string name = 2;
+  // email is the updated sign-in email (empty = unchanged).
+  string email = 3;
+  // password is the new plaintext password (empty = unchanged); it is
+  // Argon2id-hashed before storage and never logged or echoed back.
+  string password = 4;
+}
+
+// UpdateUserResponse returns the updated user's safe identity fields only.
+message UpdateUserResponse {
+  // user is the updated user (never carries password or token material).
+  AdminUser user = 1;
+}
+
+// AuthService provides minimal, strongly secured administrator
+// authentication: sign-in, refresh rotation and sign-out, plus the internal
+// access-token validation RPC used by the other services' admin middleware.
+service AuthService {
+  // SignIn authenticates an administrator and issues a token pair.
+  rpc SignIn(SignInRequest) returns (SignInResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/sign-in"
+      body : "*"
+    };
+  }
+
+  // RefreshToken rotates the access token using a refresh token.
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/refresh"
+      body : "*"
+    };
+  }
+
+  // SignOut revokes the presented access token (and the session refresh
+  // token when provided).
+  rpc SignOut(SignOutRequest) returns (SignOutResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/auth/sign-out"
+      body : "*"
+    };
+  }
+
+  // ValidateAccessToken is INTERNAL (no HTTP binding): other services'
+  // admin middleware call it over gRPC so access-token state is owned by
+  // exactly one service (Clients).
+  rpc ValidateAccessToken(ValidateAccessTokenRequest)
+      returns (ValidateAccessTokenResponse) {}
+
+  // CreateUser provisions a new database-managed user (USER_ROLE_USER or
+  // USER_ROLE_ADMIN). It is a gRPC-only provisioning/administration method:
+  // it deliberately has NO HTTP annotation, is never routed by grpc-gateway,
+  // and therefore is never reachable over the ALB/HTTP boundary. The first
+  // administrator is created after deployment by calling this method
+  // directly over gRPC (e.g. Postman/gRPC or grpcurl).
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/clients/users"
+      body : "*"
+    };
+  }
+
+  // UpdateUser changes an existing user's name, email and password. The
+  // user's role is immutable here. gRPC-only: no HTTP annotation and no
+  // grpc-gateway route.
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+
+  // ListUsers returns a paginated list of database-managed users for the
+  // Admin Dashboard Settings team-management page. The route lives under the
+  // permitted /v1/public/clients* ALB prefix and is protected by the admin
+  // middleware. Password and token material are never returned.
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/clients/users"
+    };
+  }
+}
+
+// ListUsersRequest requests a paginated user list for the team-management page.
+message ListUsersRequest {
+  // search filters by name or email (case-insensitive).
+  string search = 1;
+  // role filters by user_role. Empty means all.
+  string role = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// UserRow is a single user row for the team-management table. Password and
+// token material are intentionally excluded.
+message UserRow {
+  // id is the unique user identifier.
+  string id = 1;
+  // name is the display name.
+  string name = 2;
+  // email is the sign-in email address.
+  string email = 3;
+  // role is the user's role (USER_ROLE_USER or USER_ROLE_ADMIN).
+  string role = 4;
+  // status reflects whether the user has an active session.
+  string status = 5;
+  // date_joined is the human-readable creation time.
+  string date_joined = 6;
+}
+
+// ListUsersResponse carries a page of users.
+message ListUsersResponse {
+  repeated UserRow rows = 1;
+  // total is the total number of users matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
+
+// UpdateGhlOrderStatusRequest requests a server-side GoHighLevel order/payment
+// status update for one of a location's orders. This is an internal
+// server-to-server operation; it is deliberately gRPC-only (no HTTP binding)
+// and is used by the Transactions service's durable synchronization worker to
+// push the PawaPay-authoritative terminal deposit status back to GHL so the
+// order leaves "pending".
+message UpdateGhlOrderStatusRequest {
+  // location_id is the HighLevel location that owns the order.
+  string location_id = 1;
+  // order_id is the HighLevel order identifier captured at payment time.
+  string order_id = 2;
+  // status is the target GHL payment status: "completed" or "failed".
+  string status = 3;
+  // amount is the deposit amount in minor currency units (e.g., cents).
+  // This is the actual RVPay deposit amount recorded against the GHL order.
+  int64 amount = 4;
+}
+
+// UpdateGhlOrderStatusResponse reports the outbound GHL update result.
+message UpdateGhlOrderStatusResponse {
+  // success is true when GHL accepted the order status update.
+  bool success = 1;
+}
+
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+service PaymentSyncService {
+  rpc UpdateGhlOrderStatus(UpdateGhlOrderStatusRequest)
+      returns (UpdateGhlOrderStatusResponse) {}
 }

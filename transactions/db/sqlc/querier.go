@@ -6,39 +6,116 @@ package sqlc
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Querier interface {
+	// Atomically claims due, non-exhausted pending events for delivery and
+	// increments the attempt count. FOR UPDATE + SKIP LOCKED prevents two
+	// concurrent workers from claiming the same row.
+	ClaimDuePaymentEvents(ctx context.Context, arg ClaimDuePaymentEventsParams) ([]PaymentEvent, error)
+	// Atomically claims all currently-pending GHL synchronizations for processing
+	// and increments the attempt count. Two concurrent workers cannot claim the
+	// same row: the UPDATE takes a row lock and re-evaluates the WHERE on the
+	// updated row, so a row claimed by one worker no longer matches
+	// ghl_sync_status = 'pending' for the other. Only deposits with fewer than two
+	// attempts are claimed (two total attempts).
+	ClaimPendingGhlSync(ctx context.Context) ([]Deposit, error)
+	CountDepositsFiltered(ctx context.Context, arg CountDepositsFilteredParams) (int64, error)
+	CountDepositsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
+	CountDisputesFiltered(ctx context.Context, arg CountDisputesFilteredParams) (int64, error)
 	CountMerchants(ctx context.Context) (int64, error)
+	// Payout overview aggregates (for /v1/public/payouts/overview/stats and the
+	// overview snapshot). All money is stored as NUMERIC(18,2); sums are returned
+	// as int64 minor-unit values by the caller's choice — here we return the raw
+	// numeric sum and let the service format it. Status filtering uses the
+	// payout_status enum values: REQUESTED, PROCESSING, COMPLETED, FAILED.
+	CountPayoutsByStatus(ctx context.Context, status PayoutStatus) (int64, error)
+	CountPayoutsFiltered(ctx context.Context, arg CountPayoutsFilteredParams) (int64, error)
+	CountPayoutsInWindow(ctx context.Context, createdAt time.Time) (int64, error)
 	CreateCustomer(ctx context.Context, arg CreateCustomerParams) (Customer, error)
 	CreateDeposit(ctx context.Context, arg CreateDepositParams) (Deposit, error)
 	CreateMerchant(ctx context.Context, arg CreateMerchantParams) (Merchant, error)
 	CreatePayout(ctx context.Context, arg CreatePayoutParams) (Payout, error)
+	// Atomically transitions a non-terminal deposit to a terminal PawaPay state
+	// (COMPLETED/FAILED) AND enqueues the server-side GHL synchronization intent
+	// (ghl_sync_status = 'pending') when a GHL order id is present. A single
+	// statement IS one database transaction: the deposit status update and the
+	// queue insertion commit together and the external GHL call is never made
+	// inside this statement. PROCESSING callbacks leave the deposit non-terminal
+	// and therefore never enqueue a final GHL update.
+	FinalizeDepositAndQueueGhlSync(ctx context.Context, arg FinalizeDepositAndQueueGhlSyncParams) (Deposit, error)
 	GetCustomerByClientAndMerchantAndPhone(ctx context.Context, arg GetCustomerByClientAndMerchantAndPhoneParams) (Customer, error)
+	GetCustomerByClientNameAndPhone(ctx context.Context, arg GetCustomerByClientNameAndPhoneParams) (Customer, error)
 	GetCustomerByID(ctx context.Context, id uuid.UUID) (Customer, error)
-	GetDepositByExternalReference(ctx context.Context, externalReference string) (Deposit, error)
-	GetDepositByGHLChargeID(ctx context.Context, ghlChargeID string) (Deposit, error)
-	GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID string) (Deposit, error)
+	// Returns only the id and name for batch lookup. name is NULL when the
+	// customer was created without an authoritative name.
+	GetCustomerNameByID(ctx context.Context, id uuid.UUID) (GetCustomerNameByIDRow, error)
+	// Batch lookup of customer names by ID for efficient transaction listing.
+	// Returns only the id and name; name is NULL when the customer was created
+	// without an authoritative name (e.g. before this feature was deployed).
+	GetCustomerNamesByID(ctx context.Context, dollar_1 []uuid.UUID) ([]GetCustomerNamesByIDRow, error)
+	GetDepositByExternalReference(ctx context.Context, externalReference *string) (Deposit, error)
+	GetDepositByGHLChargeID(ctx context.Context, ghlChargeID *string) (Deposit, error)
+	GetDepositByGHLTransactionID(ctx context.Context, ghlTransactionID *string) (Deposit, error)
 	GetDepositByID(ctx context.Context, id uuid.UUID) (Deposit, error)
 	GetDepositByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Deposit, error)
+	GetDisputeByID(ctx context.Context, id uuid.UUID) (GetDisputeByIDRow, error)
+	GetDisputeStats(ctx context.Context) (GetDisputeStatsRow, error)
 	GetMerchantByID(ctx context.Context, id uuid.UUID) (Merchant, error)
 	GetMerchantBySlug(ctx context.Context, slug string) (Merchant, error)
-	GetPayoutByExternalReference(ctx context.Context, externalReference string) (Payout, error)
+	GetPaymentEventByDepositID(ctx context.Context, depositID uuid.UUID) (PaymentEvent, error)
+	GetPayoutByExternalReference(ctx context.Context, externalReference *string) (Payout, error)
 	GetPayoutByID(ctx context.Context, id uuid.UUID) (Payout, error)
 	GetPayoutByIdempotencyKey(ctx context.Context, idempotencyKey uuid.UUID) (Payout, error)
-	ListCustomersByClient(ctx context.Context, clientID uuid.UUID) ([]Customer, error)
-	ListCustomersByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Customer, error)
-	ListDepositsByClient(ctx context.Context, clientID uuid.UUID) ([]Deposit, error)
-	ListDepositsByCustomer(ctx context.Context, customerID uuid.UUID) ([]Deposit, error)
-	ListDepositsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Deposit, error)
+	InsertDispute(ctx context.Context, arg InsertDisputeParams) (Dispute, error)
+	// Idempotent emission: one logical event per deposit. A concurrent duplicate
+	// callback either loses the terminal-state race (ErrNotFound on finalize) or
+	// is a no-op here. Returns an empty row when the event already exists.
+	InsertPaymentEvent(ctx context.Context, arg InsertPaymentEventParams) (PaymentEvent, error)
+	ListCustomersByClientName(ctx context.Context, clientName string) ([]Customer, error)
+	ListCustomersByMerchant(ctx context.Context, merchantID pgtype.UUID) ([]Customer, error)
+	ListDepositsByClient(ctx context.Context, clientName string) ([]Deposit, error)
+	ListDepositsByCustomer(ctx context.Context, customerID *string) ([]Deposit, error)
+	ListDepositsByMerchant(ctx context.Context, merchantID *string) ([]Deposit, error)
 	ListDepositsByStatus(ctx context.Context, status DepositStatus) ([]Deposit, error)
+	ListDepositsFiltered(ctx context.Context, arg ListDepositsFilteredParams) ([]Deposit, error)
+	ListDisputesFiltered(ctx context.Context, arg ListDisputesFilteredParams) ([]ListDisputesFilteredRow, error)
 	ListMerchants(ctx context.Context, arg ListMerchantsParams) ([]Merchant, error)
 	ListPayoutsByClient(ctx context.Context, clientID uuid.UUID) ([]Payout, error)
 	ListPayoutsByMerchant(ctx context.Context, merchantID uuid.UUID) ([]Payout, error)
 	ListPayoutsByStatus(ctx context.Context, status PayoutStatus) ([]Payout, error)
+	ListPayoutsFiltered(ctx context.Context, arg ListPayoutsFilteredParams) ([]Payout, error)
+	ListRecentDeposits(ctx context.Context, limit int32) ([]Deposit, error)
+	// Records the final GHL synchronization failure after two attempts without
+	// altering the authoritative PawaPay terminal deposit status.
+	RecordGhlSyncFailure(ctx context.Context, arg RecordGhlSyncFailureParams) (Deposit, error)
+	// Re-queues a failed GHL update for its single retry (attempts < 2). The
+	// authoritative PawaPay deposit status is never touched.
+	RecordGhlSyncRetry(ctx context.Context, arg RecordGhlSyncRetryParams) (Deposit, error)
+	RecordGhlSyncSuccess(ctx context.Context, id uuid.UUID) (Deposit, error)
+	// Records a permanent (non-retryable) failure so a configuration problem
+	// cannot become an infinite retry loop. Payload and identity are preserved.
+	RecordPaymentEventFailure(ctx context.Context, arg RecordPaymentEventFailureParams) (PaymentEvent, error)
+	// Schedules a transient failure for retry at the caller-computed backoff time.
+	// The event identity (event_id, idempotency_key, payload) is never changed.
+	RecordPaymentEventRetry(ctx context.Context, arg RecordPaymentEventRetryParams) (PaymentEvent, error)
+	RecordPaymentEventSuccess(ctx context.Context, id uuid.UUID) (PaymentEvent, error)
+	// Returns per-day revenue buckets for the window. The bucket label is a
+	// calendar date; revenue is the raw numeric sum (service formats to minor
+	// units). Buckets with no deposits are omitted (no zero-filling), matching a
+	// sparse time series.
+	RevenueOverTimeInWindow(ctx context.Context, createdAt time.Time) ([]RevenueOverTimeInWindowRow, error)
+	SubmitEvidence(ctx context.Context, id uuid.UUID) (Dispute, error)
+	// Overview-snapshot aggregates. Deposits drive revenue + volume; payouts are
+	// queried separately. All money is NUMERIC(18,2).
+	SumDepositAmountInWindow(ctx context.Context, createdAt time.Time) (interface{}, error)
+	SumPayoutAmountByStatus(ctx context.Context, status PayoutStatus) (interface{}, error)
 	UpdateCustomerStatus(ctx context.Context, arg UpdateCustomerStatusParams) (Customer, error)
+	UpdateDepositExternalReference(ctx context.Context, arg UpdateDepositExternalReferenceParams) error
 	UpdateDepositGHLReference(ctx context.Context, arg UpdateDepositGHLReferenceParams) (Deposit, error)
 	UpdateDepositStatus(ctx context.Context, arg UpdateDepositStatusParams) (Deposit, error)
 	UpdateDepositStatusAndCompletedAt(ctx context.Context, arg UpdateDepositStatusAndCompletedAtParams) (Deposit, error)

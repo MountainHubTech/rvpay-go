@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -20,6 +20,10 @@ type PayoutRepo interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus) (sqlc.Payout, error)
 	MarkCompleted(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus) (sqlc.Payout, error)
 	MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.PayoutStatus, failureReason string) (sqlc.Payout, error)
+	CountByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error)
+	SumAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (pgtype.Numeric, error)
+	ListFiltered(ctx context.Context, search string, status string, limit, offset int32) ([]sqlc.Payout, error)
+	CountFiltered(ctx context.Context, search string, status string) (int64, error)
 }
 
 type payoutRepo struct {
@@ -38,7 +42,7 @@ func (r *payoutRepo) Create(ctx context.Context, clientID, merchantID uuid.UUID,
 		Amount:               amount,
 		Currency:             currency,
 		Provider:             provider,
-		DestinationReference: destinationReference,
+		DestinationReference: textRef(destinationReference),
 		Status:               status,
 		IdempotencyKey:       idempotencyKey,
 	})
@@ -57,7 +61,7 @@ func (r *payoutRepo) GetByID(ctx context.Context, id uuid.UUID) (sqlc.Payout, er
 }
 
 func (r *payoutRepo) GetByExternalReference(ctx context.Context, externalReference string) (sqlc.Payout, error) {
-	payout, err := r.q.GetPayoutByExternalReference(ctx, externalReference)
+	payout, err := r.q.GetPayoutByExternalReference(ctx, textRef(externalReference))
 	if err != nil {
 		return sqlc.Payout{}, wrapNotFound(err)
 	}
@@ -122,10 +126,50 @@ func (r *payoutRepo) MarkFailed(ctx context.Context, id uuid.UUID, status sqlc.P
 	payout, err := r.q.UpdatePayoutStatusAndFailedAt(ctx, sqlc.UpdatePayoutStatusAndFailedAtParams{
 		ID:            id,
 		Status:        status,
-		FailureReason: failureReason,
+		FailureReason: textRef(failureReason),
 	})
 	if err != nil {
 		return sqlc.Payout{}, wrapNotFound(err)
 	}
 	return payout, nil
+}
+
+func (r *payoutRepo) CountByStatus(ctx context.Context, status sqlc.PayoutStatus) (int64, error) {
+	count, err := r.q.CountPayoutsByStatus(ctx, status)
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
+}
+
+func (r *payoutRepo) SumAmountByStatus(ctx context.Context, status sqlc.PayoutStatus) (pgtype.Numeric, error) {
+	raw, err := r.q.SumPayoutAmountByStatus(ctx, status)
+	if err != nil {
+		return pgtype.Numeric{}, wrapError(err)
+	}
+	return numericFromInterface(raw)
+}
+
+func (r *payoutRepo) ListFiltered(ctx context.Context, search string, status string, limit, offset int32) ([]sqlc.Payout, error) {
+	payouts, err := r.q.ListPayoutsFiltered(ctx, sqlc.ListPayoutsFilteredParams{
+		Column1: search,
+		Column2: status,
+		Limit:   limit,
+		Offset:  offset,
+	})
+	if err != nil {
+		return nil, wrapError(err)
+	}
+	return payouts, nil
+}
+
+func (r *payoutRepo) CountFiltered(ctx context.Context, search string, status string) (int64, error) {
+	count, err := r.q.CountPayoutsFiltered(ctx, sqlc.CountPayoutsFilteredParams{
+		Column1: search,
+		Column2: status,
+	})
+	if err != nil {
+		return 0, wrapError(err)
+	}
+	return count, nil
 }

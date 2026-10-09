@@ -99,6 +99,49 @@ func (ns NullDepositStatus) Value() (driver.Value, error) {
 	return string(ns.DepositStatus), nil
 }
 
+type DisputeStatus string
+
+const (
+	DisputeStatusNEEDSRESPONSE DisputeStatus = "NEEDS_RESPONSE"
+	DisputeStatusUNDERREVIEW   DisputeStatus = "UNDER_REVIEW"
+	DisputeStatusRESOLVED      DisputeStatus = "RESOLVED"
+)
+
+func (e *DisputeStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = DisputeStatus(s)
+	case string:
+		*e = DisputeStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for DisputeStatus: %T", src)
+	}
+	return nil
+}
+
+type NullDisputeStatus struct {
+	DisputeStatus DisputeStatus `json:"dispute_status"`
+	Valid         bool          `json:"valid"` // Valid is true if DisputeStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullDisputeStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.DisputeStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.DisputeStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullDisputeStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.DisputeStatus), nil
+}
+
 type MerchantStatus string
 
 const (
@@ -141,6 +184,49 @@ func (ns NullMerchantStatus) Value() (driver.Value, error) {
 		return nil, nil
 	}
 	return string(ns.MerchantStatus), nil
+}
+
+type PaymentEventDeliveryStatus string
+
+const (
+	PaymentEventDeliveryStatusPending   PaymentEventDeliveryStatus = "pending"
+	PaymentEventDeliveryStatusDelivered PaymentEventDeliveryStatus = "delivered"
+	PaymentEventDeliveryStatusFailed    PaymentEventDeliveryStatus = "failed"
+)
+
+func (e *PaymentEventDeliveryStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = PaymentEventDeliveryStatus(s)
+	case string:
+		*e = PaymentEventDeliveryStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for PaymentEventDeliveryStatus: %T", src)
+	}
+	return nil
+}
+
+type NullPaymentEventDeliveryStatus struct {
+	PaymentEventDeliveryStatus PaymentEventDeliveryStatus `json:"payment_event_delivery_status"`
+	Valid                      bool                       `json:"valid"` // Valid is true if PaymentEventDeliveryStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullPaymentEventDeliveryStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.PaymentEventDeliveryStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.PaymentEventDeliveryStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullPaymentEventDeliveryStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.PaymentEventDeliveryStatus), nil
 }
 
 type PaymentProvider string
@@ -273,35 +359,59 @@ func (ns NullPayoutStatus) Value() (driver.Value, error) {
 
 type Customer struct {
 	ID          uuid.UUID      `json:"id"`
-	ClientID    uuid.UUID      `json:"client_id"`
-	MerchantID  uuid.UUID      `json:"merchant_id"`
+	ClientName  string         `json:"client_name"`
+	MerchantID  pgtype.UUID    `json:"merchant_id"`
 	PhoneNumber string         `json:"phone_number"`
 	Status      CustomerStatus `json:"status"`
 	CreatedAt   time.Time      `json:"created_at"`
 	UpdatedAt   time.Time      `json:"updated_at"`
+	Name        *string        `json:"name"`
+	Address     *string        `json:"address"`
 }
 
 type Deposit struct {
 	ID                uuid.UUID          `json:"id"`
-	ClientID          uuid.UUID          `json:"client_id"`
-	CustomerID        uuid.UUID          `json:"customer_id"`
-	MerchantID        uuid.UUID          `json:"merchant_id"`
+	ClientName        string             `json:"client_name"`
+	CustomerID        *string            `json:"customer_id"`
+	MerchantID        *string            `json:"merchant_id"`
 	Amount            pgtype.Numeric     `json:"amount"`
 	Currency          string             `json:"currency"`
 	PaymentType       PaymentType        `json:"payment_type"`
 	PayerPhoneNumber  string             `json:"payer_phone_number"`
 	Provider          PaymentProvider    `json:"provider"`
 	Status            DepositStatus      `json:"status"`
-	ExternalReference string             `json:"external_reference"`
+	ExternalReference *string            `json:"external_reference"`
 	IdempotencyKey    uuid.UUID          `json:"idempotency_key"`
 	InitiatedAt       time.Time          `json:"initiated_at"`
 	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
 	FailedAt          pgtype.Timestamptz `json:"failed_at"`
-	FailureReason     string             `json:"failure_reason"`
+	FailureReason     *string            `json:"failure_reason"`
 	CreatedAt         time.Time          `json:"created_at"`
 	UpdatedAt         time.Time          `json:"updated_at"`
-	GhlTransactionID  string             `json:"ghl_transaction_id"`
-	GhlChargeID       string             `json:"ghl_charge_id"`
+	GhlTransactionID  *string            `json:"ghl_transaction_id"`
+	GhlChargeID       *string            `json:"ghl_charge_id"`
+	GhlOrderID        *string            `json:"ghl_order_id"`
+	GhlSyncStatus     string             `json:"ghl_sync_status"`
+	GhlSyncAttempts   int32              `json:"ghl_sync_attempts"`
+	GhlSyncLastError  *string            `json:"ghl_sync_last_error"`
+	GhlSyncFailedAt   pgtype.Timestamptz `json:"ghl_sync_failed_at"`
+	GhlSyncedAt       pgtype.Timestamptz `json:"ghl_synced_at"`
+}
+
+type Dispute struct {
+	ID                uuid.UUID          `json:"id"`
+	DepositID         uuid.UUID          `json:"deposit_id"`
+	ClientName        string             `json:"client_name"`
+	DisputeType       string             `json:"dispute_type"`
+	Amount            pgtype.Numeric     `json:"amount"`
+	Currency          string             `json:"currency"`
+	Status            DisputeStatus      `json:"status"`
+	EvidenceSubmitted bool               `json:"evidence_submitted"`
+	OpenedAt          time.Time          `json:"opened_at"`
+	DueAt             time.Time          `json:"due_at"`
+	ResolvedAt        pgtype.Timestamptz `json:"resolved_at"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
 type Merchant struct {
@@ -313,6 +423,22 @@ type Merchant struct {
 	UpdatedAt time.Time      `json:"updated_at"`
 }
 
+type PaymentEvent struct {
+	ID             uuid.UUID                  `json:"id"`
+	DepositID      uuid.UUID                  `json:"deposit_id"`
+	EventID        uuid.UUID                  `json:"event_id"`
+	EventType      string                     `json:"event_type"`
+	IdempotencyKey string                     `json:"idempotency_key"`
+	Payload        []byte                     `json:"payload"`
+	DeliveryStatus PaymentEventDeliveryStatus `json:"delivery_status"`
+	Attempts       int32                      `json:"attempts"`
+	LastError      *string                    `json:"last_error"`
+	NextRetryAt    time.Time                  `json:"next_retry_at"`
+	DeliveredAt    pgtype.Timestamptz         `json:"delivered_at"`
+	CreatedAt      time.Time                  `json:"created_at"`
+	UpdatedAt      time.Time                  `json:"updated_at"`
+}
+
 type Payout struct {
 	ID                   uuid.UUID          `json:"id"`
 	ClientID             uuid.UUID          `json:"client_id"`
@@ -320,14 +446,14 @@ type Payout struct {
 	Amount               pgtype.Numeric     `json:"amount"`
 	Currency             string             `json:"currency"`
 	Provider             PaymentProvider    `json:"provider"`
-	DestinationReference string             `json:"destination_reference"`
+	DestinationReference *string            `json:"destination_reference"`
 	Status               PayoutStatus       `json:"status"`
-	ExternalReference    string             `json:"external_reference"`
+	ExternalReference    *string            `json:"external_reference"`
 	IdempotencyKey       uuid.UUID          `json:"idempotency_key"`
 	RequestedAt          time.Time          `json:"requested_at"`
 	CompletedAt          pgtype.Timestamptz `json:"completed_at"`
 	FailedAt             pgtype.Timestamptz `json:"failed_at"`
-	FailureReason        string             `json:"failure_reason"`
+	FailureReason        *string            `json:"failure_reason"`
 	CreatedAt            time.Time          `json:"created_at"`
 	UpdatedAt            time.Time          `json:"updated_at"`
 }

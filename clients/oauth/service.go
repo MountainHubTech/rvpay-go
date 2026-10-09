@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"net/http"
+	"strings"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 )
@@ -28,6 +30,18 @@ type ProviderConfigSettings struct {
 	PaymentsURL string
 	// QueryURL is the backend query URL supplied to HighLevel.
 	QueryURL string
+	// LiveAPIKey is the RVPay live API key pushed to HighLevel as the
+	// provider config's live apiKey (HIGHLEVEL_LIVE_API_KEY).
+	LiveAPIKey string
+	// LivePublishableKey is the RVPay live publishable key pushed to
+	// HighLevel (HIGHLEVEL_LIVE_PUBLISHABLE_KEY).
+	LivePublishableKey string
+	// TestAPIKey is the RVPay test API key pushed to HighLevel as the
+	// provider config's test apiKey (HIGHLEVEL_TEST_API_KEY).
+	TestAPIKey string
+	// TestPublishableKey is the RVPay test publishable key pushed to
+	// HighLevel (HIGHLEVEL_TEST_PUBLISHABLE_KEY).
+	TestPublishableKey string
 }
 
 // Service manages OAuth flows for provider integrations.
@@ -47,7 +61,7 @@ type Service struct {
 
 // NewService creates a new OAuth service. redirectURI is the configured
 // callback URL used for the OAuth authorization and token exchange; it must
-// come from configuration (HIGHLEVEL_REDIRECT_URI), never be hard-coded.
+// come from configuration (HIGHLEVEL_REDIRECT_URL), never be hard-coded.
 // oauthStateRepo persists OAuth state so the callback can securely recover
 // the client/platform context and resist CSRF/replay attacks.
 //
@@ -179,13 +193,14 @@ func (s *Service) BeginAuthorization(ctx context.Context, clientID, platformID u
 //     client/platform context.
 //   - When `state` is absent (HighLevel Marketplace OAuth does not return a
 //     state), the authorization code is exchanged first to obtain the GHL
-//     locationId. The locationId is then resolved to the integration via the
-//     deterministic mapping: first by `integration.external_account_id` (the
-//     GHL location identifier established during provisioning/activation), then
-//     by `payment_provider_configs.location_id`. The integration's
-//     client_id/platform_id are used to continue the existing
-//     ProcessCallback/integration flow.
+//     locationId. The existing HighLevel platform (slug "highlevel") is
+//     resolved, and the tenant client plus the client's integration to the
+//     platform are created in the database during this one-time installation
+//     (idempotent — reused if already present). The integration is mapped to
+//     the locationId via external_account_id and the callback continues.
 func (s *Service) HandleCallback(ctx context.Context, code, state string) (*CallbackResult, error) {
+	s.logger.Info().Msg("\n HandleCallback method initiated... \n")
+
 	if code == "" {
 		return nil, ErrMissingCode
 	}
@@ -194,6 +209,7 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		// Atomically consume the state. ConsumeOAuthState only succeeds when the
 		// state exists, is not already consumed, and has not expired. This both
 		// validates the state and prevents replay attacks in a single operation.
+		s.logger.Info().Msg("\n State exists and is being consumed... \n")
 		record, err := s.oauthStateRepo.Consume(ctx, state)
 		if err == repo.ErrNotFound {
 			// Distinguish expired/consumed from unknown for clearer errors.
@@ -216,6 +232,7 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 	// No state: resolve the client/platform context from the GHL locationId.
 	// Exchange the authorization code first to obtain the locationId, then
 	// resolve locationId -> integration via the deterministic mapping.
+	s.logger.Info().Msg("\n State doesn't exist, resolving client/platform context... \n ")
 	if s.configRepo == nil {
 		return nil, ErrProviderConfigRepoNotConfigured
 	}
@@ -234,35 +251,55 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		return nil, ErrMissingLocationID
 	}
 
-	// Resolve the integration deterministically from the GHL locationId.
-	// First try the provisioning mapping: integration.external_account_id =
-	// GHL locationId. This is the authoritative mapping established when the
-	// integration is activated. If that is not set, fall back to the
-	// payment_provider_configs.location_id mapping (created during provider
-	// registration). If neither resolves, fail clearly rather than selecting
-	// an arbitrary integration or client.
-	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, tokenResp.LocationID)
+	s.logger.Info().Msgf("\n Location ID: %v \n", tokenResp.LocationID)
+
+	// Only the HighLevel platform is expected to already exist. Resolve it by
+	// slug (never create or modify platform records). The installation creates
+	// the client and the client's integration to that platform in the database
+	// during this OAuth callback; neither is assumed to exist beforehand.
+	platform, err := s.platformsRepo.GetBySlug(ctx, "highlevel")
 	if err == repo.ErrNotFound {
-		// Fall back to the payment provider config mapping.
-		config, configErr := s.configRepo.GetByLocationID(ctx, tokenResp.LocationID)
-		if configErr == repo.ErrNotFound {
-			return nil, ErrIntegrationNotFound
-		}
-		if configErr != nil {
-			return nil, translateError(configErr)
-		}
-		integration, err = s.integrationsRepo.GetByID(ctx, config.IntegrationID)
-		if err == repo.ErrNotFound {
-			return nil, ErrIntegrationNotFound
-		}
-		if err != nil {
-			return nil, translateError(err)
-		}
-	} else if err != nil {
+		return nil, ErrPlatformNotFound
+	}
+	if err != nil {
 		return nil, translateError(err)
 	}
 
-	return s.ProcessCallback(ctx, integration.ClientID, integration.PlatformID, code, state)
+	// Derive a deterministic tenant client name from the GHL sub-account so a
+	// repeat callback reuses the same client. Create it ACTIVE when missing so
+	// the shared callback processing can complete the installation.
+	clientName := "highlevel-" + tokenResp.LocationID
+	client, err := s.clientsRepo.GetByName(ctx, clientName)
+	if err == repo.ErrNotFound {
+		client, err = s.clientsRepo.Create(ctx, clientName, sqlc.ClientStatusACTIVE)
+	}
+	if err == repo.ErrDuplicate {
+		// A concurrent install created the client; reuse it.
+		client, err = s.clientsRepo.GetByName(ctx, clientName)
+	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	// Create the client's integration to the platform during installation,
+	// mapped to the GHL locationId. Reuse it if a prior install already
+	// created it. Status CREATED lets the shared callback activate the
+	// integration and persist the OAuth token.
+	integration, err := s.integrationsRepo.GetByClientAndPlatform(ctx, client.ID, platform.ID)
+	if err == repo.ErrNotFound {
+		integration, err = s.integrationsRepo.Create(ctx, client.ID, platform.ID, tokenResp.LocationID, sqlc.IntegrationStatusCREATED)
+		if err == repo.ErrDuplicate {
+			integration, err = s.integrationsRepo.GetByClientAndPlatform(ctx, client.ID, platform.ID)
+		}
+	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	// Continue with the already-exchanged token response. The authorization
+	// code was exchanged exactly once above; it must not be exchanged again by
+	// downstream processing.
+	return s.processCallbackWithToken(ctx, integration.ClientID, integration.PlatformID, provider, tokenResp)
 }
 
 // CallbackResult represents the result of an OAuth callback.
@@ -328,63 +365,176 @@ func (s *Service) ProcessCallback(ctx context.Context, clientID, platformID uuid
 		return nil, ErrClientInactive
 	}
 
+	// Exchange the authorization code exactly once. Downstream processing
+	// consumes the already-exchanged token response and never re-exchanges the
+	// raw authorization code, so a flow that already exchanged the code (e.g.
+	// the stateless HighLevel Marketplace callback) cannot cause a second
+	// exchange.
 	tokenResp, err := provider.OAuthProvider().ExchangeCode(ctx, code, s.redirectURI)
 	if err != nil {
 		s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth token exchange failed")
 		return nil, ErrTokenExchangeFailed
 	}
 
-	providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
-	if err != nil {
-		s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth user info retrieval failed")
-		return nil, ErrUserInfoFailed
+	return s.processCallbackWithToken(ctx, clientID, platformID, provider, tokenResp)
+}
+
+// processCallbackWithToken continues an OAuth callback after the authorization
+// code has been exchanged once for a token response. Both the state-based flow
+// and the stateless HighLevel Marketplace flow converge here with the token
+// response from their single exchange, so the authorization code is never
+// exchanged twice.
+//
+// It re-validates the active integration's client, resolves the provider user
+// info, reuses (CREATED) or creates the integration, persists the OAuth token,
+// and triggers the HighLevel Custom Payment Provider registration lifecycle.
+func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platformID uuid.UUID, provider providers.Provider, tokenResp *providers.TokenResponse) (*CallbackResult, error) {
+	s.logger.Info().Msg("ProcessCallbackWithToken Initiated...")
+	// Re-validate the client for the stateless Marketplace flow, where the tenant
+	// may have been provisioned by the INSTALL webhook earlier. The state-based
+	// flow already validated the client before the exchange, so this is a
+	// harmless redundant check that keeps both paths converging here correct.
+	client, err := s.clientsRepo.GetByID(ctx, clientID)
+	if err == repo.ErrNotFound {
+		return nil, ErrClientNotFound
 	}
+	if err != nil {
+		return nil, translateError(err)
+	}
+
+	if client.Status != sqlc.ClientStatusACTIVE {
+		return nil, ErrClientInactive
+	}
+
+	s.logger.Info().Msgf("\n Client that was created or already existed already: %v \n", client)
+
+	// providerUserID, err := provider.OAuthProvider().GetUserInfo(ctx, tokenResp.AccessToken)
+	// if err != nil {
+	// 	s.logger.Error().Err(err).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("OAuth user info retrieval failed")
+	// 	return nil, ErrUserInfoFailed
+	// }
 
 	// Determine the integration to use. If an integration already exists for
 	// this client/platform:
 	//   - CREATED: reuse it (pre-provisioned integration awaiting OAuth
 	//     completion). Activate it and continue the token/registration flow.
-	//   - otherwise: return ErrIntegrationAlreadyExists (genuine conflict).
+	//   - ACTIVE (reauthorization): keep it and let the token persistence
+	//     step below replace the stored location token with the freshly
+	//     exchanged one. Discarding the exchanged token here (the previous
+	//     ErrIntegrationAlreadyExists behavior) left the old token in place;
+	//     that old token was granted before the app's current payments/*
+	//     scopes were configured, so GHL rejects it with 401 "The token is
+	//     not authorized for this scope."
 	var integration sqlc.Integration
 	existing, err := s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
 	if err == nil {
 		if existing.Status != sqlc.IntegrationStatusCREATED {
-			return nil, ErrIntegrationAlreadyExists
+			integration = existing
+			s.logger.Info().
+				Str("integration_id", existing.ID.String()).
+				Str("location_id", tokenResp.LocationID).
+				Msg("reauthorization of installed location; stored OAuth token will be replaced")
+		} else {
+			// Reuse the pre-provisioned CREATED integration. Activate it. The
+			// external_account_id is set to the GHL locationId when the
+			// provider registration persists the payment_provider_configs
+			// record; the locationId is the deterministic GHL sub-account
+			// identifier.
+			integration, err = s.integrationsRepo.UpdateStatus(ctx, existing.ID, sqlc.IntegrationStatusACTIVE)
+			if err != nil {
+				return nil, translateError(err)
+			}
+			s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 		}
-		// Reuse the pre-provisioned CREATED integration. Activate it. The
-		// external_account_id is set to the GHL locationId when the provider
-		// registration persists the payment_provider_configs record; the
-		// locationId is the deterministic GHL sub-account identifier.
-		integration, err = s.integrationsRepo.UpdateStatus(ctx, existing.ID, sqlc.IntegrationStatusACTIVE)
-		if err != nil {
-			return nil, translateError(err)
-		}
-		s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return nil, translateError(err)
 	} else {
-		integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, providerUserID, sqlc.IntegrationStatusACTIVE)
+		// No integration exists for this client/platform yet. Create it now,
+		// mapped to the HighLevel location id, and activate it so the OAuth
+		// token persistence and provider registration have a complete
+		// integration to target. This mirrors the idempotent provisioning done
+		// by the stateless Marketplace callback.
+		integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, tokenResp.LocationID, sqlc.IntegrationStatusCREATED)
+		if err == repo.ErrDuplicate {
+			// A concurrent callback already created the integration; reuse it.
+			integration, err = s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
+		}
+		if err != nil {
+			return nil, translateError(err)
+		}
+		integration, err = s.integrationsRepo.UpdateStatus(ctx, integration.ID, sqlc.IntegrationStatusACTIVE)
 		if err != nil {
 			return nil, translateError(err)
 		}
 	}
+	// else {
+	// 	integration, err = s.integrationsRepo.Create(ctx, clientID, platformID, providerUserID, sqlc.IntegrationStatusACTIVE)
+	// 	if err != nil {
+	// 		return nil, translateError(err)
+	// 	}
+	// }
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-	_, err = s.oauthRepo.Create(ctx, integration.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
-	if err != nil {
-		s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
-		return nil, translateError(err)
+
+	// Persist the exchanged token as replace-or-insert on the integration.
+	// The oauth_tokens table does not enforce uniqueness on integration_id,
+	// so an unconditional INSERT could leave two rows for the same
+	// integration and (depending on the read path) shadow the fresh token
+	// behind a stale one. An existing row is therefore updated in place so
+	// exactly one token row per integration exists and the freshly exchanged
+	// token is always the one later used by record-payment synchronization.
+	// Diagnostics log only fingerprints, never token or refresh-token values.
+	tokenLog := s.logger.Info().
+		Str("location_id", tokenResp.LocationID).
+		Str("integration_id", integration.ID.String()).
+		Str("token_source", "authorization_code_exchange").
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(tokenResp.AccessToken)).
+		Int("access_token_length", len(tokenResp.AccessToken)).
+		Time("access_token_expires_at", expiresAt).
+		Bool("refresh_token_present", tokenResp.RefreshToken != "")
+
+	existingToken, tokenErr := s.oauthRepo.GetByIntegrationID(ctx, integration.ID)
+	switch {
+	case tokenErr == nil:
+		refreshReplaced := tokenResp.RefreshToken != "" && tokenResp.RefreshToken != existingToken.RefreshToken
+		newRefreshToken := tokenResp.RefreshToken
+		if newRefreshToken == "" {
+			// Defensive: never wipe a stored refresh token when the provider
+			// omits it from the exchange response.
+			newRefreshToken = existingToken.RefreshToken
+		}
+		_, err = s.oauthRepo.Update(ctx, existingToken.ID, tokenResp.AccessToken, newRefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+		if err != nil {
+			s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
+			return nil, translateError(err)
+		}
+		tokenLog.
+			Bool("token_replaced", true).
+			Bool("refresh_token_replaced", refreshReplaced).
+			Msg("OAuth token persisted (replaced stored token)")
+	case errors.Is(tokenErr, repo.ErrNotFound):
+		_, err = s.oauthRepo.Create(ctx, integration.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+		if err != nil {
+			s.logger.Error().Err(err).Str("integration_id", integration.ID.String()).Msg("OAuth token persistence failed")
+			return nil, translateError(err)
+		}
+		tokenLog.
+			Bool("token_replaced", false).
+			Bool("refresh_token_replaced", tokenResp.RefreshToken != "").
+			Msg("OAuth token persisted (new token row)")
+	default:
+		return nil, translateError(tokenErr)
 	}
 
 	result := &CallbackResult{
-		IntegrationID:  integration.ID,
-		ClientID:       clientID,
-		PlatformID:     platformID,
-		AccessToken:    tokenResp.AccessToken,
-		RefreshToken:   tokenResp.RefreshToken,
-		ExpiresAt:      expiresAt,
-		Scope:          tokenResp.Scope,
-		ProviderUserID: providerUserID,
+		IntegrationID: integration.ID,
+		ClientID:      clientID,
+		PlatformID:    platformID,
+		AccessToken:   tokenResp.AccessToken,
+		RefreshToken:  tokenResp.RefreshToken,
+		ExpiresAt:     expiresAt,
+		Scope:         tokenResp.Scope,
+		// ProviderUserID: providerUserID,
 	}
 
 	// Trigger the HighLevel Custom Payment Provider registration lifecycle.
@@ -402,23 +552,69 @@ func (s *Service) ProcessCallback(ctx context.Context, clientID, platformID uuid
 		}
 	}
 
-	s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Str("provider_user_id", providerUserID).Bool("provider_registered", result.ProviderRegistered).Msg("OAuth callback processed successfully")
+	// Enrich the account display name with the authoritative HighLevel location
+	// name now that the location token is persisted. Best-effort and non-fatal:
+	// the installation result is unchanged if the name cannot be fetched (e.g.
+	// the token predates the locations.readonly scope), in which case the
+	// account keeps its existing name until a later reconciliation/backfill.
+	s.enrichClientDisplayName(ctx, integration, tokenResp.LocationID)
+
+	s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Bool("provider_registered", result.ProviderRegistered).Msg("OAuth callback processed successfully")
+
+	// .Str("provider_user_id", providerUserID)
 
 	return result, nil
 }
 
-// RegisterProvider performs the HighLevel Custom Payment Provider registration
-// lifecycle for an installed integration. It:
+// baseConfigVerifyAttempts and baseConfigVerifyDelay bound the
+// eventual-consistency verification retry around the GET
+// /payments/custom-provider/connect only. They are package-level variables so
+// tests can shorten the retry without changing behavior.
+var (
+	baseConfigVerifyAttempts = 5
+	baseConfigVerifyDelay    = 500 * time.Millisecond
+)
+
+// RegisterProvider registers RVPay as the HighLevel Custom Payment Provider
+// for an installed location and persists the local provider configuration.
+// It:
 //
-//  1. Creates the provider association (POST /payments/custom-provider/provider).
-//  2. Creates the provider configuration (POST /payments/custom-provider/connect).
-//  3. Persists the provider configuration locally.
+//  1. Enables the Custom Payment Provider capabilities for the location
+//     (PUT /payments/custom-provider/capabilities) with the locationId in the
+//     body and supportsSubscriptionSchedules=false. Best-effort: a failure is
+//     logged and does not abort registration.
+//  2. Registers the provider association
+//     (POST /payments/custom-provider/provider?locationId=<id>) with the
+//     provider metadata in the body. This is what makes RVPay appear and work
+//     on HighLevel's Payments > Integrations page.
+//  3. Confirms the base configuration exists
+//     (GET /payments/custom-provider/connect?locationId=<id>) with a small
+//     bounded verification retry for eventual consistency. The credential
+//     POST is never sent until the base configuration has been confirmed;
+//     otherwise HighLevel answers 422 "Base config ... not created yet".
+//  3. Pushes the live/test processing keys
+//     (POST /payments/custom-provider/connect?locationId=<id>) only after
+//     the base configuration is confirmed to exist.
+//  4. Persists the local provider configuration, reusing an existing API key
+//     when a valid local config already exists. Remote metadata fetched in
+//     step 2 is preferred over configured defaults.
 //
-// The operation is idempotent: if the provider is already associated or
-// configured, the existing configuration is fetched and persisted instead of
-// creating a duplicate. Registration failures return a typed error; the
-// integration remains installed and the operation can be retried safely.
+// The operation is idempotent: if the provider is already associated, the
+// existing configuration is fetched and persisted instead of creating a
+// duplicate. It does not classify every 400/422 as "already exists"; an
+// association failure is confirmed via the fetch before being treated as
+// idempotent. Registration failures return a typed error; the integration
+// remains installed and the operation can be retried safely.
 func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID, locationID, accessToken string) error {
+	s.logger.Info().Msg("RegisterProvider initiated...")
+
+	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
+
+	// SECURITY: never log the access token; only a non-reversible fingerprint
+	// is logged so logs can still correlate which stored token was used.
+	s.logger.Info().Str("access_token_fingerprint", providers.AccessTokenFingerprint(accessToken)).Msg("access token for client (fingerprint only)")
+
+	s.logger.Info().Msg("Checking provider configuration repository...")
 	if s.configRepo == nil {
 		return ErrProviderConfigRepoNotConfigured
 	}
@@ -455,21 +651,9 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		return ErrPaymentProviderNotSupported
 	}
 
-	// Step 1: Create the provider association. If the provider is already
-	// associated, HighLevel may return a 400/422; we treat that as idempotent
-	// and continue to the configuration step.
-	err = paymentClient.CreateProviderAssociation(ctx, accessToken, locationID)
-	if err != nil {
-		if errors.Is(err, providers.ErrBadRequest) || errors.Is(err, providers.ErrUnprocessableEntity) {
-			s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider association already exists; continuing with configuration")
-		} else {
-			return ErrProviderAssociationFailed
-		}
-	}
-
-	// Step 2: Create the provider configuration. If the configuration already
-	// exists, fetch the existing configuration instead of creating a duplicate.
-	config := providers.ProviderConfig{
+	// Build the provider metadata sent to HighLevel from RVPay configuration.
+	// Nothing is hard-coded; all values come from environment configuration.
+	metadata := providers.ProviderConfig{
 		Name:                         s.providerConfig.Name,
 		Description:                  s.providerConfig.Description,
 		ImageURL:                     s.providerConfig.ImageURL,
@@ -479,45 +663,301 @@ func (s *Service) RegisterProvider(ctx context.Context, integrationID uuid.UUID,
 		SupportsSubscriptionSchedule: false, // RVPay supports one-time payments only.
 	}
 
-	err = paymentClient.CreateProviderConfig(ctx, accessToken, config)
+	// Step 1: Enable the Custom Payment Provider capabilities for the
+	// location (PUT /payments/custom-provider/capabilities) using the
+	// already-resolved locationId. This must run before the provider
+	// association so HighLevel knows the provider's supported capabilities.
+	// The call is best-effort: a failure is logged and does not abort the
+	// registration or the installation, and it can be retried on the next
+	// registration.
+	if capErr := paymentClient.UpdateProviderCapabilities(ctx, accessToken, locationID); capErr != nil {
+		s.logger.Warn().
+			Err(capErr).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("HighLevel provider capabilities update failed; continuing provider registration")
+	}
+
+	// Step 2: Register the provider association. This is the correct v3 step
+	// for metadata registration: locationId is a required query parameter and
+	// the metadata is sent in the body. We do not treat every 400/422 as
+	// "already exists"; we confirm via the fetch in Step 2 and only treat it as
+	// idempotent when a real provider configuration is returned.
+	err = paymentClient.CreateProviderAssociation(ctx, accessToken, metadata)
 	if err != nil {
-		if errors.Is(err, providers.ErrBadRequest) || errors.Is(err, providers.ErrUnprocessableEntity) {
-			// The configuration may already exist. Fetch the existing
-			// configuration to confirm and persist it locally.
-			s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("provider config may already exist; fetching existing configuration")
-			existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
-			if fetchErr != nil {
-				return ErrProviderConfigFailed
+		// Diagnostic detail from the actual HighLevel response (HTTP status,
+		// sanitized response body, HighLevel traceId when present). The body
+		// is credential-redacted and never contains the access token.
+		logCtx := s.logger.With()
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			logCtx = logCtx.
+				Int("highlevel_status", apiErr.StatusCode).
+				Str("highlevel_body", apiErr.Body).
+				Str("highlevel_trace_id", apiErr.TraceID)
+		}
+		logEvent := logCtx.Logger()
+		if !errors.Is(err, providers.ErrBadRequest) && !errors.Is(err, providers.ErrUnprocessableEntity) {
+			logEvent.
+				Err(err).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("HighLevel provider association failed")
+
+			return ErrProviderAssociationFailed
+		}
+		logEvent.
+			Err(err).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("provider association may already exist; confirming via fetch")
+	}
+
+	// Step 3: Confirm the base configuration exists before pushing any
+	// credentials. Per the HighLevel v3 contract, the credential POST to
+	// /payments/custom-provider/connect fails with HTTP 422 ("Base config for
+	// integration is not created yet") if the base configuration has not been
+	// created by the provider association yet. HighLevel may create it
+	// asynchronously, so the GET below is retried a small, bounded number of
+	// times. Credentials are NEVER sent until the GET confirms the base
+	// configuration exists.
+	baseConfigConfirmed := false
+	for attempt := 1; attempt <= baseConfigVerifyAttempts; attempt++ {
+		existing, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
+		if fetchErr == nil {
+			// HTTP success alone is NOT proof that the base configuration
+			// exists: HighLevel can answer 200 with a trace-only body
+			// ({"traceId":"..."}) while the base provider configuration has
+			// not been materialized yet. The base config is only considered
+			// confirmed when the GET returns meaningful provider metadata.
+			if existing.Name != "" && existing.QueryURL != "" && existing.PaymentsURL != "" {
+				if existing.LocationID == "" {
+					existing.LocationID = locationID
+				}
+				metadata = *existing
+				baseConfigConfirmed = true
+				break
 			}
-			config = *existing
+			// Success but empty/trace-only configuration: treat as "base
+			// config not materialized yet", do NOT confirm and do NOT send
+			// credentials; fall through to the bounded GET retry.
+			s.logger.Warn().
+				Int("attempt", attempt).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("base config verification returned empty configuration; retrying verification fetch")
 		} else {
-			return ErrProviderConfigFailed
+			// An unauthorized/expired token must not be retried or treated as
+			// "not ready yet": the credential POST is skipped and the error is
+			// logged. Any other error (including HighLevel 400/422 for a base
+			// configuration that does not exist yet) is retried on the GET only.
+			if errors.Is(fetchErr, providers.ErrUnauthorized) {
+				s.logger.Warn().
+					Err(fetchErr).
+					Str("integration_id", integrationID.String()).
+					Str("location_id", locationID).
+					Msg("base config verification unauthorized; skipping provider config creation")
+				break
+			}
+			s.logger.Warn().
+				Err(fetchErr).
+				Int("attempt", attempt).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("base configuration not confirmed yet; retrying verification fetch")
+			if attempt < baseConfigVerifyAttempts {
+				select {
+				case <-ctx.Done():
+					s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("base config verification cancelled; skipping provider config creation")
+					return ctx.Err()
+				case <-time.After(baseConfigVerifyDelay):
+				}
+			}
 		}
 	}
 
-	// Step 3: Persist the provider configuration locally. The provider API key
-	// is a generated random value used to authenticate HighLevel query
-	// requests; it is distinct from the OAuth access token and the pawaPay
-	// API key.
-	apiKey, err := generateAPIKey()
-	if err != nil {
-		return ErrAPIKeyGenerationFailed
+	// Step 3b: Push the RVPay live/test processing keys to HighLevel
+	// (POST /payments/custom-provider/connect?locationId=<id>) — but ONLY
+	// after the base configuration has been confirmed to exist via the GET
+	// above. The keys come exclusively from environment configuration. The
+	// call is best-effort: a failure is logged and does not abort the
+	// registration or the installation, and it can be retried on the next
+	// registration.
+	if !baseConfigConfirmed {
+		s.logger.Warn().
+			Str("integration_id", integrationID.String()).
+			Str("location_id", locationID).
+			Msg("base configuration could not be confirmed; skipping provider config creation")
+	} else if s.providerConfig.LiveAPIKey != "" || s.providerConfig.LivePublishableKey != "" ||
+		s.providerConfig.TestAPIKey != "" || s.providerConfig.TestPublishableKey != "" {
+		creds := providers.ProviderCredentials{
+			Live: providers.ProviderModeCredentials{
+				APIKey:         s.providerConfig.LiveAPIKey,
+				PublishableKey: s.providerConfig.LivePublishableKey,
+				LiveMode:       true,
+			},
+			Test: providers.ProviderModeCredentials{
+				APIKey:         s.providerConfig.TestAPIKey,
+				PublishableKey: s.providerConfig.TestPublishableKey,
+				LiveMode:       false,
+			},
+		}
+		if cfgErr := s.CreateProviderConfigs(ctx, paymentClient, accessToken, locationID, creds); cfgErr != nil {
+			s.logger.Warn().
+				Err(cfgErr).
+				Str("integration_id", integrationID.String()).
+				Str("location_id", locationID).
+				Msg("HighLevel provider config creation failed; association remains registered")
+		}
+	} else {
+		s.logger.Warn().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("no live/test provider keys configured; skipping provider config creation")
 	}
 
-	_, err = s.configRepo.Create(ctx, integrationID, config.Name, config.Description, config.ImageURL, config.LocationID, config.QueryURL, config.PaymentsURL, config.SupportsSubscriptionSchedule, apiKey)
-	if err == repo.ErrDuplicate {
-		// The config already exists locally; update it instead.
-		_, err = s.configRepo.Update(ctx, integrationID, config.Name, config.Description, config.ImageURL, config.LocationID, config.QueryURL, config.PaymentsURL, config.SupportsSubscriptionSchedule, apiKey)
+	// Step 4: Persist the local provider configuration, reusing an existing API
+	// key when a valid local config already exists. The provider API key is a
+	// generated random value used to authenticate HighLevel query requests; it
+	// is distinct from the OAuth access token and the pawaPay API key. It is
+	// only regenerated when no local config with a non-empty key exists.
+	existingLocal, getLocalErr := s.configRepo.GetByIntegrationID(ctx, integrationID)
+	haveLocal := getLocalErr == nil
+	if getLocalErr != nil && getLocalErr != repo.ErrNotFound {
+		return translateError(getLocalErr)
+	}
+
+	apiKey := ""
+	if haveLocal && existingLocal.ProviderApiKey != "" {
+		apiKey = existingLocal.ProviderApiKey
+	}
+	if apiKey == "" {
+		apiKey, err = generateAPIKey()
 		if err != nil {
-			return translateError(err)
+			return ErrAPIKeyGenerationFailed
 		}
-	} else if err != nil {
+	}
+
+	if haveLocal {
+		_, err = s.configRepo.Update(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	} else {
+		_, err = s.configRepo.Create(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	}
+	if err == repo.ErrDuplicate {
+		// A concurrent registration created the local config; update it instead.
+		_, err = s.configRepo.Update(ctx, integrationID, metadata.Name, metadata.Description, metadata.ImageURL, metadata.LocationID, metadata.QueryURL, metadata.PaymentsURL, metadata.SupportsSubscriptionSchedule, apiKey)
+	}
+	if err != nil {
 		return translateError(err)
 	}
 
 	s.logger.Info().Str("integration_id", integrationID.String()).Str("location_id", locationID).Msg("HighLevel provider registration completed")
 
 	return nil
+}
+
+// CreateProviderConfigs pushes the RVPay live/test processing keys to
+// HighLevel for an installed location using the supplied payment provider
+// client. It validates that the access token and location ID are present and
+// that at least one credential value is configured; otherwise it returns a
+// typed error. It performs the outbound
+// POST /payments/custom-provider/connect?locationId=<id> call.
+func (s *Service) CreateProviderConfigs(ctx context.Context, paymentClient providers.PaymentProviderClient, accessToken, locationID string, creds providers.ProviderCredentials) error {
+	s.logger.Info().Msg("CreateProviderConfigs initiated...")
+
+	s.logger.Info().Str("location_id", locationID).Msg("location id for client")
+
+	// SECURITY: the access token and provider credentials (API keys) must
+	// never be logged. Only a non-reversible fingerprint is logged so logs
+	// can still correlate which stored token was used.
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(accessToken)).
+		Int("access_token_length", len(accessToken)).
+		Msg("access token for client (fingerprint only)")
+
+	s.logger.Info().Msgf("Payment Client: %v", paymentClient)
+
+	if paymentClient == nil {
+		return ErrPaymentProviderNotSupported
+	}
+	if accessToken == "" {
+		return ErrMissingAccessToken
+	}
+	if locationID == "" {
+		return ErrMissingLocationID
+	}
+	if creds.Live.APIKey == "" && creds.Live.PublishableKey == "" &&
+		creds.Test.APIKey == "" && creds.Test.PublishableKey == "" {
+		return ErrProviderCredentialsNotConfigured
+	}
+
+	// Diagnostic POST: the same POST /payments/custom-provider/connect with
+	// the same body, but capturing the actual HighLevel HTTP response
+	// (status, sanitized body, traceId) for logging. The diagnostics never
+	// contain credentials or the access token. Error semantics are unchanged.
+	diag, err := paymentClient.CreateProviderConfigsWithDiagnostics(ctx, accessToken, locationID, creds)
+	logCtx := s.logger.With()
+	if diag == nil {
+		// On error paths the diagnostics come from the wrapped HighLevel
+		// API error (status, sanitized body, traceId).
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			diag = &providers.HighLevelCallDiagnostics{
+				StatusCode: apiErr.StatusCode,
+				Body:       apiErr.Body,
+				TraceID:    apiErr.TraceID,
+			}
+		}
+	}
+	if diag != nil {
+		logCtx = logCtx.
+			Int("highlevel_post_status", diag.StatusCode).
+			Str("highlevel_post_body", diag.Body).
+			Str("highlevel_post_trace_id", diag.TraceID)
+	}
+	postLog := logCtx.Logger()
+
+	if err != nil {
+		postLog.
+			Warn().
+			Err(err).
+			Str("location_id", locationID).
+			Msg("HighLevel payment config POST diagnostics")
+		return err
+	}
+
+	postLog.Info().Str("location_id", locationID).Msg("HighLevel payment config POST succeeded; verifying via fetch")
+
+	// Immediately verify with the existing fetch (GET
+	// /payments/custom-provider/connect?locationId=<id>). Diagnostic-only:
+	// the result is logged and does not change the POST outcome.
+	fetched, fetchErr := paymentClient.FetchProviderConfig(ctx, accessToken, locationID)
+	if fetchErr != nil {
+		fetchLog := s.logger.With()
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(fetchErr, &apiErr) {
+			fetchLog = fetchLog.
+				Int("highlevel_get_status", apiErr.StatusCode).
+				Str("highlevel_get_body", apiErr.Body).
+				Str("highlevel_get_trace_id", apiErr.TraceID)
+		}
+		fetchLogger := fetchLog.Logger()
+		fetchLogger.
+			Warn().
+			Err(fetchErr).
+			Str("location_id", locationID).
+			Msg("HighLevel payment config verification fetch failed (diagnostic)")
+		return err
+	}
+
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("fetched_name", fetched.Name).
+		Str("fetched_query_url", fetched.QueryURL).
+		Str("fetched_payments_url", fetched.PaymentsURL).
+		Str("fetched_image_url", fetched.ImageURL).
+		Bool("fetched_supports_subscription_schedule", fetched.SupportsSubscriptionSchedule).
+		Msg("HighLevel payment config verification fetch returned configuration (diagnostic)")
+
+	return err
 }
 
 // RefreshAccessToken refreshes an OAuth access token for an integration.
@@ -557,17 +997,39 @@ func (s *Service) RefreshAccessToken(ctx context.Context, integrationID uuid.UUI
 
 	tokenResp, err := provider.OAuthProvider().RefreshToken(ctx, oauthToken.RefreshToken)
 	if err != nil {
-		s.logger.Error().Err(err).Str("integration_id", integrationID.String()).Msg("OAuth token refresh failed")
+		s.logger.Error().Err(err).
+			Str("integration_id", integrationID.String()).
+			Str("location_id", integration.ExternalAccountID).
+			Str("token_source", "refresh").
+			Bool("refresh_succeeded", false).
+			Msg("OAuth token refresh failed")
 		return ErrTokenRefreshFailed
 	}
 
 	expiresAt := time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second)
-	_, err = s.oauthRepo.Update(ctx, oauthToken.ID, tokenResp.AccessToken, tokenResp.RefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
+
+	// Defensive: never wipe a stored refresh token when the provider omits it
+	// from the refresh response.
+	newRefreshToken := tokenResp.RefreshToken
+	if newRefreshToken == "" {
+		newRefreshToken = oauthToken.RefreshToken
+	}
+
+	_, err = s.oauthRepo.Update(ctx, oauthToken.ID, tokenResp.AccessToken, newRefreshToken, expiresAt, tokenResp.Scope, tokenResp.TokenType)
 	if err != nil {
 		return translateError(err)
 	}
 
-	s.logger.Info().Str("integration_id", integrationID.String()).Msg("OAuth token refreshed")
+	s.logger.Info().
+		Str("integration_id", integrationID.String()).
+		Str("location_id", integration.ExternalAccountID).
+		Str("token_source", "refresh").
+		Str("old_access_token_fingerprint", providers.AccessTokenFingerprint(oauthToken.AccessToken)).
+		Str("new_access_token_fingerprint", providers.AccessTokenFingerprint(tokenResp.AccessToken)).
+		Time("access_token_expires_at", expiresAt).
+		Bool("refresh_succeeded", true).
+		Bool("refresh_token_replaced", tokenResp.RefreshToken != "" && tokenResp.RefreshToken != oauthToken.RefreshToken).
+		Msg("OAuth token refreshed")
 
 	return nil
 }
@@ -617,6 +1079,200 @@ func (s *Service) ValidateToken(ctx context.Context, integrationID uuid.UUID) (b
 	}
 
 	return valid, nil
+}
+
+// SyncGhlOrderStatus pushes a PawaPay-authoritative terminal payment result to
+// GoHighLevel for one of a location's orders so the GHL order leaves
+// "pending". It is the Clients-owned entry point of the server-side GHL
+// status synchronization; GHL-specific HTTP details live exclusively in the
+// HighLevel payment provider client (providers.PaymentProviderClient).
+//
+// It reuses the existing HighLevel OAuth lifecycle and token state:
+//   - the location resolves to its integration via the deterministic
+//     locationId -> integrations.external_account_id mapping established at
+//     Marketplace install (no platform creation, no new tables);
+//   - the location OAuth access token is loaded from the existing oauth token
+//     store; an expired token is refreshed exactly once through the existing
+//     refresh path (RefreshAccessToken) and the refreshed value is used;
+//   - the outbound call goes through the existing provider's
+//     PaymentProvider().UpdateOrderStatus (POST /payments/orders/{orderId}/
+//     record-payment, Bearer + "Version: v3" via the existing doJSON
+//     transport; errors sanitized exactly as today).
+//
+// status must be "completed" or "failed" (PawaPay-authoritative terminal
+// deposit results). Pending/processing or unknown values are rejected.
+// amount is the deposit amount in minor currency units (e.g., cents) recorded
+// against the GHL order.
+//
+// Ownership notes:
+//   - This method never hard-codes credentials, order IDs, location IDs, or
+//     API keys; everything resolves from storage plus the request.
+//   - Deposit state stays in the Transactions service; after two failed GHL
+//     attempts the Transactions worker keeps the PawaPay status and records
+//     the GHL failure.
+func (s *Service) SyncGhlOrderStatus(ctx context.Context, locationID, orderID, status string, amount int64) error {
+	if strings.TrimSpace(locationID) == "" {
+		return ErrMissingLocationID
+	}
+	if strings.TrimSpace(orderID) == "" {
+		return ErrMissingOrderID
+	}
+	ghlStatus, err := parseGhlOrderStatus(status)
+	if err != nil {
+		return err
+	}
+
+	// Resolve the integration by locationId via the existing deterministic
+	// mapping (integrations.external_account_id = GHL locationId).
+	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, locationID)
+	if err == repo.ErrNotFound {
+		return ErrIntegrationNotFound
+	}
+	if err != nil {
+		return translateError(err)
+	}
+	if integration.Status != sqlc.IntegrationStatusACTIVE {
+		return ErrIntegrationNotActive
+	}
+
+	platform, err := s.platformsRepo.GetByID(ctx, integration.PlatformID)
+	if err == repo.ErrNotFound {
+		return ErrPlatformNotFound
+	}
+	if err != nil {
+		return translateError(err)
+	}
+	if !platform.Enabled {
+		return ErrPlatformDisabled
+	}
+
+	provider, ok := s.registry.Get(platform.Slug)
+	if !ok {
+		return ErrProviderNotSupported
+	}
+
+	paymentClient := provider.PaymentProvider()
+	if paymentClient == nil {
+		return ErrPaymentProviderNotSupported
+	}
+
+	// Load the location's stored OAuth access token. Expired tokens are
+	// refreshed once through the existing refresh path; the refreshed token
+	// is then used for this update.
+	syncToken, err := s.accessTokenForSync(ctx, integration.ID)
+	if err != nil {
+		return err
+	}
+
+	// Safe pre-send diagnostics for the exact token that will be used to
+	// construct the Authorization header. Only fingerprints and metadata are
+	// logged — never the token, the refresh token, or the header itself.
+	s.logger.Info().
+		Str("location_id", locationID).
+		Str("integration_id", integration.ID.String()).
+		Str("order_id", orderID).
+		Str("token_source", syncToken.Source).
+		Str("access_token_fingerprint", providers.AccessTokenFingerprint(syncToken.AccessToken)).
+		Int("access_token_length", len(syncToken.AccessToken)).
+		Time("access_token_expires_at", syncToken.ExpiresAt).
+		Bool("token_refreshed", syncToken.Refreshed).
+		Str("http_method", http.MethodPost).
+		Str("endpoint_path", "/payments/orders/"+orderID+"/record-payment").
+		Str("api_version", "v3").
+		Msg("GHL record-payment request diagnostics")
+
+	err = paymentClient.UpdateOrderStatus(ctx, syncToken.AccessToken, locationID, orderID, ghlStatus, amount)
+	if err != nil {
+		// Correlation only: the caller (Transactions worker) persists the
+		// failure; the message must not leak credentials or the token. The
+		// response body attached to a HighLevelAPIError is already
+		// credential-sanitized.
+		errLog := s.logger.Error().Err(err).
+			Str("integration_id", integration.ID.String()).
+			Str("location_id", locationID).
+			Str("order_id", orderID).
+			Str("status", string(ghlStatus)).
+			Str("token_source", syncToken.Source).
+			Str("access_token_fingerprint", providers.AccessTokenFingerprint(syncToken.AccessToken)).
+			Bool("token_refreshed", syncToken.Refreshed)
+		var apiErr *providers.HighLevelAPIError
+		if errors.As(err, &apiErr) {
+			errLog = errLog.
+				Int("http_status_code", apiErr.StatusCode).
+				Str("highlevel_trace_id", apiErr.TraceID).
+				Str("highlevel_body", apiErr.Body)
+		}
+		errLog.Msg("GHL order status update failed")
+		return err
+	}
+
+	s.logger.Info().
+		Str("integration_id", integration.ID.String()).
+		Str("location_id", locationID).
+		Str("order_id", orderID).
+		Str("status", string(ghlStatus)).
+		Msg("GHL order status updated")
+
+	return nil
+}
+
+// syncAccessToken carries the exact access token used for a record-payment
+// call together with the safe metadata logged alongside it.
+type syncAccessToken struct {
+	AccessToken string
+	ExpiresAt   time.Time
+	Refreshed   bool
+	Source      string
+}
+
+// accessTokenForSync loads the stored access token for an integration,
+// refreshing it once through the existing refresh path when expired.
+func (s *Service) accessTokenForSync(ctx context.Context, integrationID uuid.UUID) (syncAccessToken, error) {
+	oauthToken, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
+	if err == repo.ErrNotFound {
+		return syncAccessToken{}, ErrOAuthTokenNotFound
+	}
+	if err != nil {
+		return syncAccessToken{}, translateError(err)
+	}
+	if time.Now().Before(oauthToken.ExpiresAt) {
+		return syncAccessToken{
+			AccessToken: oauthToken.AccessToken,
+			ExpiresAt:   oauthToken.ExpiresAt,
+			Source:      "stored_location_token",
+		}, nil
+	}
+
+	if err := s.RefreshAccessToken(ctx, integrationID); err != nil {
+		return syncAccessToken{}, err
+	}
+
+	refreshed, err := s.oauthRepo.GetByIntegrationID(ctx, integrationID)
+	if err == repo.ErrNotFound {
+		return syncAccessToken{}, ErrOAuthTokenNotFound
+	}
+	if err != nil {
+		return syncAccessToken{}, translateError(err)
+	}
+	return syncAccessToken{
+		AccessToken: refreshed.AccessToken,
+		ExpiresAt:   refreshed.ExpiresAt,
+		Refreshed:   true,
+		Source:      "refresh",
+	}, nil
+}
+
+// parseGhlOrderStatus maps a synchronization status string onto the provider
+// status. Only the two PawaPay-authoritative terminal results are accepted.
+func parseGhlOrderStatus(status string) (providers.GhlOrderStatus, error) {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case string(providers.GhlOrderStatusCompleted):
+		return providers.GhlOrderStatusCompleted, nil
+	case string(providers.GhlOrderStatusFailed):
+		return providers.GhlOrderStatusFailed, nil
+	default:
+		return "", ErrUnsupportedGhlOrderStatus
+	}
 }
 
 // generateAPIKey generates a cryptographically random API key used to

@@ -26,6 +26,7 @@ const (
 	ClientsService_ListClients_FullMethodName      = "/clientsgrpc.ClientsService/ListClients"
 	ClientsService_ActivateClient_FullMethodName   = "/clientsgrpc.ClientsService/ActivateClient"
 	ClientsService_DeactivateClient_FullMethodName = "/clientsgrpc.ClientsService/DeactivateClient"
+	ClientsService_ListSubAccounts_FullMethodName  = "/clientsgrpc.ClientsService/ListSubAccounts"
 )
 
 // ClientsServiceClient is the client API for ClientsService service.
@@ -48,6 +49,12 @@ type ClientsServiceClient interface {
 	ActivateClient(ctx context.Context, in *ActivateClientRequest, opts ...grpc.CallOption) (*ActivateClientResponse, error)
 	// DeactivateClient deactivates a client account.
 	DeactivateClient(ctx context.Context, in *DeactivateClientRequest, opts ...grpc.CallOption) (*DeactivateClientResponse, error)
+	// ListSubAccounts lists client/sub-account records for the Admin Dashboard
+	// sub-accounts page. balance/last_payout_date/total_processed are not
+	// populated here: they require Transactions-owned data the Clients service
+	// cannot read directly. They are documented in dashboard-setup.md as
+	// cross-service gaps until a cross-service capability is wired up.
+	ListSubAccounts(ctx context.Context, in *ListSubAccountsRequest, opts ...grpc.CallOption) (*ListSubAccountsResponse, error)
 }
 
 type clientsServiceClient struct {
@@ -128,6 +135,16 @@ func (c *clientsServiceClient) DeactivateClient(ctx context.Context, in *Deactiv
 	return out, nil
 }
 
+func (c *clientsServiceClient) ListSubAccounts(ctx context.Context, in *ListSubAccountsRequest, opts ...grpc.CallOption) (*ListSubAccountsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSubAccountsResponse)
+	err := c.cc.Invoke(ctx, ClientsService_ListSubAccounts_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ClientsServiceServer is the server API for ClientsService service.
 // All implementations must embed UnimplementedClientsServiceServer
 // for forward compatibility.
@@ -148,6 +165,12 @@ type ClientsServiceServer interface {
 	ActivateClient(context.Context, *ActivateClientRequest) (*ActivateClientResponse, error)
 	// DeactivateClient deactivates a client account.
 	DeactivateClient(context.Context, *DeactivateClientRequest) (*DeactivateClientResponse, error)
+	// ListSubAccounts lists client/sub-account records for the Admin Dashboard
+	// sub-accounts page. balance/last_payout_date/total_processed are not
+	// populated here: they require Transactions-owned data the Clients service
+	// cannot read directly. They are documented in dashboard-setup.md as
+	// cross-service gaps until a cross-service capability is wired up.
+	ListSubAccounts(context.Context, *ListSubAccountsRequest) (*ListSubAccountsResponse, error)
 	mustEmbedUnimplementedClientsServiceServer()
 }
 
@@ -178,6 +201,9 @@ func (UnimplementedClientsServiceServer) ActivateClient(context.Context, *Activa
 }
 func (UnimplementedClientsServiceServer) DeactivateClient(context.Context, *DeactivateClientRequest) (*DeactivateClientResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateClient not implemented")
+}
+func (UnimplementedClientsServiceServer) ListSubAccounts(context.Context, *ListSubAccountsRequest) (*ListSubAccountsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSubAccounts not implemented")
 }
 func (UnimplementedClientsServiceServer) mustEmbedUnimplementedClientsServiceServer() {}
 func (UnimplementedClientsServiceServer) testEmbeddedByValue()                        {}
@@ -326,6 +352,24 @@ func _ClientsService_DeactivateClient_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ClientsService_ListSubAccounts_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSubAccountsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ClientsServiceServer).ListSubAccounts(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ClientsService_ListSubAccounts_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ClientsServiceServer).ListSubAccounts(ctx, req.(*ListSubAccountsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // ClientsService_ServiceDesc is the grpc.ServiceDesc for ClientsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -360,6 +404,10 @@ var ClientsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateClient",
 			Handler:    _ClientsService_DeactivateClient_Handler,
+		},
+		{
+			MethodName: "ListSubAccounts",
+			Handler:    _ClientsService_ListSubAccounts_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
@@ -936,6 +984,598 @@ var IntegrationsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncIntegration",
 			Handler:    _IntegrationsService_SyncIntegration_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "clients.proto",
+}
+
+const (
+	HealthService_HealthCheck_FullMethodName = "/clientsgrpc.HealthService/HealthCheck"
+)
+
+// HealthServiceClient is the client API for HealthService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type HealthServiceClient interface {
+	HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error)
+}
+
+type healthServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewHealthServiceClient(cc grpc.ClientConnInterface) HealthServiceClient {
+	return &healthServiceClient{cc}
+}
+
+func (c *healthServiceClient) HealthCheck(ctx context.Context, in *HealthCheckRequest, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, HealthService_HealthCheck_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// HealthServiceServer is the server API for HealthService service.
+// All implementations must embed UnimplementedHealthServiceServer
+// for forward compatibility.
+type HealthServiceServer interface {
+	HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error)
+	mustEmbedUnimplementedHealthServiceServer()
+}
+
+// UnimplementedHealthServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedHealthServiceServer struct{}
+
+func (UnimplementedHealthServiceServer) HealthCheck(context.Context, *HealthCheckRequest) (*HealthCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
+}
+func (UnimplementedHealthServiceServer) mustEmbedUnimplementedHealthServiceServer() {}
+func (UnimplementedHealthServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeHealthServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to HealthServiceServer will
+// result in compilation errors.
+type UnsafeHealthServiceServer interface {
+	mustEmbedUnimplementedHealthServiceServer()
+}
+
+func RegisterHealthServiceServer(s grpc.ServiceRegistrar, srv HealthServiceServer) {
+	// If the following call pancis, it indicates UnimplementedHealthServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&HealthService_ServiceDesc, srv)
+}
+
+func _HealthService_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(HealthCheckRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HealthServiceServer).HealthCheck(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HealthService_HealthCheck_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HealthServiceServer).HealthCheck(ctx, req.(*HealthCheckRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// HealthService_ServiceDesc is the grpc.ServiceDesc for HealthService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var HealthService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "clientsgrpc.HealthService",
+	HandlerType: (*HealthServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "HealthCheck",
+			Handler:    _HealthService_HealthCheck_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "clients.proto",
+}
+
+const (
+	AuthService_SignIn_FullMethodName              = "/clientsgrpc.AuthService/SignIn"
+	AuthService_RefreshToken_FullMethodName        = "/clientsgrpc.AuthService/RefreshToken"
+	AuthService_SignOut_FullMethodName             = "/clientsgrpc.AuthService/SignOut"
+	AuthService_ValidateAccessToken_FullMethodName = "/clientsgrpc.AuthService/ValidateAccessToken"
+	AuthService_CreateUser_FullMethodName          = "/clientsgrpc.AuthService/CreateUser"
+	AuthService_UpdateUser_FullMethodName          = "/clientsgrpc.AuthService/UpdateUser"
+	AuthService_ListUsers_FullMethodName           = "/clientsgrpc.AuthService/ListUsers"
+)
+
+// AuthServiceClient is the client API for AuthService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// AuthService provides minimal, strongly secured administrator
+// authentication: sign-in, refresh rotation and sign-out, plus the internal
+// access-token validation RPC used by the other services' admin middleware.
+type AuthServiceClient interface {
+	// SignIn authenticates an administrator and issues a token pair.
+	SignIn(ctx context.Context, in *SignInRequest, opts ...grpc.CallOption) (*SignInResponse, error)
+	// RefreshToken rotates the access token using a refresh token.
+	RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error)
+	// SignOut revokes the presented access token (and the session refresh
+	// token when provided).
+	SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error)
+	// ValidateAccessToken is INTERNAL (no HTTP binding): other services'
+	// admin middleware call it over gRPC so access-token state is owned by
+	// exactly one service (Clients).
+	ValidateAccessToken(ctx context.Context, in *ValidateAccessTokenRequest, opts ...grpc.CallOption) (*ValidateAccessTokenResponse, error)
+	// CreateUser provisions a new database-managed user (USER_ROLE_USER or
+	// USER_ROLE_ADMIN). It is a gRPC-only provisioning/administration method:
+	// it deliberately has NO HTTP annotation, is never routed by grpc-gateway,
+	// and therefore is never reachable over the ALB/HTTP boundary. The first
+	// administrator is created after deployment by calling this method
+	// directly over gRPC (e.g. Postman/gRPC or grpcurl).
+	CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error)
+	// UpdateUser changes an existing user's name, email and password. The
+	// user's role is immutable here. gRPC-only: no HTTP annotation and no
+	// grpc-gateway route.
+	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UpdateUserResponse, error)
+	// ListUsers returns a paginated list of database-managed users for the
+	// Admin Dashboard Settings team-management page. The route lives under the
+	// permitted /v1/public/clients* ALB prefix and is protected by the admin
+	// middleware. Password and token material are never returned.
+	ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error)
+}
+
+type authServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewAuthServiceClient(cc grpc.ClientConnInterface) AuthServiceClient {
+	return &authServiceClient{cc}
+}
+
+func (c *authServiceClient) SignIn(ctx context.Context, in *SignInRequest, opts ...grpc.CallOption) (*SignInResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignInResponse)
+	err := c.cc.Invoke(ctx, AuthService_SignIn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) RefreshToken(ctx context.Context, in *RefreshTokenRequest, opts ...grpc.CallOption) (*RefreshTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RefreshTokenResponse)
+	err := c.cc.Invoke(ctx, AuthService_RefreshToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) SignOut(ctx context.Context, in *SignOutRequest, opts ...grpc.CallOption) (*SignOutResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SignOutResponse)
+	err := c.cc.Invoke(ctx, AuthService_SignOut_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) ValidateAccessToken(ctx context.Context, in *ValidateAccessTokenRequest, opts ...grpc.CallOption) (*ValidateAccessTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ValidateAccessTokenResponse)
+	err := c.cc.Invoke(ctx, AuthService_ValidateAccessToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) CreateUser(ctx context.Context, in *CreateUserRequest, opts ...grpc.CallOption) (*CreateUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CreateUserResponse)
+	err := c.cc.Invoke(ctx, AuthService_CreateUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UpdateUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateUserResponse)
+	err := c.cc.Invoke(ctx, AuthService_UpdateUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) ListUsers(ctx context.Context, in *ListUsersRequest, opts ...grpc.CallOption) (*ListUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUsersResponse)
+	err := c.cc.Invoke(ctx, AuthService_ListUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// AuthServiceServer is the server API for AuthService service.
+// All implementations must embed UnimplementedAuthServiceServer
+// for forward compatibility.
+//
+// AuthService provides minimal, strongly secured administrator
+// authentication: sign-in, refresh rotation and sign-out, plus the internal
+// access-token validation RPC used by the other services' admin middleware.
+type AuthServiceServer interface {
+	// SignIn authenticates an administrator and issues a token pair.
+	SignIn(context.Context, *SignInRequest) (*SignInResponse, error)
+	// RefreshToken rotates the access token using a refresh token.
+	RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error)
+	// SignOut revokes the presented access token (and the session refresh
+	// token when provided).
+	SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error)
+	// ValidateAccessToken is INTERNAL (no HTTP binding): other services'
+	// admin middleware call it over gRPC so access-token state is owned by
+	// exactly one service (Clients).
+	ValidateAccessToken(context.Context, *ValidateAccessTokenRequest) (*ValidateAccessTokenResponse, error)
+	// CreateUser provisions a new database-managed user (USER_ROLE_USER or
+	// USER_ROLE_ADMIN). It is a gRPC-only provisioning/administration method:
+	// it deliberately has NO HTTP annotation, is never routed by grpc-gateway,
+	// and therefore is never reachable over the ALB/HTTP boundary. The first
+	// administrator is created after deployment by calling this method
+	// directly over gRPC (e.g. Postman/gRPC or grpcurl).
+	CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error)
+	// UpdateUser changes an existing user's name, email and password. The
+	// user's role is immutable here. gRPC-only: no HTTP annotation and no
+	// grpc-gateway route.
+	UpdateUser(context.Context, *UpdateUserRequest) (*UpdateUserResponse, error)
+	// ListUsers returns a paginated list of database-managed users for the
+	// Admin Dashboard Settings team-management page. The route lives under the
+	// permitted /v1/public/clients* ALB prefix and is protected by the admin
+	// middleware. Password and token material are never returned.
+	ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error)
+	mustEmbedUnimplementedAuthServiceServer()
+}
+
+// UnimplementedAuthServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedAuthServiceServer struct{}
+
+func (UnimplementedAuthServiceServer) SignIn(context.Context, *SignInRequest) (*SignInResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignIn not implemented")
+}
+func (UnimplementedAuthServiceServer) RefreshToken(context.Context, *RefreshTokenRequest) (*RefreshTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RefreshToken not implemented")
+}
+func (UnimplementedAuthServiceServer) SignOut(context.Context, *SignOutRequest) (*SignOutResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SignOut not implemented")
+}
+func (UnimplementedAuthServiceServer) ValidateAccessToken(context.Context, *ValidateAccessTokenRequest) (*ValidateAccessTokenResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ValidateAccessToken not implemented")
+}
+func (UnimplementedAuthServiceServer) CreateUser(context.Context, *CreateUserRequest) (*CreateUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateUser not implemented")
+}
+func (UnimplementedAuthServiceServer) UpdateUser(context.Context, *UpdateUserRequest) (*UpdateUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateUser not implemented")
+}
+func (UnimplementedAuthServiceServer) ListUsers(context.Context, *ListUsersRequest) (*ListUsersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUsers not implemented")
+}
+func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
+func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeAuthServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AuthServiceServer will
+// result in compilation errors.
+type UnsafeAuthServiceServer interface {
+	mustEmbedUnimplementedAuthServiceServer()
+}
+
+func RegisterAuthServiceServer(s grpc.ServiceRegistrar, srv AuthServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAuthServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&AuthService_ServiceDesc, srv)
+}
+
+func _AuthService_SignIn_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignInRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).SignIn(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_SignIn_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).SignIn(ctx, req.(*SignInRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_RefreshToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RefreshTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).RefreshToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_RefreshToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).RefreshToken(ctx, req.(*RefreshTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_SignOut_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SignOutRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).SignOut(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_SignOut_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).SignOut(ctx, req.(*SignOutRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_ValidateAccessToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ValidateAccessTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ValidateAccessToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ValidateAccessToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ValidateAccessToken(ctx, req.(*ValidateAccessTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_CreateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).CreateUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_CreateUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).CreateUser(ctx, req.(*CreateUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_UpdateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).UpdateUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_UpdateUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).UpdateUser(ctx, req.(*UpdateUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_ListUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).ListUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_ListUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).ListUsers(ctx, req.(*ListUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var AuthService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "clientsgrpc.AuthService",
+	HandlerType: (*AuthServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "SignIn",
+			Handler:    _AuthService_SignIn_Handler,
+		},
+		{
+			MethodName: "RefreshToken",
+			Handler:    _AuthService_RefreshToken_Handler,
+		},
+		{
+			MethodName: "SignOut",
+			Handler:    _AuthService_SignOut_Handler,
+		},
+		{
+			MethodName: "ValidateAccessToken",
+			Handler:    _AuthService_ValidateAccessToken_Handler,
+		},
+		{
+			MethodName: "CreateUser",
+			Handler:    _AuthService_CreateUser_Handler,
+		},
+		{
+			MethodName: "UpdateUser",
+			Handler:    _AuthService_UpdateUser_Handler,
+		},
+		{
+			MethodName: "ListUsers",
+			Handler:    _AuthService_ListUsers_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "clients.proto",
+}
+
+const (
+	PaymentSyncService_UpdateGhlOrderStatus_FullMethodName = "/clientsgrpc.PaymentSyncService/UpdateGhlOrderStatus"
+)
+
+// PaymentSyncServiceClient is the client API for PaymentSyncService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+type PaymentSyncServiceClient interface {
+	UpdateGhlOrderStatus(ctx context.Context, in *UpdateGhlOrderStatusRequest, opts ...grpc.CallOption) (*UpdateGhlOrderStatusResponse, error)
+}
+
+type paymentSyncServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewPaymentSyncServiceClient(cc grpc.ClientConnInterface) PaymentSyncServiceClient {
+	return &paymentSyncServiceClient{cc}
+}
+
+func (c *paymentSyncServiceClient) UpdateGhlOrderStatus(ctx context.Context, in *UpdateGhlOrderStatusRequest, opts ...grpc.CallOption) (*UpdateGhlOrderStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UpdateGhlOrderStatusResponse)
+	err := c.cc.Invoke(ctx, PaymentSyncService_UpdateGhlOrderStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// PaymentSyncServiceServer is the server API for PaymentSyncService service.
+// All implementations must embed UnimplementedPaymentSyncServiceServer
+// for forward compatibility.
+//
+// PaymentSyncService provides the server-side GHL order/payment status
+// synchronization surface. It is gRPC-only (internal). It is owned by the
+// Clients service, which holds the location OAuth access tokens and the GHL
+// provider, so GHL-specific HTTP details stay in the provider layer.
+type PaymentSyncServiceServer interface {
+	UpdateGhlOrderStatus(context.Context, *UpdateGhlOrderStatusRequest) (*UpdateGhlOrderStatusResponse, error)
+	mustEmbedUnimplementedPaymentSyncServiceServer()
+}
+
+// UnimplementedPaymentSyncServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedPaymentSyncServiceServer struct{}
+
+func (UnimplementedPaymentSyncServiceServer) UpdateGhlOrderStatus(context.Context, *UpdateGhlOrderStatusRequest) (*UpdateGhlOrderStatusResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateGhlOrderStatus not implemented")
+}
+func (UnimplementedPaymentSyncServiceServer) mustEmbedUnimplementedPaymentSyncServiceServer() {}
+func (UnimplementedPaymentSyncServiceServer) testEmbeddedByValue()                            {}
+
+// UnsafePaymentSyncServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to PaymentSyncServiceServer will
+// result in compilation errors.
+type UnsafePaymentSyncServiceServer interface {
+	mustEmbedUnimplementedPaymentSyncServiceServer()
+}
+
+func RegisterPaymentSyncServiceServer(s grpc.ServiceRegistrar, srv PaymentSyncServiceServer) {
+	// If the following call pancis, it indicates UnimplementedPaymentSyncServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&PaymentSyncService_ServiceDesc, srv)
+}
+
+func _PaymentSyncService_UpdateGhlOrderStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateGhlOrderStatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PaymentSyncServiceServer).UpdateGhlOrderStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PaymentSyncService_UpdateGhlOrderStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PaymentSyncServiceServer).UpdateGhlOrderStatus(ctx, req.(*UpdateGhlOrderStatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// PaymentSyncService_ServiceDesc is the grpc.ServiceDesc for PaymentSyncService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var PaymentSyncService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "clientsgrpc.PaymentSyncService",
+	HandlerType: (*PaymentSyncServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "UpdateGhlOrderStatus",
+			Handler:    _PaymentSyncService_UpdateGhlOrderStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

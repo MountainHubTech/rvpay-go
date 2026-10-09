@@ -8,7 +8,7 @@ services:
     name: rvpay-clients
     plan: free
     runtime: docker
-    repo: https://github.com/I-Frostbyte/rvpay-go
+    repo: https://github.com/MountainHubTech/rvpay-go
     branch: main
     dockerfilePath: ./clients/Dockerfile
     dockerContext: .
@@ -77,7 +77,7 @@ services:
     name: rvpay-transactions
     plan: free
     runtime: docker
-    repo: https://github.com/I-Frostbyte/rvpay-go
+    repo: https://github.com/MountainHubTech/rvpay-go
     branch: main
     dockerfilePath: ./transactions/Dockerfile
     dockerContext: .

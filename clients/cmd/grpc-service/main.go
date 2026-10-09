@@ -12,21 +12,26 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/config"
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	clientshttp "github.com/I-Frostbyte/rvpay-go/clients/http"
-	"github.com/I-Frostbyte/rvpay-go/clients/oauth"
-	"github.com/I-Frostbyte/rvpay-go/clients/payments"
-	"github.com/I-Frostbyte/rvpay-go/clients/providers"
-	"github.com/I-Frostbyte/rvpay-go/clients/service"
-	"github.com/I-Frostbyte/rvpay-go/clients/webhooks"
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	commondatabase "github.com/I-Frostbyte/rvpay-go/shared/database"
-	commonlogger "github.com/I-Frostbyte/rvpay-go/shared/logger"
-	commonobservability "github.com/I-Frostbyte/rvpay-go/shared/observability"
+	"github.com/MountainHubTech/rvpay-go/clients/auth"
+	"github.com/MountainHubTech/rvpay-go/clients/config"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/ghlsync"
+	health_check "github.com/MountainHubTech/rvpay-go/clients/health"
+	clientshttp "github.com/MountainHubTech/rvpay-go/clients/http"
+	"github.com/MountainHubTech/rvpay-go/clients/oauth"
+	"github.com/MountainHubTech/rvpay-go/clients/payments"
+	"github.com/MountainHubTech/rvpay-go/clients/providers"
+	"github.com/MountainHubTech/rvpay-go/clients/service"
+	"github.com/MountainHubTech/rvpay-go/clients/webhooks"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	commondatabase "github.com/MountainHubTech/rvpay-go/shared/database"
+	commonlogger "github.com/MountainHubTech/rvpay-go/shared/logger"
+	commonobservability "github.com/MountainHubTech/rvpay-go/shared/observability"
 	grpc_recovery "github.com/grpc-ecosystem/go-grpc-middleware/recovery"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
+
+	// "github.com/joho/godotenv"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -96,19 +101,29 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	oauthStateRepo := repo.NewOAuthStateRepo(clientsRepo.Do())
 	webhookEventRepo := repo.NewWebhookEventRepo(clientsRepo.Do())
 	paymentProviderConfigRepo := repo.NewPaymentProviderConfigRepo(clientsRepo.Do())
+	userRepo := repo.NewUserRepo(clientsRepo.Do())
+	accessTokenRepo := repo.NewAccessTokenRepo(clientsRepo.Do())
+
+	// Minimal administrator authentication against database-managed users.
+	authSettings := auth.Settings{
+		AccessTokenTTL:  cfg.Auth.AccessTokenTTL,
+		RefreshTokenTTL: cfg.Auth.RefreshTokenTTL,
+	}
+	authService := auth.NewService(userRepo, accessTokenRepo, authSettings, logger)
 
 	providerRegistry := providers.NewProviderRegistry()
 	// The HighLevel Custom Payment Provider client makes authenticated outbound
 	// calls to HighLevel for provider registration/configuration. The base URL
 	// comes from configuration (HIGHLEVEL_API_BASE_URL); it is never hard-coded.
 	highLevelPaymentProvider := providers.NewHighLevelPaymentProviderClient(cfg.HighLevel.APIBaseURL, nil)
-	highLevelProvider := providers.NewHighLevelProvider(cfg.HighLevel.ClientID, cfg.HighLevel.ClientSecret, cfg.HighLevel.RedirectURI, cfg.HighLevel.WebhookPublicKey, highLevelPaymentProvider)
+	highLevelProvider := providers.NewHighLevelProvider(cfg.HighLevel.ClientID, cfg.HighLevel.ClientSecret, cfg.HighLevel.RedirectURI, cfg.HighLevel.WebhookPublicKey, highLevelPaymentProvider, logger)
 	providerRegistry.Register(highLevelProvider)
 	logger.Info().Msg("providers registered successfully")
 
 	clientsService := service.NewClientsServiceImpl(clientRepo, logger)
 	platformsService := service.NewPlatformsServiceImpl(platformRepo, logger)
 	integrationsService := service.NewIntegrationsServiceImpl(integrationRepo, clientRepo, platformRepo, oauthTokenRepo, webhookSubscriptionRepo, logger)
+	healthCheck := health_check.NewHealthService(logger)
 
 	oauthService := oauth.NewService(
 		integrationRepo,
@@ -120,11 +135,15 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 		providerRegistry,
 		cfg.HighLevel.RedirectURI,
 		oauth.ProviderConfigSettings{
-			Name:        cfg.HighLevel.ProviderName,
-			Description: cfg.HighLevel.ProviderDescription,
-			ImageURL:    cfg.HighLevel.ProviderImageURL,
-			PaymentsURL: cfg.HighLevel.PaymentURL,
-			QueryURL:    cfg.HighLevel.QueryURL,
+			Name:               cfg.HighLevel.ProviderName,
+			Description:        cfg.HighLevel.ProviderDescription,
+			ImageURL:           cfg.HighLevel.ProviderImageURL,
+			PaymentsURL:        cfg.HighLevel.PaymentURL,
+			QueryURL:           cfg.HighLevel.QueryURL,
+			LiveAPIKey:         cfg.HighLevel.LiveAPIKey,
+			LivePublishableKey: cfg.HighLevel.LivePublishableKey,
+			TestAPIKey:         cfg.HighLevel.TestAPIKey,
+			TestPublishableKey: cfg.HighLevel.TestPublishableKey,
 		},
 		logger,
 	)
@@ -144,7 +163,14 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 			QueryURL:    cfg.HighLevel.QueryURL,
 		},
 	)
-	webhookService := webhooks.NewService(integrationRepo, webhookSubscriptionRepo, webhookEventRepo, platformRepo, paymentProviderConfigRepo, providerRegistry, webhookDispatcher, logger)
+	// The INSTALL webhook must reconcile the REMOTE GHL payment provider
+	// because a local payment_provider_configs row does not prove the remote
+	// association still exists (GHL removes it on uninstall). The reconciler
+	// is the OAuth service, which already owns the location token lifecycle
+	// and the RegisterProvider sequence; the webhook dispatcher performs no
+	// token lookup or provider registration itself.
+	webhookDispatcher.SetPaymentProviderReconciler(oauthService)
+	webhookService := webhooks.NewService(integrationRepo, clientRepo, webhookSubscriptionRepo, webhookEventRepo, platformRepo, paymentProviderConfigRepo, providerRegistry, webhookDispatcher, logger)
 	oauthHandler := clientshttp.NewOAuthHandler(oauthService, logger)
 	webhookHandler := clientshttp.NewWebhookHandler(webhookService, logger)
 
@@ -153,11 +179,20 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	// transactions with RVPay deposits by calling the Transactions service via
 	// gRPC. The Transactions gRPC address comes from configuration
 	// (TRANSACTIONS_GRPC_ADDR); it is never hard-coded.
-	transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
-	if transactionsAddr == "" {
-		return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
-	}
-	transactionsConn, err := grpc.NewClient(transactionsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	// // Loads .env from the directory where you execute the command
+	// // // This only exists for local testing and development
+	// err = godotenv.Load(".env")
+	// if err != nil {
+	// 	return fmt.Errorf("No .env file found, relying on system env")
+	// }
+
+	// transactionsAddr := os.Getenv("TRANSACTIONS_GRPC_ADDR")
+	// if transactionsAddr == "" {
+	// 	return fmt.Errorf("TRANSACTIONS_GRPC_ADDR is required")
+	// }
+
+	transactionsConn, err := grpc.NewClient(cfg.TransactionsAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("connect to transactions service: %w", err)
 	}
@@ -183,6 +218,12 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	clientsgrpc.RegisterClientsServiceServer(grpcServer, clientsService)
 	clientsgrpc.RegisterPlatformsServiceServer(grpcServer, platformsService)
 	clientsgrpc.RegisterIntegrationsServiceServer(grpcServer, integrationsService)
+	clientsgrpc.RegisterAuthServiceServer(grpcServer, authService)
+	clientsgrpc.RegisterHealthServiceServer(grpcServer, healthCheck)
+	// PaymentSyncService is gRPC-only (internal): it is NOT registered on the
+	// public HTTP gateway, so the Transactions worker reaches it on the
+	// internal listener while browsers and the ALB cannot.
+	clientsgrpc.RegisterPaymentSyncServiceServer(grpcServer, ghlsync.NewGHLSyncService(oauthService, logger))
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 	logger.Info().Msg("Successfully registered gRPC services...")
 
@@ -204,9 +245,40 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	if err := clientsgrpc.RegisterIntegrationsServiceHandlerServer(ctx, gatewayMux, integrationsService); err != nil {
 		return fmt.Errorf("register integrations grpc-gateway handler: %w", err)
 	}
+	if err := clientsgrpc.RegisterAuthServiceHandlerServer(ctx, gatewayMux, authService); err != nil {
+		return fmt.Errorf("register auth grpc-gateway handler: %w", err)
+	}
+	if err := clientsgrpc.RegisterHealthServiceHandlerServer(ctx, gatewayMux, healthCheck); err != nil {
+		return fmt.Errorf("register grpc-gateway payout handler: %w", err)
+	}
 
 	httpMux := http.NewServeMux()
-	httpMux.Handle("/", commonobservability.AccessLog(logger)(gatewayMux))
+	// CORS: the gateway serves browser clients (the RVPay Admin Dashboard,
+	// which reads the sub-accounts listing from the browser). The effective
+	// allowlist is resolved by the shared layer (configured origins + the
+	// local dev origin; documented defaults when the configuration is empty)
+	// and logged at startup so the runtime configuration is provable.
+	corsOrigins := commonobservability.ResolveAllowedOrigins(cfg.CORSAllowedOrigins)
+	logger.Info().Strs("allowed_origins", corsOrigins).Msg("cors configuration loaded")
+
+	// Admin authorization: the dashboard sub-accounts listing is an
+	// administrator-only read endpoint. The ALB already routes only
+	// /v1/public* prefixes to this service, so the protected endpoint
+	// RETAINS its permitted prefix and is protected here at the transport
+	// layer (transport-layer protection, independent of the UI). Public
+	// payment-page, health and provider endpoints are never intercepted.
+	protectedRoutes := []auth.AdminRoute{
+		{Method: http.MethodGet, Path: "/v1/public/clients/sub-accounts"},
+		{Method: http.MethodGet, Path: "/v1/public/clients/users"},
+	}
+	validateAccessToken := func(ctx context.Context, accessToken string) (bool, error) {
+		resp, err := authService.ValidateAccessToken(ctx, &clientsgrpc.ValidateAccessTokenRequest{AccessToken: accessToken})
+		if err != nil {
+			return false, err
+		}
+		return resp.GetValid(), nil
+	}
+	httpMux.Handle("/", commonobservability.CORS(logger, corsOrigins, auth.AdminAuthMiddleware(validateAccessToken, protectedRoutes, logger)(commonobservability.AccessLog(logger)(gatewayMux))))
 	httpMux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			w.WriteHeader(http.StatusMethodNotAllowed)
@@ -231,7 +303,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	httpMux.HandleFunc("/payments/custom-provider/query", paymentQueryHandler.Query)
 	httpMux.HandleFunc("/payments/custom-provider/webhook", paymentWebhookHandler.Payment)
 
-	httpPort := os.Getenv("PORT")
+	httpPort := os.Getenv("HTTP_PORT")
 	if httpPort == "" {
 		httpPort = "8080"
 	}
@@ -306,5 +378,6 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 }
 
 func getPostgresConnectionURL(cfg config.DBConfig) string {
+	// The DSN contains the DB password; it must never be printed to stdout.
 	return commondatabase.PostgresURL(cfg.DBUser, cfg.DBPassword, cfg.DBPort, cfg.DBHost, cfg.DBName, cfg.TLSDisabled)
 }

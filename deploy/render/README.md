@@ -70,7 +70,7 @@ packages.
 
 ## One-time setup
 
-1. Create a Render account and connect the `I-Frostbyte/rvpay-go` GitHub
+1. Create a Render account and connect the `MountainHubTech/rvpay-go` GitHub
    repository.
 2. From the Render dashboard, choose **New → Blueprint** and select the
    repository. Render reads `render.yaml` and provisions the services and

@@ -43,6 +43,35 @@ SET status = $2,
 WHERE id = $1
 RETURNING *;
 
+-- Payout overview aggregates (for /v1/public/payouts/overview/stats and the
+-- overview snapshot). All money is stored as NUMERIC(18,2); sums are returned
+-- as int64 minor-unit values by the caller's choice — here we return the raw
+-- numeric sum and let the service format it. Status filtering uses the
+-- payout_status enum values: REQUESTED, PROCESSING, COMPLETED, FAILED.
+
+-- name: CountPayoutsByStatus :one
+SELECT COUNT(*) FROM payouts WHERE status = $1;
+
+-- name: SumPayoutAmountByStatus :one
+SELECT COALESCE(SUM(amount), 0) FROM payouts WHERE status = $1;
+
+-- name: CountPayoutsInWindow :one
+SELECT COUNT(*) FROM payouts WHERE created_at >= $1;
+
+-- name: ListPayoutsFiltered :many
+SELECT *
+FROM payouts
+WHERE ($1::TEXT = '' OR destination_reference ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::payout_status)
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
+
+-- name: CountPayoutsFiltered :one
+SELECT COUNT(*)
+FROM payouts
+WHERE ($1::TEXT = '' OR destination_reference ILIKE '%' || $1 || '%')
+  AND ($2::TEXT = '' OR status = $2::payout_status);
+
 -- name: UpdatePayoutStatusAndCompletedAt :one
 UPDATE payouts
 SET status = $2,

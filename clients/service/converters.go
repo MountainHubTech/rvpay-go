@@ -1,11 +1,12 @@
 package service
 
 import (
+	"strings"
 	"time"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	"github.com/google/uuid"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -14,11 +15,12 @@ import (
 
 func sqlcClientToProto(c sqlc.Client) *clientsgrpc.Client {
 	return &clientsgrpc.Client{
-		Id:        c.ID.String(),
-		Name:      c.ClientName,
-		Status:    commongrpc.ClientStatus(commongrpc.ClientStatus_value[string(c.Status)]),
-		CreatedAt: timestamppb.New(c.CreatedAt),
-		UpdatedAt: timestamppb.New(c.UpdatedAt),
+		Id:          c.ID.String(),
+		Name:        c.ClientName,
+		DisplayName: c.DisplayName,
+		Status:      commongrpc.ClientStatus(commongrpc.ClientStatus_value[string(c.Status)]),
+		CreatedAt:   timestamppb.New(c.CreatedAt),
+		UpdatedAt:   timestamppb.New(c.UpdatedAt),
 	}
 }
 
@@ -107,4 +109,62 @@ func toTimePtr(ts *timestamppb.Timestamp) *time.Time {
 	}
 	t := ts.AsTime()
 	return &t
+}
+
+// subAccountStatusToProto maps a persisted client status to the dashboard
+// sub-account lifecycle status.
+func subAccountStatusToProto(status sqlc.ClientStatus) clientsgrpc.SubAccountStatus {
+	switch status {
+	case sqlc.ClientStatusACTIVE:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE
+	case sqlc.ClientStatusSUSPENDED:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_RESTRICTED
+	case sqlc.ClientStatusREGISTERED, sqlc.ClientStatusCLOSED:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_INACTIVE
+	default:
+		return clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_UNSPECIFIED
+	}
+}
+
+// subAccountInitials derives two-letter initials from a sub-account name.
+func subAccountInitials(name string) string {
+	parts := strings.Fields(name)
+	if len(parts) == 0 {
+		return "--"
+	}
+	initials := string([]rune(parts[0])[0])
+	if len(parts) > 1 {
+		initials += string([]rune(parts[1])[0])
+	}
+	return strings.ToUpper(initials)
+}
+
+// subAccountRowToProto maps a persisted sub-account row to its protobuf
+// representation.
+//
+// name carries the authoritative HighLevel location/sub-account name
+// (clients.display_name) once it has been resolved. Until then it falls back to
+// the client identifier so the dashboard always renders a value; the identifier
+// is therefore never the FINAL account display name, only the interim one.
+// client_name always carries the raw identifier, which the Admin Dashboard uses
+// as the Transactions sub-account filter (it matches deposits.client_name
+// exactly). balance/last_payout_date/total_processed are intentionally left
+// empty: they require Transactions-owned data the Clients service cannot read
+// directly.
+func subAccountRowToProto(row sqlc.ListSubAccountsFilteredRow) *clientsgrpc.SubAccountRow {
+	displayName := strings.TrimSpace(row.DisplayName)
+	if displayName == "" {
+		displayName = row.ClientName
+	}
+	return &clientsgrpc.SubAccountRow{
+		Id:             row.ID.String(),
+		Name:           displayName,
+		ClientName:     row.ClientName,
+		Location:       row.ExternalAccountID,
+		Initials:       subAccountInitials(displayName),
+		Status:         subAccountStatusToProto(row.Status),
+		Balance:        "",
+		LastPayoutDate: "",
+		TotalProcessed: "",
+	}
 }

@@ -3,12 +3,17 @@ package deposits
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/big"
+	"strconv"
 	"strings"
 
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	"github.com/I-Frostbyte/pawapay_client"
+	pawapaydeposits "github.com/I-Frostbyte/pawapay_client/deposits"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
@@ -18,9 +23,11 @@ import (
 
 // Impl implements the DepositService gRPC server.
 type Impl struct {
-	depositRepo  repo.DepositRepo
-	customerRepo repo.CustomerRepo
-	logger       zerolog.Logger
+	depositRepo      repo.DepositRepo
+	transactionsRepo repo.TransactionsRepo
+	customerRepo     repo.CustomerRepo
+	logger           zerolog.Logger
+	pawapayClient    pawapay_client.Client
 
 	transactionsgrpc.UnimplementedDepositServiceServer
 }
@@ -28,36 +35,50 @@ type Impl struct {
 // NewDepositService creates a new deposit service.
 func NewDepositService(
 	depositRepo repo.DepositRepo,
+	transactionsRepo repo.TransactionsRepo,
 	customerRepo repo.CustomerRepo,
 	logger zerolog.Logger,
+	pawapayClient pawapay_client.Client,
 ) *Impl {
 	return &Impl{
-		depositRepo:  depositRepo,
-		customerRepo: customerRepo,
-		logger:       logger,
+		depositRepo:      depositRepo,
+		transactionsRepo: transactionsRepo,
+		customerRepo:     customerRepo,
+		logger:           logger,
+		pawapayClient:    pawapayClient,
 	}
 }
 
 // InitiateDeposit initiates a customer deposit.
 func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.CreateDepositRequest) (*transactionsgrpc.CreateDepositResponse, error) {
+	s.logger.Info().Msg("Initializing InitiateDeposit...")
+
+	s.logger.Info().Msgf("Initate Deposit request body: %v", req)
+
 	if req == nil {
 		return nil, status.Error(codes.InvalidArgument, "deposit request is required")
 	}
 
-	clientID, err := uuid.Parse(req.GetClientId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "client_id must be a valid UUID")
+	clientName := strings.TrimSpace(req.GetClientName())
+	if clientName == "" {
+		return nil, status.Error(codes.InvalidArgument, "client_name is required")
 	}
 
-	customerID, err := uuid.Parse(req.GetCustomerId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "customer_id must be a valid UUID")
-	}
-
-	merchantID, err := uuid.Parse(req.GetMerchantId())
-	if err != nil {
-		return nil, status.Error(codes.InvalidArgument, "merchant_id must be a valid UUID")
-	}
+	// customer_id and merchant_id are external HighLevel identifiers
+	// (contact.id and transactionId respectively). They are optional and
+	// must NOT be parsed as UUIDs.
+	customerID := strings.TrimSpace(req.GetCustomerId())
+	// merchant_id temporarily carries the payer phone number per the current
+	// HighLevel mapping requirement; it is NOT the HighLevel transaction ID.
+	merchantID := strings.TrimSpace(req.GetMerchantId())
+	// The HighLevel transaction ID is persisted in deposits.ghl_transaction_id
+	// and is what the verify endpoint resolves deposits by. It must NOT be
+	// stored in merchant_id.
+	ghlTransactionID := strings.TrimSpace(req.GetGhlTransactionId())
+	// The HighLevel order ID is persisted in deposits.ghl_order_id and is the
+	// identifier used by the server-side GHL order/payment status
+	// synchronization once the deposit reaches a terminal state.
+	ghlOrderID := strings.TrimSpace(req.GetGhlOrderId())
 
 	amount, err := validateAmount(req.GetAmount())
 	if err != nil {
@@ -84,39 +105,240 @@ func (s *Impl) InitiateDeposit(ctx context.Context, req *transactionsgrpc.Create
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
-	// Validate that the customer belongs to the client/merchant context
-	// before associating the deposit. This preserves the tenant boundary.
-	customer, err := s.customerRepo.GetByClientAndMerchantAndPhone(ctx, clientID, merchantID, phoneNumber)
+	// The deposit creation and the PawaPay initiation are made consistent
+	// with a single simple database transaction: if the deposit INSERT
+	// succeeds but PawaPay initiation fails, the INSERT is rolled back so
+	// no orphaned deposit remains.
+	txQuerier, tx, err := s.transactionsRepo.Begin(ctx)
 	if err != nil {
-		switch {
-		case errors.Is(err, repo.ErrNotFound):
-			return nil, status.Error(codes.NotFound, "customer not found for the given client, merchant, and phone number")
-		default:
-			s.logger.Error().Err(err).Str("customer_id", customerID.String()).Msg("could not validate customer for deposit")
-			return nil, status.Error(codes.Internal, "could not validate customer for deposit")
+		s.logger.Error().Err(err).Msg("could not begin deposit database transaction")
+		return nil, status.Error(codes.Internal, "could not create deposit")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				s.logger.Error().Err(rbErr).Msg("could not roll back deposit database transaction")
+			}
+		}
+	}()
+
+	// Create (or resolve) the Customer inside the SAME database transaction
+	// as the deposit: Customer + Deposit + PawaPay initiation succeed or
+	// fail together. The customer is scoped by the external client_name and
+	// the customer phone number; no customer is fabricated when the request
+	// carries no customer information.
+	txCustomerRepo := repo.NewCustomerRepo(txQuerier)
+	customerPhone := phoneNumber
+	customerInfo := req.GetCustomer()
+	if customerInfo != nil {
+		if p := strings.TrimSpace(customerInfo.GetPhoneNumber()); p != "" {
+			customerPhone = p
+		}
+		if err := s.resolveOrCreateCustomer(ctx, txCustomerRepo, clientName, customerInfo, customerPhone); err != nil {
+			return nil, err
 		}
 	}
 
-	// A newly initiated deposit begins in the INITIATED lifecycle state.
-	// An idempotency key is generated server-side for duplicate detection.
-	deposit, err := s.depositRepo.Create(ctx, clientID, customer.ID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New())
+	deposit, err := repo.NewDepositRepo(txQuerier).Create(ctx, clientName, customerID, merchantID, amount, currency, paymentType, phoneNumber, provider, sqlc.DepositStatusINITIATED, uuid.New(), ghlTransactionID, ghlOrderID)
 	if err != nil {
 		switch {
 		case errors.Is(err, repo.ErrDuplicate):
 			return nil, status.Error(codes.AlreadyExists, "deposit already exists")
-		case errors.Is(err, repo.ErrConstraint):
-			return nil, status.Error(codes.NotFound, "referenced merchant or customer not found")
 		default:
-			s.logger.Error().Err(err).Str("client_id", clientID.String()).Msg("could not create deposit")
+			s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not create deposit")
 			return nil, status.Error(codes.Internal, "could not create deposit")
 		}
 	}
 
-	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID.String()).Msg("deposit initiated")
+	s.logger.Info().Str("deposit_id", deposit.ID.String()).Str("merchant_id", merchantID).Msg("deposit initiated")
+
+	// Initiate the deposit with PawaPay using the caller-supplied provider and
+	// payer phone number. The deposit is persisted in the INITIATED lifecycle
+	// state within the open transaction; the PawaPay request is the external
+	// initiation step. On failure the deferred rollback undoes the INSERT.
+	if err := s.initiatePawapayDeposit(ctx, deposit.ID, amount, currency, phoneNumber, provider); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not initiate deposit with pawapay")
+		return nil, status.Error(codes.Internal, "could not initiate deposit with pawapay")
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", deposit.ID.String()).Msg("could not commit deposit database transaction")
+		return nil, status.Error(codes.Internal, "could not create deposit")
+	}
+	committed = true
 
 	return &transactionsgrpc.CreateDepositResponse{
 		Deposit: depositToProto(deposit),
 	}, nil
+}
+
+// resolveOrCreateCustomer resolves an existing customer scoped by the
+// external client_name and phone number, or creates one with the supplied
+// name/address. It runs inside the open deposit transaction: any failure
+// aborts the deposit initiation and rolls back the whole transaction. No
+// customer attribute is fabricated: absent name/address are persisted as
+// SQL NULL.
+func (s *Impl) resolveOrCreateCustomer(ctx context.Context, customerRepo repo.CustomerRepo, clientName string, customerInfo *transactionsgrpc.Customer, phoneNumber string) error {
+	if phoneNumber == "" {
+		return status.Error(codes.InvalidArgument, "customer phone_number is required")
+	}
+
+	existing, err := customerRepo.GetByClientNameAndPhone(ctx, clientName, phoneNumber)
+	switch {
+	case err == nil:
+		s.logger.Info().Str("customer_id", existing.ID.String()).Str("client_name", clientName).Msg("existing customer resolved for deposit")
+		return nil
+	case errors.Is(err, repo.ErrNotFound):
+		// fall through to creation
+	default:
+		s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not look up customer")
+		return status.Error(codes.Internal, "could not resolve customer")
+	}
+
+	created, err := customerRepo.Create(
+		ctx,
+		clientName,
+		nil,
+		phoneNumber,
+		textPtrOrNull(strings.TrimSpace(customerInfo.GetName())),
+		textPtrOrNull(strings.TrimSpace(customerInfo.GetAddress())),
+		sqlc.CustomerStatusCREATED,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, repo.ErrDuplicate):
+			// A concurrent request created the same customer; reuse is safe.
+			existing, getErr := customerRepo.GetByClientNameAndPhone(ctx, clientName, phoneNumber)
+			if getErr != nil {
+				s.logger.Error().Err(getErr).Str("client_name", clientName).Msg("could not re-read customer after duplicate create")
+				return status.Error(codes.Internal, "could not resolve customer")
+			}
+			s.logger.Info().Str("customer_id", existing.ID.String()).Str("client_name", clientName).Msg("customer created concurrently; resolved for deposit")
+			return nil
+		case errors.Is(err, repo.ErrConstraint):
+			return status.Error(codes.FailedPrecondition, "customer reference constraint violated")
+		default:
+			s.logger.Error().Err(err).Str("client_name", clientName).Msg("could not create customer")
+			return status.Error(codes.Internal, "could not create customer")
+		}
+	}
+
+	s.logger.Info().Str("customer_id", created.ID.String()).Str("client_name", clientName).Msg("customer created for deposit")
+	return nil
+}
+
+// textPtrOrNull maps an empty string to nil so absent customer attributes are
+// persisted as SQL NULL rather than empty text.
+func textPtrOrNull(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// initiatePawapayDeposit calls the PawaPay V2 Initiate Deposit operation.
+// The amount is passed to the SDK as a decimal string to preserve monetary
+// precision.
+func (s *Impl) initiatePawapayDeposit(ctx context.Context, depositID uuid.UUID, amount pgtype.Numeric, currency, phoneNumber string, provider sqlc.PaymentProvider) error {
+	s.logger.Info().Msg("Initiating deposit with PawaPay...")
+
+	pawapayProvider, err := sqlcPaymentProviderToPawapay(provider)
+	if err != nil {
+		return err
+	}
+
+	amountValue, err := amount.Float64Value()
+	if err != nil {
+		return err
+	}
+
+	// Serialize the amount per PawaPay's currency decimal rules. XAF is a
+	// zero-decimal currency on PawaPay: the amount must be sent with no
+	// decimal places ("25", not "25.00") and fractional amounts must be
+	// rejected rather than rounded or truncated.
+	pawapayAmount, err := pawapayAmountString(amount, currency)
+	if err != nil {
+		s.logger.Warn().
+			Str("deposit_id", depositID.String()).
+			Str("currency", currency).
+			Err(err).
+			Msg("invalid deposit amount for PawaPay currency")
+		return err
+	}
+
+	s.logger.Info().Msgf("PawaPay deposit request: deposit_id=%s, amount=%f, currency=%s, phone_number=%s, provider=%s", depositID.String(), amountValue.Float64, currency, phoneNumber, pawapayProvider)
+
+	// Trims the '+' only if it is at the beginning so the payer phone number
+	// is sent to PawaPay in MSISDN format (e.g. 237654131027, no '+').
+	cleanNumber := strings.TrimPrefix(phoneNumber, "+")
+
+	s.logger.Info().Msg("Constructing request to PawaPay InitiateDeposit API...")
+	req := &pawapaydeposits.InitiateDepositRequest{
+		DepositID: depositID.String(),
+		Amount:    pawapayAmount,
+		Currency:  currency,
+		Payer: pawapaydeposits.Payer{
+			Type: "MMO",
+			AccountDetails: pawapaydeposits.AccountDetails{
+				PhoneNumber: cleanNumber,
+				Provider:    pawapayProvider,
+			},
+		},
+	}
+
+	s.logger.Info().Msg("Sending request to PawaPay InitiateDeposit API...")
+	s.logger.Info().Msgf("PawaPay InitiateDeposit request body: %+v", req)
+	response, err := s.pawapayClient.Deposits.InitiateDeposit(ctx, req)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("deposit_id", depositID.String()).
+			Msg("PawaPay InitiateDeposit API returned an error")
+
+		return err
+	}
+
+	s.logger.Info().
+		Str("deposit_id", depositID.String()).
+		Str("status", response.Status).
+		Interface("pawapay_response", response).
+		Msg("PawaPay InitiateDeposit API response")
+
+	// The authoritative initiation outcome is the response status, not the
+	// HTTP status code: PawaPay returns HTTP 200 with status REJECTED (and a
+	// structured failureReason) for rejected payments. Only ACCEPTED may
+	// proceed to commit; anything else must fail the initiation.
+	switch response.Status {
+	case "ACCEPTED":
+		return nil
+	case "REJECTED":
+		failureCode, failureMessage := "", ""
+		if response.FailureReason != nil {
+			failureCode = response.FailureReason.FailureCode
+			failureMessage = response.FailureReason.FailureMessage
+		}
+
+		s.logger.Warn().
+			Str("deposit_id", depositID.String()).
+			Str("status", response.Status).
+			Str("failure_code", failureCode).
+			Str("failure_message", failureMessage).
+			Str("provider", pawapayProvider).
+			Str("phone_number", cleanNumber).
+			Str("amount", req.Amount).
+			Str("currency", currency).
+			Msg("PawaPay rejected the deposit initiation")
+
+		return fmt.Errorf("pawapay rejected deposit initiation (status=REJECTED, failureCode=%s, failureMessage=%s)", failureCode, failureMessage)
+	default:
+		s.logger.Error().
+			Str("deposit_id", depositID.String()).
+			Str("status", response.Status).
+			Msg("unexpected PawaPay initiation status; treating initiation as failed")
+
+		return fmt.Errorf("pawapay deposit initiation returned unexpected status %q", response.Status)
+	}
 }
 
 // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
@@ -175,6 +397,59 @@ func (s *Impl) GetDeposit(ctx context.Context, req *transactionsgrpc.GetDepositR
 	}, nil
 }
 
+// pawapayZeroDecimalCurrencies lists PawaPay currencies whose amounts are
+// specified with zero decimal places. XAF (Central African CFA franc) has no
+// minor unit, so PawaPay expects whole-number amounts (e.g. "25") and rejects
+// values like "25.00" with INVALID_AMOUNT.
+var pawapayZeroDecimalCurrencies = map[string]bool{
+	"XAF": true,
+}
+
+// pawapayAmountString serializes a deposit amount for the PawaPay
+// InitiateDeposit request.
+//
+// For zero-decimal currencies (XAF) the amount must be a whole number: the
+// integrality check is performed exactly on the numeric mantissa (no float
+// rounding) and fractional amounts are rejected with an error rather than
+// rounded or truncated. The value is serialized with zero decimal places.
+//
+// For all other currencies the existing two-decimal serialization is
+// preserved.
+func pawapayAmountString(amount pgtype.Numeric, currency string) (string, error) {
+	if !pawapayZeroDecimalCurrencies[currency] {
+		f, err := amount.Float64Value()
+		if err != nil {
+			return "", err
+		}
+		if !f.Valid {
+			return "", fmt.Errorf("amount is not a valid number")
+		}
+		return strconv.FormatFloat(f.Float64, 'f', 2, 64), nil
+	}
+
+	// Zero-decimal currency: the value is mantissa * 10^exp. It is a whole
+	// number iff exp >= 0 or the mantissa is divisible by 10^-exp. This check
+	// is exact; it never rounds or truncates.
+	if !amount.Valid || amount.NaN || amount.Int == nil {
+		return "", fmt.Errorf("amount is not a valid number")
+	}
+	if amount.Exp < 0 {
+		div := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-amount.Exp)), nil)
+		if new(big.Int).Rem(amount.Int, div).Sign() != 0 {
+			return "", fmt.Errorf("amount must be a whole number for %s (zero-decimal currency); fractional amounts are rejected, not rounded", currency)
+		}
+	}
+
+	// Serialize the exact whole-number value: mantissa * 10^exp.
+	value := new(big.Int).Set(amount.Int)
+	if amount.Exp < 0 {
+		value.Div(value, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(-amount.Exp)), nil))
+	} else if amount.Exp > 0 {
+		value.Mul(value, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(amount.Exp)), nil))
+	}
+	return value.String(), nil
+}
+
 // validateAmount validates and converts a protobuf Money amount to pgtype.Numeric.
 func validateAmount(money *commongrpc.Money) (pgtype.Numeric, error) {
 	if money == nil {
@@ -216,5 +491,18 @@ func grpcProviderToSqlc(provider commongrpc.Provider) (sqlc.PaymentProvider, err
 		return sqlc.PaymentProviderORANGEMOMO, nil
 	default:
 		return "", status.Errorf(codes.InvalidArgument, "unsupported provider: %s", provider)
+	}
+}
+
+// sqlcPaymentProviderToPawapay maps a persisted payment provider to the
+// string value expected by the PawaPay V2 API.
+func sqlcPaymentProviderToPawapay(paymentProvider sqlc.PaymentProvider) (string, error) {
+	switch paymentProvider {
+	case sqlc.PaymentProviderMTNMOMO:
+		return "MTN_MOMO_CMR", nil
+	case sqlc.PaymentProviderORANGEMOMO:
+		return "ORANGE_MOMO_CMR", nil
+	default:
+		return "", fmt.Errorf("unsupported payment provider: %s", paymentProvider)
 	}
 }

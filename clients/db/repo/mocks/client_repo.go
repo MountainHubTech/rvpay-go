@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	sqlc "github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
+	sqlc "github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
 	uuid "github.com/google/uuid"
 	gomock "go.uber.org/mock/gomock"
 )
@@ -55,6 +55,21 @@ func (m *MockClientRepo) Count(ctx context.Context) (int64, error) {
 func (mr *MockClientRepoMockRecorder) Count(ctx any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockClientRepo)(nil).Count), ctx)
+}
+
+// CountSubAccounts mocks base method.
+func (m *MockClientRepo) CountSubAccounts(ctx context.Context, search, status string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountSubAccounts", ctx, search, status)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountSubAccounts indicates an expected call of CountSubAccounts.
+func (mr *MockClientRepoMockRecorder) CountSubAccounts(ctx, search, status any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountSubAccounts", reflect.TypeOf((*MockClientRepo)(nil).CountSubAccounts), ctx, search, status)
 }
 
 // Create mocks base method.
@@ -159,6 +174,51 @@ func (m *MockClientRepo) ListActive(ctx context.Context, limit, offset int32) ([
 func (mr *MockClientRepoMockRecorder) ListActive(ctx, limit, offset any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListActive", reflect.TypeOf((*MockClientRepo)(nil).ListActive), ctx, limit, offset)
+}
+
+// ListNeedingDisplayName mocks base method.
+func (m *MockClientRepo) ListNeedingDisplayName(ctx context.Context, limit, offset int32) ([]sqlc.ListClientsNeedingDisplayNameRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListNeedingDisplayName", ctx, limit, offset)
+	ret0, _ := ret[0].([]sqlc.ListClientsNeedingDisplayNameRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListNeedingDisplayName indicates an expected call of ListNeedingDisplayName.
+func (mr *MockClientRepoMockRecorder) ListNeedingDisplayName(ctx, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListNeedingDisplayName", reflect.TypeOf((*MockClientRepo)(nil).ListNeedingDisplayName), ctx, limit, offset)
+}
+
+// ListSubAccounts mocks base method.
+func (m *MockClientRepo) ListSubAccounts(ctx context.Context, search, status, sort, order string, limit, offset int32) ([]sqlc.ListSubAccountsFilteredRow, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListSubAccounts", ctx, search, status, sort, order, limit, offset)
+	ret0, _ := ret[0].([]sqlc.ListSubAccountsFilteredRow)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListSubAccounts indicates an expected call of ListSubAccounts.
+func (mr *MockClientRepoMockRecorder) ListSubAccounts(ctx, search, status, sort, order, limit, offset any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListSubAccounts", reflect.TypeOf((*MockClientRepo)(nil).ListSubAccounts), ctx, search, status, sort, order, limit, offset)
+}
+
+// UpdateDisplayName mocks base method.
+func (m *MockClientRepo) UpdateDisplayName(ctx context.Context, id uuid.UUID, displayName string) (sqlc.Client, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateDisplayName", ctx, id, displayName)
+	ret0, _ := ret[0].(sqlc.Client)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpdateDisplayName indicates an expected call of UpdateDisplayName.
+func (mr *MockClientRepoMockRecorder) UpdateDisplayName(ctx, id, displayName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateDisplayName", reflect.TypeOf((*MockClientRepo)(nil).UpdateDisplayName), ctx, id, displayName)
 }
 
 // UpdateStatus mocks base method.

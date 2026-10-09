@@ -4,7 +4,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/payments"
+	"github.com/MountainHubTech/rvpay-go/clients/payments"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

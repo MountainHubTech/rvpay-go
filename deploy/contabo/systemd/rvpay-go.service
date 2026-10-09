@@ -1,0 +1,18 @@
+[Unit]
+Description=RVPay Contabo Compose stack
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/rvpay-go
+# The hostnginx override keeps the stack off ports 80/443, which the host's
+# own nginx already serves; see docker-compose.contabo.hostnginx.yml.
+ExecStart=/usr/bin/docker compose -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

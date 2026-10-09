@@ -12,8 +12,8 @@ import (
 // generated), exposes it to downstream handlers and responses, and logs an
 // access record with method, path, request ID, status code, and duration.
 //
-// Health-check probes (/healthz) are logged at DEBUG to avoid noise from
-// frequent probes (Render runs health checks continuously).
+// Health-check probes are completely skipped from logging to avoid noise 
+// from frequent ECS/Render target group monitoring.
 func AccessLog(logger zerolog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -30,14 +30,18 @@ func AccessLog(logger zerolog.Logger) func(http.Handler) http.Handler {
 
 			next.ServeHTTP(ww, r)
 
-			event := logger.Info()
-			if r.URL.Path == "/healthz" {
-				event = logger.Debug()
+			// Completely skip logging for health check endpoints
+			if r.URL.Path == "/v1/public/transactions/healthcheck" ||
+			r.URL.Path == "/v1/public/clients/healthcheck" ||
+			r.URL.Path == "/v1/public/admindashboard/healthcheck" {
+				return
 			}
-			event.
+
+			logger.Info().
 				Str("request_id", reqID).
 				Str("method", r.Method).
 				Str("path", r.URL.Path).
+				Str("query", r.URL.RawQuery).
 				Int("status", ww.status).
 				Int64("duration_ms", time.Since(start).Milliseconds()).
 				Msg("http request")

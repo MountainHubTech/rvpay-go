@@ -5,9 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/repo"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/transactions/ghldeliver"
+	"github.com/google/uuid"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -19,8 +21,9 @@ import (
 // decisions live here, not in Clients; the GHL-facing transport adapters in
 // Clients delegate to this service via gRPC.
 type Impl struct {
-	depositRepo repo.DepositRepo
-	logger      zerolog.Logger
+	depositRepo      repo.DepositRepo
+	transactionsRepo repo.TransactionsRepo
+	logger           zerolog.Logger
 
 	transactionsgrpc.UnimplementedPaymentServiceServer
 }
@@ -28,11 +31,13 @@ type Impl struct {
 // NewPaymentService creates a new payment-provider service.
 func NewPaymentService(
 	depositRepo repo.DepositRepo,
+	transactionsRepo repo.TransactionsRepo,
 	logger zerolog.Logger,
 ) *Impl {
 	return &Impl{
-		depositRepo: depositRepo,
-		logger:      logger,
+		depositRepo:      depositRepo,
+		transactionsRepo: transactionsRepo,
+		logger:           logger,
 	}
 }
 
@@ -124,6 +129,281 @@ func (s *Impl) resolveDeposit(ctx context.Context, ghlTransactionID, ghlChargeID
 	return sqlc.Deposit{}, repo.ErrNotFound
 }
 
+// pawapayTerminalStatuses are deposit lifecycle states that must never be
+// changed by a later callback: a completed or failed payment is final.
+func pawapayTerminalStatuses() map[sqlc.DepositStatus]bool {
+	return map[sqlc.DepositStatus]bool{
+		sqlc.DepositStatusCOMPLETED: true,
+		sqlc.DepositStatusFAILED:    true,
+	}
+}
+
+// ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+// Callback. The callback is correlated strictly by deposit_id — the RVPay
+// deposit UUID originally supplied to PawaPay — never by phone number,
+// amount, or HighLevel/customer/merchant identifiers.
+//
+// Behavior:
+//   - COMPLETED  → deposit marked COMPLETED (completed_at set), PawaPay
+//     providerTransactionId preserved in external_reference.
+//   - FAILED     → deposit marked FAILED (failed_at set) with the PawaPay
+//     failure message preserved in failure_reason.
+//   - PROCESSING → deposit moved to PROCESSING (no terminal transition).
+//   - Unknown depositId / conflicting late callbacks are handled safely and
+//     acknowledged with success so PawaPay does not retry pointlessly.
+//   - Duplicate callbacks are idempotent: a terminal deposit is never
+//     downgraded or re-side-effected.
+func (s *Impl) ProcessDepositCallback(ctx context.Context, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "callback request is required")
+	}
+
+	depositID := strings.TrimSpace(req.GetDepositId())
+	callbackStatus := strings.TrimSpace(req.GetStatus())
+	if depositID == "" || callbackStatus == "" {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id and status are required")
+	}
+
+	depositUUID, err := uuid.Parse(depositID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id must be a valid deposit identifier")
+	}
+
+	s.logger.Info().
+		Str("deposit_id", depositID).
+		Str("status", callbackStatus).
+		Str("provider_transaction_id", req.GetProviderTransactionId()).
+		Msg("PawaPay deposit callback received")
+
+	var target sqlc.DepositStatus
+	switch callbackStatus {
+	case "COMPLETED":
+		target = sqlc.DepositStatusCOMPLETED
+	case "FAILED":
+		target = sqlc.DepositStatusFAILED
+	case "PROCESSING":
+		target = sqlc.DepositStatusPROCESSING
+	default:
+		s.logger.Warn().
+			Str("deposit_id", depositID).
+			Str("status", callbackStatus).
+			Msg("unsupported PawaPay callback status")
+		return nil, status.Error(codes.InvalidArgument, "unsupported callback status")
+	}
+
+	deposit, err := s.depositRepo.GetByID(ctx, depositUUID)
+	if err != nil {
+		if errors.Is(err, repo.ErrNotFound) {
+			// Unknown depositId: acknowledge so PawaPay does not retry; there
+			// is nothing this service can do for a deposit it does not have.
+			s.logger.Warn().
+				Str("deposit_id", depositID).
+				Str("status", callbackStatus).
+				Msg("PawaPay callback references unknown deposit")
+			return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+		}
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not look up deposit for PawaPay callback")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+
+	// Terminal-state protection: COMPLETED and FAILED are final. Duplicate
+	// callbacks are acknowledged idempotently; conflicting late callbacks are
+	// logged and ignored so a terminal state can never be downgraded.
+	if pawapayTerminalStatuses()[deposit.Status] {
+		if deposit.Status == target {
+			s.logger.Info().
+				Str("deposit_id", depositID).
+				Str("status", callbackStatus).
+				Msg("duplicate PawaPay callback for terminal deposit; acknowledged idempotently")
+			return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+		}
+		s.logger.Warn().
+			Str("deposit_id", depositID).
+			Str("current_status", string(deposit.Status)).
+			Str("status", callbackStatus).
+			Msg("conflicting PawaPay callback for terminal deposit; ignored")
+		return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+	}
+
+	return s.applyPawaPayCallbackTransition(ctx, depositID, target, req)
+}
+
+// applyPawaPayCallbackTransition applies a validated, non-terminal callback
+// status to the deposit and records the PawaPay provider reference. The
+// deposit finalization and the GHL synchronization intent (durable outbox)
+// are committed in a single database transaction; the external GHL call is
+// never made here — a separate worker performs it after commit.
+func (s *Impl) applyPawaPayCallbackTransition(ctx context.Context, depositID string, target sqlc.DepositStatus, req *transactionsgrpc.ProcessDepositCallbackRequest) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	depositUUID, err := uuid.Parse(depositID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "deposit_id must be a valid deposit identifier")
+	}
+
+	txQuerier, tx, err := s.transactionsRepo.Begin(ctx)
+	if err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not begin deposit finalization transaction")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			if rbErr := tx.Rollback(ctx); rbErr != nil {
+				s.logger.Error().Err(rbErr).Str("deposit_id", depositID).Msg("could not roll back deposit finalization transaction")
+			}
+		}
+	}()
+
+	txDepositRepo := repo.NewDepositRepo(txQuerier)
+
+	switch target {
+	case sqlc.DepositStatusPROCESSING:
+		// PROCESSING is non-terminal; no final GHL synchronization is queued.
+		if _, err := txDepositRepo.UpdateStatus(ctx, depositUUID, sqlc.DepositStatusPROCESSING); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not mark deposit processing from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	case sqlc.DepositStatusCOMPLETED, sqlc.DepositStatusFAILED:
+		// FinalizeDepositAndQueueGhlSync atomically sets the terminal status
+		// (and completed_at / failed_at + failure_reason) AND enqueues the GHL
+		// synchronization intent (ghl_sync_status='pending') when a
+		// ghl_order_id is present. PROCESSING is excluded from the terminal
+		// branch because it never enqueues a final update.
+		failureReason := ""
+		if target == sqlc.DepositStatusFAILED {
+			failureReason = req.GetFailureReason().GetFailureMessage()
+			if failureReason == "" {
+				failureReason = req.GetFailureReason().GetFailureCode()
+			}
+		}
+		if _, err := txDepositRepo.FinalizeDepositAndQueueGhlSync(ctx, depositUUID, target, failureReason); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not finalize deposit from PawaPay callback")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
+	// Preserve PawaPay's own transaction reference when provided. This never
+	// touches ghl_transaction_id, which remains the HighLevel correlation ID
+	// used by VerifyPayment.
+	if req.GetProviderTransactionId() != "" {
+		if err := txDepositRepo.SetExternalReference(ctx, depositUUID, req.GetProviderTransactionId()); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not record PawaPay provider transaction reference")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
+	// Durable outbound event: a confirmed COMPLETED payment always produces
+	// exactly one "rvpay.payment.completed" outbox event, inserted in THIS
+	// same transaction so the event can never exist without the authoritative
+	// terminal state (and vice versa). FAILED/PROCESSING never emit. A
+	// failure to enqueue rolls the whole transaction back, so PawaPay's
+	// retry re-runs the finalization; the unique deposit_id outbox constraint
+	// plus the terminal-state guard make duplicate callbacks a no-op. The
+	// external HighLevel delivery happens strictly after commit, in the
+	// ghldeliver worker — HighLevel availability never affects the payment.
+	if target == sqlc.DepositStatusCOMPLETED {
+		if err := s.enqueuePaymentCompletedEvent(ctx, txQuerier, depositUUID); err != nil {
+			s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not enqueue payment completed event")
+			return nil, status.Error(codes.Internal, "could not process callback")
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		s.logger.Error().Err(err).Str("deposit_id", depositID).Msg("could not commit deposit finalization transaction")
+		return nil, status.Error(codes.Internal, "could not process callback")
+	}
+	committed = true
+
+	s.logger.Info().
+		Str("deposit_id", depositID).
+		Str("status", string(target)).
+		Str("provider_transaction_id", req.GetProviderTransactionId()).
+		Msg("PawaPay deposit callback processed")
+
+	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+}
+
+// enqueuePaymentCompletedEvent persists the durable
+// "rvpay.payment.completed" outbox event for a just-finalized COMPLETED
+// deposit. It runs inside the callback transaction (after the terminal
+// transition and the PawaPay reference recording) and reads the deposit in
+// its authoritative post-finalization state.
+//
+// The event payload is built exclusively from persisted data: the deposit row
+// plus the customer row scoped by the same (client_name, phone) pair used at
+// deposit creation. The event id is generated once here and stored with the
+// payload, so every later delivery retry reuses the identical identity.
+//
+// The insert is idempotent (unique deposit_id): a concurrent duplicate
+// callback that somehow reaches this point is a silent no-op.
+func (s *Impl) enqueuePaymentCompletedEvent(ctx context.Context, q sqlc.Querier, depositID uuid.UUID) error {
+	if s.transactionsRepo == nil {
+		// Configuration guard: without the transaction repository the event
+		// cannot be made durable. This is logged and surfaced; the payment
+		// state itself is unaffected (the finalize already happened and will
+		// be retried through PawaPay's callback retry).
+		return errors.New("transaction repository is not configured; payment completed event cannot be enqueued")
+	}
+
+	txDepositRepo := repo.NewDepositRepo(q)
+	deposit, err := txDepositRepo.GetByID(ctx, depositID)
+	if err != nil {
+		return err
+	}
+	if deposit.Status != sqlc.DepositStatusCOMPLETED {
+		// Defensive: never emit for a non-terminal or non-successful state.
+		return nil
+	}
+
+	var customer *sqlc.Customer
+	txCustomerRepo := repo.NewCustomerRepo(q)
+	c, err := txCustomerRepo.GetByClientNameAndPhone(ctx, deposit.ClientName, deposit.PayerPhoneNumber)
+	switch {
+	case err == nil:
+		customer = &c
+	case errors.Is(err, repo.ErrNotFound):
+		// The customer row is optional at deposit creation.
+	default:
+		return err
+	}
+
+	// One stable event id: embedded in the payload AND stored on the outbox
+	// row, so every delivery retry reuses the identical event id everywhere.
+	eventID := uuid.New().String()
+	_, payload, err := ghldeliver.BuildPaymentCompletedEvent(deposit, customer, eventID)
+	if err != nil {
+		return err
+	}
+
+	outboxRepo := repo.NewPaymentEventRepo(q)
+	if _, err := outboxRepo.Enqueue(
+		ctx,
+		deposit.ID,
+		eventUUID(eventID),
+		ghldeliver.EventType,
+		deposit.IdempotencyKey.String(),
+		payload,
+	); err != nil {
+		return err
+	}
+
+	s.logger.Info().
+		Str("deposit_id", deposit.ID.String()).
+		Str("event", ghldeliver.EventType).
+		Msg("payment completed event enqueued")
+	return nil
+}
+
+// eventUUID parses a generated event-id string; the ids are always produced
+// by uuid.New(), so the parse cannot fail in practice and a malformed value
+// is treated as a failed enqueue (transaction rollback, PawaPay retry).
+func eventUUID(eventID string) uuid.UUID {
+	parsed, err := uuid.Parse(eventID)
+	if err != nil {
+		return uuid.UUID{}
+	}
+	return parsed
+}
+
 // ProcessPaymentWebhook processes a payment-provider webhook event. It
 // correlates the HighLevel transaction/charge with an RVPay deposit and
 // records the GHL reference on the deposit. Only one-time payment events
@@ -185,4 +465,12 @@ func (s *Impl) ProcessPaymentWebhook(ctx context.Context, req *transactionsgrpc.
 		Msg("payment.captured event processed")
 
 	return &transactionsgrpc.ProcessPaymentWebhookResponse{}, nil
+}
+
+func (s *Impl) ProcessRefundCallback(ctx context.Context, req *transactionsgrpc.ProcessRefundCallbackRequest) (*transactionsgrpc.ProcessRefundCallbackResponse, error) {
+	panic("not implemented: ProcessRefundCallback")
+}
+
+func (s *Impl) ProcessCheckoutCallback(ctx context.Context, req *transactionsgrpc.ProcessCheckoutCallbackRequest) (*transactionsgrpc.ProcessCheckoutCallbackResponse, error) {
+	panic("not implemented: ProcessCheckoutCallback")
 }

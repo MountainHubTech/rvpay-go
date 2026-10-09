@@ -44,15 +44,22 @@ Parameters:
     Type: String
     Default: "transactions"
 
-  LoadBalancerSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: "Security group ID of the RVPay load balancer."
-
   LoadBalancerListenerArn:
     Type: String
     Description: "ARN of the HTTPS listener for the RVPay load balancer."
 
   DomainName:
+    Type: String
+
+  PawapaySecretArn:
+    Type: String
+    Description: ARN of the PawaPay Secrets Manager secret.
+
+  HighLevelInboundWebhookSecretArn:
+    Type: String
+    Description: ARN of the HighLevel inbound workflow webhook URL secret.
+
+  ClientsGrpcAddr:
     Type: String
 
 Resources:
@@ -88,6 +95,9 @@ Resources:
             - ContainerPort: !Ref ContainerPort
               Name: grpc
 
+            - ContainerPort: 8080
+              Name: http
+
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -100,13 +110,19 @@ Resources:
               Value: !Ref ContainerPort
 
             - Name: MIGRATION_PATH
-              Value: "/app/migrations"
+              Value: "/app/transactions/db/migrations"
 
             - Name: RUN_MIGRATIONS
               Value: "true"
 
             - Name: AWS_REGION
               Value: !Ref AWS::Region
+
+            - Name: DB_TLS_DISABLED
+              Value: "false"
+
+            - Name: CLIENTS_GRPC_ADDR
+              Value: !Ref ClientsGrpcAddr
 
           Secrets:
             - Name: DB_NAME
@@ -123,6 +139,15 @@ Resources:
 
             - Name: DB_PASSWORD
               ValueFrom: !Sub "${AppDatabaseSecret}:password::"
+            
+            - Name: PAWAPAY_API_URL
+              ValueFrom: !Sub "${PawapaySecretArn}:PAWAPAY_API_URL::"
+
+            - Name: PAWAPAY_API_KEY
+              ValueFrom: !Sub "${PawapaySecretArn}:PAWAPAY_API_KEY::"
+
+            - Name: HIGHLEVEL_INBOUND_WEBHOOK_URL
+              ValueFrom: !Sub "${HighLevelInboundWebhookSecretArn}:HIGHLEVEL_INBOUND_WEBHOOK_URL::"
 
   AppDatabase:
     Type: Custom::PgDatabase
@@ -163,6 +188,8 @@ Resources:
                 Resource:
                   - !Ref AppDatabaseSecret
                   - !Ref DbAdminSecretArn
+                  - !Ref PawapaySecretArn
+                  - !Ref HighLevelInboundWebhookSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -177,15 +204,6 @@ Resources:
             Action:
               - "sts:AssumeRole"
 
-      Policies:
-        - PolicyName: root
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action: []
-                Resource: "*"
-
   EcsService:
     Type: AWS::ECS::Service
 
@@ -196,7 +214,7 @@ Resources:
 
       LoadBalancers:
         - ContainerName: App
-          ContainerPort: !Ref ContainerPort
+          ContainerPort: 8080
           TargetGroupArn: !Ref TransactionsTargetGroup
 
       DeploymentConfiguration:
@@ -222,30 +240,67 @@ Resources:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       Name: !Sub "${EnvId}-transactions"
-      Port: !Ref ContainerPort
       Protocol: HTTP
+      Port: 8080
       VpcId: !Ref VPC
       TargetType: instance
+
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /healthz
+      HealthCheckPath: /v1/public/transactions/healthcheck
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+
       Matcher:
         HttpCode: "200"
 
-  TransactionsListenerRule:
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+
+  TransactionsListenerRuleOne:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 20
+      Priority: 50
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Sub "transactions.${DomainName}"
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/v1/public/merchants*"
+              - "/v1/public/customers*"
+              - "/v1/public/deposits*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref TransactionsTargetGroup
+
+  TransactionsListenerRuleTwo:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref LoadBalancerListenerArn
+      Priority: 75
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/v1/public/payments*"
+              - "/v1/public/payouts*"
+              - "/v1/public/transactions*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TransactionsTargetGroup
+
 
 Outputs:
   ServiceName:

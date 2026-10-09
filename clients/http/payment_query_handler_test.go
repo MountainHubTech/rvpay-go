@@ -8,10 +8,10 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/I-Frostbyte/rvpay-go/clients/db/repo"
-	"github.com/I-Frostbyte/rvpay-go/clients/db/sqlc"
-	"github.com/I-Frostbyte/rvpay-go/clients/payments"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/clients/db/repo"
+	"github.com/MountainHubTech/rvpay-go/clients/db/sqlc"
+	"github.com/MountainHubTech/rvpay-go/clients/payments"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/rs/zerolog"
@@ -177,6 +177,30 @@ func (f *fakeTransactionsClient) VerifyPayment(ctx context.Context, in *transact
 
 func (f *fakeTransactionsClient) ProcessPaymentWebhook(ctx context.Context, in *transactionsgrpc.ProcessPaymentWebhookRequest, opts ...grpc.CallOption) (*transactionsgrpc.ProcessPaymentWebhookResponse, error) {
 	return &transactionsgrpc.ProcessPaymentWebhookResponse{}, nil
+}
+
+func (f *fakeTransactionsClient) ProcessDepositCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessDepositCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessDepositCallbackResponse, error) {
+	return &transactionsgrpc.ProcessDepositCallbackResponse{}, nil
+}
+
+func (f *fakeTransactionsClient) ProcessRefundCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessRefundCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessRefundCallbackResponse, error) {
+	return &transactionsgrpc.ProcessRefundCallbackResponse{}, nil
+}
+
+func (f *fakeTransactionsClient) ProcessCheckoutCallback(
+	ctx context.Context,
+	in *transactionsgrpc.ProcessCheckoutCallbackRequest,
+	opts ...grpc.CallOption,
+) (*transactionsgrpc.ProcessCheckoutCallbackResponse, error) {
+	return &transactionsgrpc.ProcessCheckoutCallbackResponse{}, nil
 }
 
 func newTestPaymentQueryHandler() (*PaymentQueryHandler, *mockConfigRepo, *fakeTransactionsClient) {

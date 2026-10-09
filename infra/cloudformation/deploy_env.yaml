@@ -25,6 +25,15 @@ Parameters:
   TransactionsImage:
     Type: String
     Description: Container image for the Transactions service.
+  
+  AdmindashboardImage:
+    Type: String
+    Description: Container image for the admindashboard service.
+    # Description: This is the docker image and tag (image:tag) that should be deployed for the admindashboard service.
+
+  # AdmindashboardDomainName:
+  #   Type: String
+  #   Description: Domain name used by the admindashboard service.
 
   DomainName:
     Type: String
@@ -87,11 +96,31 @@ Resources:
             - !GetAtt VpcStack.Outputs.SubnetBPrivate
         IsDevelopmentGrade: !Ref IsDevelopmentGrade
         LambdaS3BucketName: !Ref InfraArtifactsBucket
-        LambdaS3KeyPrefix: !Sub "cloudformation/${InfraReleaseHash}/"
+        LambdaS3KeyPrefix: !Sub "cloudformation/${InfraReleaseHash}/aws-cloudformation-templates"
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/aws-cloudformation-templates/core-components/rds.yaml"
         - Bucket: !Ref InfraArtifactsBucket
           ReleaseHash: !Ref InfraReleaseHash
+
+  EcsAdditionalSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Additional security group for RVPay ECS nodes
+      VpcId: !GetAtt VpcStack.Outputs.VPC
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvId}-ecs-additional"
+
+  EcsAdditionalSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    DependsOn:
+      - LoadBalancerStack
+    Properties:
+      GroupId: !GetAtt EcsAdditionalSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 0
+      ToPort: 65535
+      SourceSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
 
   EcsStack:
     Type: AWS::CloudFormation::Stack
@@ -105,6 +134,7 @@ Resources:
           - ","
           - - !GetAtt VpcStack.Outputs.SubnetAPrivate
             - !GetAtt VpcStack.Outputs.SubnetBPrivate
+        AdditionalNodeSecurityGroupIds: !GetAtt EcsAdditionalSecurityGroup.GroupId
         IsDevelopmentGrade: !Ref IsDevelopmentGrade
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/aws-cloudformation-templates/core-components/ecs.yaml"
@@ -169,14 +199,12 @@ Resources:
         Image: !Ref ClientsImage
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         HighLevelClientSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelClientSecretArn
+        HighLevelProviderConfigsArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelProviderConfigsArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
-        HighLevelRedirectUri: !Sub "https://${DomainName}/clients/oauth/callback"
-        HighLevelPaymentUrl: !Sub "https://${DomainName}/payments"
-        HighLevelQueryUrl: !Sub "https://${DomainName}/payments/query"
-        PublicBaseUrl: !Sub "https://${DomainName}"
+        HighLevelEnvironmentSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelEnvironmentSecretArn
+        PublicBaseUrl: !Sub "https://api.${DomainName}"
         TransactionsGrpcAddr: "transactions:80"
-        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.ListenerHTTPS
-        LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
+        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
         DomainName: !Ref DomainName
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/clients.yaml"
@@ -202,8 +230,10 @@ Resources:
         Image: !Ref TransactionsImage
         DbAdminSecretArn: !GetAtt RdsStack.Outputs.AdminSecretArn
         CustomResourcesServiceToken: !GetAtt RdsStack.Outputs.DatabaseInitLambdaArn
-        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.ListenerHTTPS
-        LoadBalancerSecurityGroupId: !GetAtt LoadBalancerStack.Outputs.LoadBalancerSecurityGroupId
+        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
+        PawapaySecretArn: !GetAtt ThirdPartySecretsStack.Outputs.PawapaySecretArn
+        HighLevelInboundWebhookSecretArn: !GetAtt ThirdPartySecretsStack.Outputs.HighLevelInboundWebhookSecretArn
+        ClientsGrpcAddr: "clients:80"
         DomainName: !Ref DomainName
       TemplateURL: !Sub
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/transactions.yaml"
@@ -225,3 +255,48 @@ Resources:
         - "https://${Bucket}.s3.${AWS::Region}.amazonaws.com/cloudformation/${ReleaseHash}/services/monitoring.yaml"
         - Bucket: !Ref InfraArtifactsBucket
           ReleaseHash: !Ref InfraReleaseHash
+
+  AdmindashboardStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - VpcStack
+      - RdsStack
+      - EcsStack
+      - LoadBalancerStack
+      - ThirdPartySecretsStack
+    Properties:
+      Parameters:
+        EnvId: !Ref "EnvId"
+        VPC: !GetAtt VpcStack.Outputs.VPC
+        LogGroupName: !Ref LogGroup
+        ClusterArn: !GetAtt EcsStack.Outputs.ClusterArn
+        SubnetIds:
+          !Join [
+            ",",
+            [
+              !GetAtt VpcStack.Outputs.SubnetAPrivate,
+              !GetAtt VpcStack.Outputs.SubnetBPrivate,
+            ],
+          ]
+        DomainName: !Ref DomainName
+        LoadBalancerCanonicalHostedZoneID: !GetAtt LoadBalancerStack.Outputs.LoadBalancerCanonicalHostedZoneID
+        LoadBalancerDNSName: !GetAtt LoadBalancerStack.Outputs.LoadBalancerDNSName
+        LoadBalancerListenerArn: !GetAtt LoadBalancerStack.Outputs.HttpsListener
+        # AdmindashboardSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.AdmindashboardSecretArn"
+        # WebPushSecretArn: !GetAtt "ThirdPartySecretsStack.Outputs.WebPushSecretArn"
+        Image: !Ref AdmindashboardImage
+        DesiredCount: 1
+      Tags:
+        - Key: EnvId
+          Value: !Ref "EnvId"
+      TemplateURL:
+        !Join [
+          "",
+          [
+            "https://s3.amazonaws.com/",
+            !Ref "InfraArtifactsBucket",
+            "/cloudformation/",
+            !Ref "InfraReleaseHash",
+            "/services/admindashboard.yaml",
+          ],
+        ]

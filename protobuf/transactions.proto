@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package transactionsgrpc;
 
-option go_package = "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc";
+option go_package = "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc";
 
 import "google/protobuf/timestamp.proto";
 import "google/api/annotations.proto";
@@ -86,8 +86,8 @@ message Merchant {
 message Customer {
   // id is the stable public identifier of the customer.
   string id = 1;
-  // client_id references the RVPay client record.
-  string client_id = 2;
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 2;
   // merchant_id references the payment gateway serving this customer.
   string merchant_id = 3;
   // phone_number is the customer's payment phone number.
@@ -98,14 +98,18 @@ message Customer {
   google.protobuf.Timestamp created_at = 6;
   // updated_at is the time the customer was last modified.
   google.protobuf.Timestamp updated_at = 7;
+  // name is the customer's display name. Optional.
+  string name = 8;
+  // address is the customer's address. Optional.
+  string address = 9;
 }
 
 // Deposit represents an inbound customer payment.
 message Deposit {
   // id is the stable public identifier of the deposit.
   string id = 1;
-  // client_id references the RVPay client record.
-  string client_id = 2;
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 2;
   // customer_id references the paying customer.
   string customer_id = 3;
   // merchant_id references the processing merchant.
@@ -210,12 +214,17 @@ message ListMerchantsResponse {
 
 // CreateCustomerRequest creates a customer.
 message CreateCustomerRequest {
-  // client_id references the RVPay client record.
-  string client_id = 1;
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 1;
   // merchant_id references the payment gateway serving this customer.
+  // Optional.
   string merchant_id = 2;
   // phone_number is the customer's payment phone number.
   string phone_number = 3;
+  // name is the customer's display name. Optional.
+  string name = 4;
+  // address is the customer's address. Optional.
+  string address = 5;
 }
 
 // CreateCustomerResponse returns the created customer.
@@ -236,13 +245,19 @@ message GetCustomerResponse {
   Customer customer = 1;
 }
 
-// CreateDepositRequest initiates a deposit.
+// CreateDepositRequest initiates a deposit. For the HighLevel payment flow the
+// identifier fields carry external HighLevel string identifiers, NOT RVPay
+// UUIDs: client_name is the RVPay client name derived from the HighLevel
+// location (e.g. "highlevel-<locationId>"), customer_id is the HighLevel
+// contact id, and merchant_id currently carries the HighLevel transactionId.
 message CreateDepositRequest {
-  // client_id references the RVPay client record.
-  string client_id = 1;
-  // customer_id references the paying customer.
+  // client_name is the RVPay client name (external identifier).
+  string client_name = 1;
+  // customer_id is the external customer identifier (HighLevel contact id).
+  // Optional.
   string customer_id = 2;
-  // merchant_id references the processing merchant.
+  // merchant_id is the external merchant identifier (currently the HighLevel
+  // transactionId). Optional.
   string merchant_id = 3;
   // amount is the deposit amount and currency.
   commongrpc.Money amount = 4;
@@ -252,6 +267,19 @@ message CreateDepositRequest {
   string payer_phone_number = 6;
   // provider identifies the payment provider.
   commongrpc.Provider provider = 7;
+  // ghl_transaction_id is the GoHighLevel transaction identifier, persisted
+  // in deposits.ghl_transaction_id and used by the verify endpoint for
+  // correlation. Optional.
+  string ghl_transaction_id = 8;
+  // customer carries the paying customer's information. When present, the
+  // customer is created (or resolved) inside the same database transaction
+  // as the deposit. Optional.
+  Customer customer = 9;
+  // ghl_order_id is the GoHighLevel order identifier captured from the GHL
+  // payment-provider iframe. It is persisted in deposits.ghl_order_id and is
+  // the identifier used by the server-side GHL order/payment status
+  // synchronization once the deposit reaches a terminal state. Optional.
+  string ghl_order_id = 10;
 }
 
 // CreateDepositResponse returns the created deposit.
@@ -325,6 +353,52 @@ message ProcessPaymentWebhookRequest {
 
 // ProcessPaymentWebhookResponse acknowledges a processed payment webhook.
 message ProcessPaymentWebhookResponse {}
+
+// ProcessDepositCallbackRequest carries a PawaPay V2 Deposit Status Callback.
+// The callback is correlated by deposit_id, which is the RVPay deposit UUID
+// originally supplied to PawaPay as the deposit's depositId. Fields not part
+// of the RVPay contract (e.g. payer, metadata, created) are ignored by the
+// gateway.
+message ProcessDepositCallbackRequest {
+  // deposit_id is the RVPay deposit identifier echoed by PawaPay. Required.
+  string deposit_id = 1;
+  // status is the PawaPay deposit status: COMPLETED, FAILED, or PROCESSING.
+  // Required.
+  string status = 2;
+  // amount is the PawaPay-reported amount (informational; the authoritative
+  // amount is the persisted deposit row).
+  string amount = 3;
+  // currency is the PawaPay-reported currency (informational).
+  string currency = 4;
+  // country is the PawaPay-reported country (informational).
+  string country = 5;
+  // provider_transaction_id is PawaPay's own transaction reference, when
+  // present. Persisted in deposits.external_reference.
+  string provider_transaction_id = 6;
+  // failure_reason is present when status is FAILED.
+  ProcessDepositCallbackFailureReason failure_reason = 7;
+}
+
+// ProcessDepositCallbackFailureReason mirrors the PawaPay callback
+// failureReason object.
+message ProcessDepositCallbackFailureReason {
+  // failure_code is the PawaPay failure code.
+  string failure_code = 1;
+  // failure_message is the human-readable failure message.
+  string failure_message = 2;
+}
+
+// ProcessDepositCallbackResponse is returned after the callback has been
+// processed (including idempotent duplicates).
+message ProcessDepositCallbackResponse {}
+
+message ProcessRefundCallbackRequest {}
+
+message ProcessRefundCallbackResponse {}
+
+message ProcessCheckoutCallbackRequest {}
+
+message ProcessCheckoutCallbackResponse {}
 
 // CreatePayoutRequest requests a payout.
 message CreatePayoutRequest {
@@ -416,7 +490,8 @@ service DepositService {
   // GetDepositByGHLTransactionID fetches a deposit by its GoHighLevel
   // transaction identifier. This is used by the GHL Custom Payment Provider
   // query endpoint to correlate a HighLevel transaction with an RVPay deposit.
-  rpc GetDepositByGHLTransactionID(GetDepositByGHLTransactionIDRequest) returns (GetDepositByGHLTransactionIDResponse) {
+  rpc GetDepositByGHLTransactionID(GetDepositByGHLTransactionIDRequest)
+      returns (GetDepositByGHLTransactionIDResponse) {
     option (google.api.http) = {
       get : "/v1/public/deposits/by-ghl-transaction/{ghl_transaction_id}"
     };
@@ -431,18 +506,53 @@ service PaymentService {
   // VerifyPayment verifies whether a referenced payment has succeeded. It
   // looks up the deposit by its GoHighLevel transaction identifier (or charge
   // identifier as a fallback) and interprets its lifecycle state.
+  // VerifyPayment verifies whether a referenced payment has succeeded.
+  // It is polled by the Admin Dashboard via GET with query parameters
+  // (ghlTransactionId, ghlChargeId, subscriptionId).
   rpc VerifyPayment(VerifyPaymentRequest) returns (VerifyPaymentResponse) {
     option (google.api.http) = {
-      post : "/v1/public/payments/verify"
-      body : "*"
+      get : "/v1/public/payments/verify"
     };
   }
   // ProcessPaymentWebhook processes a payment-provider webhook event. It
   // correlates the HighLevel transaction/charge with an RVPay deposit and
   // records the GHL reference on the deposit.
-  rpc ProcessPaymentWebhook(ProcessPaymentWebhookRequest) returns (ProcessPaymentWebhookResponse) {
+  rpc ProcessPaymentWebhook(ProcessPaymentWebhookRequest)
+      returns (ProcessPaymentWebhookResponse) {
     option (google.api.http) = {
       post : "/v1/public/payments/webhook"
+      body : "*"
+    };
+  }
+  // ProcessDepositCallback processes an inbound PawaPay V2 Deposit Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessDepositCallback(ProcessDepositCallbackRequest)
+      returns (ProcessDepositCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/deposits/callback"
+      body : "*"
+    };
+  }
+
+  // ProcessRefundCallback processes an inbound PawaPay V2 Refund Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessRefundCallback(ProcessRefundCallbackRequest)
+      returns (ProcessRefundCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/deposits/refunds/callback"
+      body : "*"
+    };
+  }
+
+  // ProcessCheckoutCallback processes an inbound PawaPay V2 Checkout Status
+  // Callback. It is unauthenticated by design (PawaPay cannot supply RVPay
+  // application credentials) and must be idempotent.
+  rpc ProcessCheckoutCallback(ProcessCheckoutCallbackRequest)
+      returns (ProcessCheckoutCallbackResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/deposits/checkouts/callback"
       body : "*"
     };
   }
@@ -463,4 +573,323 @@ service PayoutService {
       get : "/v1/public/payouts/{payout_id}"
     };
   }
+  // GetPayoutOverviewStats returns the real payout metrics required by the
+  // Admin Dashboard: pending/cleared/failed breakdowns.
+  rpc GetPayoutOverviewStats(GetPayoutOverviewStatsRequest)
+      returns (GetPayoutOverviewStatsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/payouts/overview/stats"
+    };
+  }
+  // ListPayouts returns a paginated, searchable, status-filtered list of
+  // payouts for the Admin Dashboard payouts page.
+  rpc ListPayouts(ListPayoutsRequest) returns (ListPayoutsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/payouts"
+    };
+  }
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse { string status = 1; }
+
+// DashboardOverviewService aggregates cross-entity metrics for the Admin
+// Dashboard overview page, served by the Transactions service.
+service DashboardOverviewService {
+  // GetOverviewSnapshot returns all information rendered by the Overview
+  // page for the requested period. The route lives under the permitted
+  // /v1/public/transactions* ALB prefix.
+  rpc GetOverviewSnapshot(GetOverviewSnapshotRequest)
+      returns (GetOverviewSnapshotResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/overview/snapshot"
+    };
+  }
+
+  // ListTransactions returns a paginated, searchable, status-filtered list of
+  // customer deposits (transactions) for the Admin Dashboard transactions
+  // page. Deposits are the Transactions service's transaction records; the
+  // route lives under the permitted /v1/public/transactions* ALB prefix and
+  // is protected by the admin middleware.
+  rpc ListTransactions(ListTransactionsRequest)
+      returns (ListTransactionsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions"
+    };
+  }
+
+  // GetDisputeStats returns the Needs Response / Under Review counters for
+  // the Admin Dashboard disputes page. The route lives under the permitted
+  // /v1/public/transactions* ALB prefix and is protected by the admin
+  // middleware.
+  rpc GetDisputeStats(GetDisputeStatsRequest)
+      returns (GetDisputeStatsResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/disputes/stats"
+    };
+  }
+
+  // ListDisputes returns a paginated, searchable, status-filtered list of
+  // disputes for the Admin Dashboard disputes page. The route lives under
+  // the permitted /v1/public/transactions* ALB prefix and is protected by
+  // the admin middleware.
+  rpc ListDisputes(ListDisputesRequest)
+      returns (ListDisputesResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/disputes"
+    };
+  }
+
+  // SubmitEvidence submits evidence for a dispute, moving it to UNDER_REVIEW.
+  // The route lives under the permitted /v1/public/transactions* ALB prefix
+  // and is protected by the admin middleware. The dispute id is carried in
+  // the request body (no path parameter) so the transport middleware can match
+  // the route exactly.
+  rpc SubmitEvidence(SubmitEvidenceRequest)
+      returns (SubmitEvidenceResponse) {
+    option (google.api.http) = {
+      post : "/v1/public/transactions/disputes/evidence"
+      body : "*"
+    };
+  }
+}
+
+// GetOverviewSnapshotRequest requests the overview snapshot for a period.
+message GetOverviewSnapshotRequest {
+  // period is one of: 7d, 30d, 90d, ytd.
+  string period = 1;
+}
+
+// RevenueBucket is a single revenue-over-time aggregation bucket.
+message RevenueBucket {
+  // period_label is the human-readable bucket label (e.g. "Week 1").
+  string period_label = 1;
+  // revenue is the whole-currency revenue for the bucket.
+  int64 revenue = 2;
+}
+
+// OverviewPayoutRow is a single recent-payout entry for the overview page.
+message OverviewPayoutRow {
+  // sub_account is the display name of the sub-account paid out.
+  string sub_account = 1;
+  // amount is the human-readable payout amount.
+  string amount = 2;
+  // status is one of Paid | Processing | Failed.
+  string status = 3;
+  // date is the human-readable payout date.
+  string date = 4;
+}
+
+// GetOverviewSnapshotResponse carries the overview page data.
+message GetOverviewSnapshotResponse {
+  // total_revenue is the revenue over the whole period (minor units).
+  int64 total_revenue = 1;
+  // revenue_currency is the ISO-4217 currency code for monetary values.
+  string revenue_currency = 2;
+  // transaction_volume is the number of deposits over the period.
+  int64 transaction_volume = 3;
+  // active_sub_accounts is NOT currently populated (requires Clients-owned
+  // tenancy data); left at 0 and documented in dashboard-setup.md.
+  int64 active_sub_accounts = 4;
+  // pending_payouts is the count of payouts not yet completed.
+  int64 pending_payouts = 5;
+  // needs_attention is NOT currently populated (dispute tracking is not a
+  // current concept); left empty and documented in dashboard-setup.md.
+  repeated string needs_attention = 6;
+  // revenue_over_time is the bucketed revenue series.
+  repeated RevenueBucket revenue_over_time = 7;
+  // recent_payouts are the most recent payouts.
+  repeated OverviewPayoutRow recent_payouts = 8;
+}
+
+// GetPayoutOverviewStatsRequest requests the payout overview metrics.
+message GetPayoutOverviewStatsRequest {}
+
+// PayoutStat is a single payout overview metric card.
+message PayoutStat {
+  // label is the human-readable metric label.
+  string label = 1;
+  // value is the human-readable metric value.
+  string value = 2;
+  // meta is a secondary descriptive line.
+  string meta = 3;
+}
+
+// GetPayoutOverviewStatsResponse carries the payout overview metric cards.
+message GetPayoutOverviewStatsResponse {
+  repeated PayoutStat stats = 1;
+}
+
+// ListPayoutsRequest requests a paginated payout list.
+message ListPayoutsRequest {
+  // search filters by destination reference (case-insensitive).
+  string search = 1;
+  // status filters by payout status. Empty means all.
+  string status = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// PayoutListRow is a single row of the payout list.
+message PayoutListRow {
+  // id is the stable payout identifier.
+  string id = 1;
+  // initials are derived from the destination reference.
+  string initials = 2;
+  // name is the display name (destination reference).
+  string name = 3;
+  // amount is the human-readable payout amount.
+  string amount = 4;
+  // status is the payout status.
+  string status = 5;
+  // initiated is the human-readable initiation time.
+  string initiated = 6;
+  // expected_or_cleared is the expected/cleared time, if any.
+  string expected_or_cleared = 7;
+  // expected_or_cleared_strong renders the time emphatically when true.
+  bool expected_or_cleared_strong = 8;
+}
+
+// ListPayoutsResponse carries a page of payouts.
+message ListPayoutsResponse {
+  repeated PayoutListRow rows = 1;
+  // total is the total number of payouts matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
+
+service HealthService {
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse) {
+    option (google.api.http) = {
+      get : "/v1/public/transactions/healthcheck"
+    };
+  }
+}
+
+// ListTransactionsRequest requests a paginated deposit (transaction) list for
+// the Admin Dashboard transactions page. Filters mirror the payouts list:
+// free-text search, lifecycle status and the RVPay client (sub-account) name.
+message ListTransactionsRequest {
+  // search filters by client_name or customer_id (case-insensitive).
+  string search = 1;
+  // status filters by deposit status. Empty means all.
+  string status = 2;
+  // sub_account filters by the RVPay client name (the dashboard's
+  // sub-account). Empty means all.
+  string sub_account = 3;
+  // page is the 1-based page number.
+  int32 page = 4;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 5;
+}
+
+// TransactionListRow is a single row of the transactions list.
+message TransactionListRow {
+  // id is the stable deposit identifier.
+  string id = 1;
+  // short_id is a truncated, display-friendly identifier.
+  string short_id = 2;
+  // sub_account is the RVPay client name the deposit belongs to.
+  string sub_account = 3;
+  // customer is the display/customer identifier associated with the deposit.
+  string customer = 4;
+  // customer_initials are derived from the customer identifier.
+  string customer_initials = 5;
+  // amount is the human-readable deposit amount.
+  string amount = 6;
+  // status is the dashboard-facing deposit status.
+  string status = 7;
+  // gateway identifies the payment provider for the deposit.
+  string gateway = 8;
+  // date is the human-readable initiation time.
+  string date = 9;
+  // customer_name is the authoritative customer display name persisted in the
+  // RVPay customers table (the name supplied by the HighLevel payment context
+  // at initiation). It is empty when no authoritative name is known, in which
+  // case the dashboard falls back to `customer` (the identifier). The internal
+  // `customer` identifier is always still populated for correlation.
+  string customer_name = 10;
+}
+
+// ListTransactionsResponse carries a page of transactions (deposits).
+message ListTransactionsResponse {
+  repeated TransactionListRow rows = 1;
+  // total is the total number of transactions matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
+
+// GetDisputeStatsRequest requests the disputes page counters.
+message GetDisputeStatsRequest {}
+
+// GetDisputeStatsResponse carries the Needs Response / Under Review counters.
+message GetDisputeStatsResponse {
+  // needs_response is the count of disputes awaiting a response.
+  int64 needs_response = 1;
+  // under_review is the count of disputes with evidence submitted.
+  int64 under_review = 2;
+}
+
+// ListDisputesRequest requests a paginated dispute list for the disputes page.
+message ListDisputesRequest {
+  // search filters by client name (case-insensitive).
+  string search = 1;
+  // status filters by dispute status. Empty means all.
+  string status = 2;
+  // page is the 1-based page number.
+  int32 page = 3;
+  // page_size is the maximum number of rows per page.
+  int32 page_size = 4;
+}
+
+// DisputeRow is a single row of the disputes list.
+message DisputeRow {
+  // id is the stable dispute identifier.
+  string id = 1;
+  // sub_account is the RVPay client name the dispute belongs to.
+  string sub_account = 2;
+  // type is the dispute type (e.g. Chargeback, Payout Issue).
+  string type = 3;
+  // amount is the human-readable dispute amount.
+  string amount = 4;
+  // status is the dashboard-facing dispute status.
+  string status = 5;
+  // date_opened is the human-readable opening time.
+  string date_opened = 6;
+  // due_in is a human-readable "due in N days" label.
+  string due_in = 7;
+}
+
+// ListDisputesResponse carries a page of disputes.
+message ListDisputesResponse {
+  repeated DisputeRow rows = 1;
+  // total is the total number of disputes matching the filter.
+  int64 total = 2;
+  // page is the current 1-based page number.
+  int32 page = 3;
+  // page_size is the page size in effect.
+  int32 page_size = 4;
+}
+
+// SubmitEvidenceRequest submits evidence for a dispute.
+message SubmitEvidenceRequest {
+  // id is the dispute identifier.
+  string id = 1;
+  // notes is free-text evidence notes.
+  string notes = 2;
+}
+
+// SubmitEvidenceResponse confirms the evidence submission.
+message SubmitEvidenceResponse {
+  // dispute is the updated dispute.
+  DisputeRow dispute = 1;
 }

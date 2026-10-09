@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	clientsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/clientsgrpc"
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
+	clientsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/clientsgrpc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -23,7 +23,8 @@ import (
 type fakeClientsService struct {
 	clientsgrpc.UnimplementedClientsServiceServer
 
-	getClientErr error
+	getClientErr  error
+	subAccountReq *clientsgrpc.ListSubAccountsRequest
 }
 
 func (f *fakeClientsService) GetClient(_ context.Context, req *clientsgrpc.GetClientRequest) (*clientsgrpc.GetClientResponse, error) {
@@ -37,6 +38,18 @@ func (f *fakeClientsService) GetClient(_ context.Context, req *clientsgrpc.GetCl
 			Status:    commongrpc.ClientStatus_CLIENT_STATUS_ACTIVE,
 			CreatedAt: timestamppb.New(time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)),
 		},
+	}, nil
+}
+
+func (f *fakeClientsService) ListSubAccounts(_ context.Context, req *clientsgrpc.ListSubAccountsRequest) (*clientsgrpc.ListSubAccountsResponse, error) {
+	f.subAccountReq = req
+	return &clientsgrpc.ListSubAccountsResponse{
+		Rows: []*clientsgrpc.SubAccountRow{
+			{Id: "sub-1", Name: "Acme Store", Location: "loc_1", Initials: "AS", Status: clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE},
+		},
+		Total:    1,
+		Page:     req.GetPage(),
+		PageSize: req.GetPageSize(),
 	}, nil
 }
 
@@ -105,6 +118,68 @@ func TestGateway_ClientsRoute_JSONMapping(t *testing.T) {
 	}
 	if got := client["createdAt"]; got != "2026-08-01T00:00:00Z" {
 		t.Errorf("client.createdAt = %v, want %q", got, "2026-08-01T00:00:00Z")
+	}
+}
+
+func TestGateway_SubAccountsRoute(t *testing.T) {
+	// Proves the Dashboard route GET /v1/public/clients/sub-accounts reaches
+	// the ListSubAccounts RPC (permitted /v1/public/clients* ALB prefix).
+	srv := newClientsGateway(t, &fakeClientsService{})
+
+	resp, err := http.Get(srv.URL + "/v1/public/clients/sub-accounts?page=1&pageSize=20")
+	if err != nil {
+		t.Fatalf("GET /v1/public/clients/sub-accounts: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	rows, ok := body["rows"].([]interface{})
+	if !ok || len(rows) != 1 {
+		t.Fatalf("expected one sub-account row, got %v", body["rows"])
+	}
+	// int64 fields encode as JSON strings in protojson (grpc-gateway default).
+	if got := body["total"]; got != "1" {
+		t.Errorf("total = %v, want \"1\"", got)
+	}
+}
+
+func TestGateway_SubAccountsRoute_ActiveStatusReturnsOK(t *testing.T) {
+	fake := &fakeClientsService{}
+	srv := newClientsGateway(t, fake)
+
+	resp, err := http.Get(srv.URL + "/v1/public/clients/sub-accounts?status=SUB_ACCOUNT_STATUS_ACTIVE&page=1&pageSize=20")
+	if err != nil {
+		t.Fatalf("GET filtered sub-accounts: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if got := fake.subAccountReq.GetStatus(); got != clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String() {
+		t.Errorf("gateway status = %q, want %q", got, clientsgrpc.SubAccountStatus_SUB_ACCOUNT_STATUS_ACTIVE.String())
+	}
+}
+
+func TestGateway_SubAccountsRoute_NotOnOldPath(t *testing.T) {
+	// The old /v1/public/sub-accounts route must no longer be registered.
+	srv := newClientsGateway(t, &fakeClientsService{})
+
+	resp, err := http.Get(srv.URL + "/v1/public/sub-accounts")
+	if err != nil {
+		t.Fatalf("GET old sub-accounts path: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusOK {
+		t.Fatalf("old route /v1/public/sub-accounts unexpectedly returned %d", resp.StatusCode)
 	}
 }
 

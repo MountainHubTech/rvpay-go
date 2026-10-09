@@ -3,11 +3,22 @@ package payouts
 import (
 	"strconv"
 
-	commongrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/commongrpc"
-	transactionsgrpc "github.com/I-Frostbyte/rvpay-go/grpc/go/transactionsgrpc"
-	"github.com/I-Frostbyte/rvpay-go/transactions/db/sqlc"
+	commongrpc "github.com/MountainHubTech/rvpay-go/grpc/go/commongrpc"
+	transactionsgrpc "github.com/MountainHubTech/rvpay-go/grpc/go/transactionsgrpc"
+	"github.com/MountainHubTech/rvpay-go/transactions/db/sqlc"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// textValue dereferences a nullable text value for the protobuf response.
+// SQL NULL has no wire representation, so it maps to the empty string here;
+// the NULL vs "" distinction is preserved in persistence and is not
+// fabricated at the database layer.
+func textValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
 
 // payoutToProto maps a persisted payout to its protobuf representation.
 func payoutToProto(payout sqlc.Payout) *transactionsgrpc.Payout {
@@ -17,9 +28,9 @@ func payoutToProto(payout sqlc.Payout) *transactionsgrpc.Payout {
 		MerchantId:           payout.MerchantID.String(),
 		Amount:               &commongrpc.Money{},
 		Provider:             sqlcPaymentProviderToGrpc(payout.Provider),
-		DestinationReference: payout.DestinationReference,
+		DestinationReference: textValue(payout.DestinationReference),
 		Status:               sqlcPayoutStatusToGrpc(payout.Status),
-		ExternalReference:    payout.ExternalReference,
+		ExternalReference:    textValue(payout.ExternalReference),
 		RequestedAt:          timestamppb.New(payout.RequestedAt),
 		CreatedAt:            timestamppb.New(payout.CreatedAt),
 		UpdatedAt:            timestamppb.New(payout.UpdatedAt),
@@ -38,7 +49,7 @@ func payoutToProto(payout sqlc.Payout) *transactionsgrpc.Payout {
 	if payout.FailedAt.Valid {
 		proto.FailedAt = timestamppb.New(payout.FailedAt.Time)
 	}
-	proto.FailureReason = payout.FailureReason
+	proto.FailureReason = textValue(payout.FailureReason)
 
 	return proto
 }

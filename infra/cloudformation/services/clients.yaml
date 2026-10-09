@@ -30,6 +30,9 @@ Parameters:
   HighLevelClientSecretArn:
     Type: String
 
+  HighLevelProviderConfigsArn:
+    Type: String
+
   CustomResourcesServiceToken:
     Type: String
 
@@ -45,15 +48,6 @@ Parameters:
     Type: String
     Default: "clients"
 
-  HighLevelRedirectUri:
-    Type: String
-
-  HighLevelPaymentUrl:
-    Type: String
-
-  HighLevelQueryUrl:
-    Type: String
-
   PublicBaseUrl:
     Type: String
 
@@ -68,10 +62,6 @@ Parameters:
     Type: String
     Default: "RVPay payment provider"
 
-  HighLevelProviderImageUrl:
-    Type: String
-    Default: ""
-
   HighLevelApiBaseUrl:
     Type: String
     Default: "https://services.leadconnectorhq.com"
@@ -79,10 +69,10 @@ Parameters:
   LoadBalancerListenerArn:
     Type: String
     Description: ARN of the HTTPS listener for the RVPay load balancer.
-
-  LoadBalancerSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-    Description: Security group ID of the RVPay load balancer.
+  
+  HighLevelEnvironmentSecretArn:
+    Type: String
+    Description: ARN of the HighLevel environment configuration Secrets Manager secret.
 
   DomainName:
     Type: String
@@ -121,6 +111,9 @@ Resources:
             - ContainerPort: !Ref ContainerPort
               Name: grpc
 
+            - ContainerPort: 8080
+              Name: http
+
           LogConfiguration:
             LogDriver: awslogs
             Options:
@@ -136,13 +129,10 @@ Resources:
               Value: !Ref ContainerPort
 
             - Name: MIGRATION_PATH
-              Value: "/app/migrations"
+              Value: "/app/clients/db/migrations"
 
             - Name: RUN_MIGRATIONS
               Value: "true"
-
-            - Name: HIGHLEVEL_REDIRECT_URI
-              Value: !Ref HighLevelRedirectUri
 
             - Name: HIGHLEVEL_WEBHOOK_PUBLIC_KEY
               Value: |
@@ -150,20 +140,11 @@ Resources:
                 MCowBQYDK2VwAyEAi2HR1srL4o18O8BRa7gVJY7G7bupbN3H9AwJrHCDiOg=
                 -----END PUBLIC KEY-----
 
-            - Name: HIGHLEVEL_PAYMENT_URL
-              Value: !Ref HighLevelPaymentUrl
-
-            - Name: HIGHLEVEL_QUERY_URL
-              Value: !Ref HighLevelQueryUrl
-
             - Name: HIGHLEVEL_PROVIDER_NAME
               Value: !Ref HighLevelProviderName
 
             - Name: HIGHLEVEL_PROVIDER_DESCRIPTION
               Value: !Ref HighLevelProviderDescription
-
-            - Name: HIGHLEVEL_PROVIDER_IMAGE_URL
-              Value: !Ref HighLevelProviderImageUrl
 
             - Name: HIGHLEVEL_API_BASE_URL
               Value: !Ref HighLevelApiBaseUrl
@@ -176,6 +157,9 @@ Resources:
 
             - Name: AWS_REGION
               Value: !Ref AWS::Region
+
+            - Name: DB_TLS_DISABLED
+              Value: "false"
 
           Secrets:
             - Name: DB_NAME
@@ -198,6 +182,30 @@ Resources:
 
             - Name: HIGHLEVEL_CLIENT_SECRET
               ValueFrom: !Sub "${HighLevelClientSecretArn}:client_secret::"
+
+            - Name: HIGHLEVEL_LIVE_API_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:live_api_key::"
+
+            - Name: HIGHLEVEL_LIVE_PUBLISHABLE_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:live_publishable_key::"
+
+            - Name: HIGHLEVEL_TEST_API_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_api_key::"
+
+            - Name: HIGHLEVEL_TEST_PUBLISHABLE_KEY
+              ValueFrom: !Sub "${HighLevelProviderConfigsArn}:test_publishable_key::"
+   
+            - Name: HIGHLEVEL_REDIRECT_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_redirect_url::"
+            
+            - Name: HIGHLEVEL_PAYMENT_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_payment_url::"
+            
+            - Name: HIGHLEVEL_QUERY_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_query_url::"
+            
+            - Name: HIGHLEVEL_PROVIDER_IMAGE_URL
+              ValueFrom: !Sub "${HighLevelEnvironmentSecretArn}:high_level_provider_image_url::"
 
   AppDatabase:
     Type: Custom::PgDatabase
@@ -239,6 +247,8 @@ Resources:
                   - !Ref AppDatabaseSecret
                   - !Ref DbAdminSecretArn
                   - !Ref HighLevelClientSecretArn
+                  - !Ref HighLevelProviderConfigsArn
+                  - !Ref HighLevelEnvironmentSecretArn
 
   TaskRole:
     Type: AWS::IAM::Role
@@ -262,7 +272,7 @@ Resources:
 
       LoadBalancers:
         - ContainerName: App
-          ContainerPort: !Ref ContainerPort
+          ContainerPort: 8080
           TargetGroupArn: !Ref ClientsTargetGroup
 
       DeploymentConfiguration:
@@ -287,30 +297,62 @@ Resources:
   ClientsTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
-      Name: !Sub "${EnvId}-ClientsTargetGroup"
+      Name: !Sub "${EnvId}-clients"
       VpcId: !Ref VPC
       Protocol: HTTP
-      Port: 80
+      Port: 8080
       TargetType: instance
+
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
       HealthCheckPort: traffic-port
-      HealthCheckPath: /healthz
-      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /v1/public/clients/healthcheck
+      HealthCheckIntervalSeconds: 10
       HealthCheckTimeoutSeconds: 5
       HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: "200"
 
-  ClientsListenerRule:
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 60
+
+  ClientsApiListenerRule:
     Type: AWS::ElasticLoadBalancingV2::ListenerRule
     Properties:
       ListenerArn: !Ref LoadBalancerListenerArn
-      Priority: 100
+      Priority: 25
       Conditions:
         - Field: host-header
           HostHeaderConfig:
             Values:
-              - !Ref DomainName
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/v1/public/clients*"
+              - "/v1/public/integrations*"
+              - "/v1/public/platforms*"
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref ClientsTargetGroup
+
+  ClientsApiListenerRuleTwo:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: !Ref LoadBalancerListenerArn
+      Priority: 125
+      Conditions:
+        - Field: host-header
+          HostHeaderConfig:
+            Values:
+              - !Sub "api.${DomainName}"
+        - Field: path-pattern
+          PathPatternConfig:
+            Values:
+              - "/oauth/callback*"
+              - "/payments/custom-provider*"
       Actions:
         - Type: forward
           TargetGroupArn: !Ref ClientsTargetGroup

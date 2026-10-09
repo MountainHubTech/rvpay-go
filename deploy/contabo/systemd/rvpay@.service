@@ -1,0 +1,22 @@
+# Per-environment unit: rvpay@testing, rvpay@production. Each instance runs
+# its own Compose project (rvpay-<env>) from its own checkout and .env at
+# /opt/rvpay-<env>. Supersedes rvpay-go.service on hosts with several
+# environments.
+[Unit]
+Description=RVPay Contabo Compose stack (%i)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/rvpay-%i
+# The hostnginx override keeps the stack off ports 80/443, which the host's
+# own nginx already serves; see docker-compose.contabo.hostnginx.yml.
+ExecStart=/usr/bin/docker compose -p rvpay-%i -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml up -d --remove-orphans
+ExecStop=/usr/bin/docker compose -p rvpay-%i -f docker-compose.contabo.yml -f docker-compose.contabo.hostnginx.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
