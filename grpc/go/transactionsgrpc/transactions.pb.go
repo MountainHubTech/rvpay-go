@@ -3275,6 +3275,9 @@ func (x *ListPayoutsResponse) GetPageSize() int32 {
 // ListTransactionsRequest requests a paginated deposit (transaction) list for
 // the Admin Dashboard transactions page. Filters mirror the payouts list:
 // free-text search, lifecycle status and the RVPay client (sub-account) name.
+// A sub-account can additionally be identified by its RVPay client id or its
+// HighLevel locationId; both are resolved server-side to the canonical RVPay
+// client name before the database filter is applied.
 type ListTransactionsRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// search filters by client_name or customer_id (case-insensitive).
@@ -3287,7 +3290,19 @@ type ListTransactionsRequest struct {
 	// page is the 1-based page number.
 	Page int32 `protobuf:"varint,4,opt,name=page,proto3" json:"page,omitempty"`
 	// page_size is the maximum number of rows per page.
-	PageSize      int32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	PageSize int32 `protobuf:"varint,5,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// client_id filters by the RVPay client/sub-account primary key
+	// (clients.id, a UUID owned by the Clients service). It is resolved to
+	// the canonical RVPay client name through the Clients service before
+	// filtering; an unknown id returns NOT_FOUND. Must not conflict with
+	// location_id or sub_account when supplied together. Empty means unset.
+	ClientId string `protobuf:"bytes,6,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	// location_id filters by the HighLevel locationId of the sub-account. It
+	// is mapped to the canonical RVPay client name convention
+	// ("highlevel-<locationId>") before filtering; an unknown location simply
+	// matches no transactions. Must not conflict with client_id or sub_account
+	// when supplied together. Empty means unset.
+	LocationId    string `protobuf:"bytes,7,opt,name=location_id,json=locationId,proto3" json:"location_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -3355,6 +3370,20 @@ func (x *ListTransactionsRequest) GetPageSize() int32 {
 		return x.PageSize
 	}
 	return 0
+}
+
+func (x *ListTransactionsRequest) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *ListTransactionsRequest) GetLocationId() string {
+	if x != nil {
+		return x.LocationId
+	}
+	return ""
 }
 
 // TransactionListRow is a single row of the transactions list.
@@ -4219,14 +4248,17 @@ const file_transactions_proto_rawDesc = "" +
 	"\x04rows\x18\x01 \x03(\v2\x1f.transactionsgrpc.PayoutListRowR\x04rows\x12\x14\n" +
 	"\x05total\x18\x02 \x01(\x03R\x05total\x12\x12\n" +
 	"\x04page\x18\x03 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\x9b\x01\n" +
+	"\tpage_size\x18\x04 \x01(\x05R\bpageSize\"\xd9\x01\n" +
 	"\x17ListTransactionsRequest\x12\x16\n" +
 	"\x06search\x18\x01 \x01(\tR\x06search\x12\x16\n" +
 	"\x06status\x18\x02 \x01(\tR\x06status\x12\x1f\n" +
 	"\vsub_account\x18\x03 \x01(\tR\n" +
 	"subAccount\x12\x12\n" +
 	"\x04page\x18\x04 \x01(\x05R\x04page\x12\x1b\n" +
-	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\"\xac\x02\n" +
+	"\tpage_size\x18\x05 \x01(\x05R\bpageSize\x12\x1b\n" +
+	"\tclient_id\x18\x06 \x01(\tR\bclientId\x12\x1f\n" +
+	"\vlocation_id\x18\a \x01(\tR\n" +
+	"locationId\"\xac\x02\n" +
 	"\x12TransactionListRow\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x19\n" +
 	"\bshort_id\x18\x02 \x01(\tR\ashortId\x12\x1f\n" +
