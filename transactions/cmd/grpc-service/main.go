@@ -214,7 +214,7 @@ func run(ctx context.Context, logger zerolog.Logger) error {
 	defer closeValidator()
 	protectedRoutes := []auth.AdminRoute{
 		{Method: http.MethodGet, Path: "/v1/public/transactions/overview/snapshot"},
-		{Method: http.MethodGet, Path: "/v1/public/transactions"},
+		// {Method: http.MethodGet, Path: "/v1/public/transactions"},
 		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes/stats"},
 		{Method: http.MethodGet, Path: "/v1/public/transactions/disputes"},
 		{Method: http.MethodPost, Path: "/v1/public/transactions/disputes/evidence"},
