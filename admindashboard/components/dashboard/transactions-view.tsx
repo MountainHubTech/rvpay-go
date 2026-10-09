@@ -78,6 +78,10 @@ function StatCard({ stat }: { stat: TransactionsStat }) {
 export function TransactionsView({
   stats = [],
   subAccounts = [],
+  showSubAccountFilter = true,
+  showSubAccountColumn = true,
+  showDateRangeFilter = true,
+  description = "Manage payments across all registered sub-accounts.",
   subAccount = "all",
   onSubAccountChange,
   status = "all",
@@ -96,6 +100,10 @@ export function TransactionsView({
 }: {
   stats?: TransactionsStat[]
   subAccounts?: Array<{ id: string; name: string }>
+  showSubAccountFilter?: boolean
+  showSubAccountColumn?: boolean
+  showDateRangeFilter?: boolean
+  description?: string
   subAccount?: string
   onSubAccountChange?: (next: string) => void
   status?: string
@@ -131,9 +139,7 @@ export function TransactionsView({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Transactions</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Manage payments across all registered sub-accounts.
-          </p>
+          <p className="mt-1 text-sm text-muted-foreground">{description}</p>
         </div>
         <Button type="button" variant="outline">
           <Download className="size-4" />
@@ -147,8 +153,8 @@ export function TransactionsView({
       </div>
 
       <Card className="p-4">
-        <div className="grid gap-4 lg:grid-cols-4">
-          <div>
+        <div className={`grid gap-4 ${showSubAccountFilter && showDateRangeFilter ? "lg:grid-cols-4" : "lg:grid-cols-2"}`}>
+          {showSubAccountFilter && <div>
             <label className="text-xs font-semibold" htmlFor="tx-sub-account">
               Sub-Account
             </label>
@@ -165,7 +171,7 @@ export function TransactionsView({
                 </option>
               ))}
             </select>
-          </div>
+          </div>}
           <div>
             <label className="text-xs font-semibold" htmlFor="tx-status">
               Status
@@ -183,7 +189,7 @@ export function TransactionsView({
               <option value="Pending">Pending</option>
             </select>
           </div>
-          <div>
+          {showDateRangeFilter && <div>
             <label className="text-xs font-semibold" htmlFor="tx-date-range">
               Date Range
             </label>
@@ -198,7 +204,7 @@ export function TransactionsView({
               <option>Last 90 Days</option>
               <option>This Year</option>
             </select>
-          </div>
+          </div>}
           <div className="flex items-end">
             <Button type="button" className="w-full" onClick={onApplyFilters}>
               Apply Filters
@@ -237,7 +243,7 @@ export function TransactionsView({
           <TableHeader>
             <TableRow>
               <TableHead>Transaction ID</TableHead>
-              <TableHead>Sub-Account</TableHead>
+              {showSubAccountColumn && <TableHead>Sub-Account</TableHead>}
               <TableHead>Customer</TableHead>
               <TableHead className="text-right">Amount</TableHead>
               <TableHead>Status</TableHead>
@@ -251,7 +257,7 @@ export function TransactionsView({
               rows.map((row) => (
                 <TableRow key={row.id}>
                   <TableCell className="font-mono text-xs">{row.shortId}</TableCell>
-                  <TableCell className="font-medium">{row.subAccount}</TableCell>
+                  {showSubAccountColumn && <TableCell className="font-medium">{row.subAccount}</TableCell>}
                   <TableCell>
                     <span className="flex items-center gap-2">
                       <span className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
@@ -275,17 +281,15 @@ export function TransactionsView({
               ))}
             {loading && (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground" role="status">
+                <TableCell colSpan={showSubAccountColumn ? 8 : 7} className="py-10 text-center text-muted-foreground" role="status">
                   Loading transactions…
                 </TableCell>
               </TableRow>
             )}
             {!loading && !hasRows && (
               <TableRow>
-                <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                  No transactions to display yet. The transactions list endpoint is
-                  not yet available in the Transactions service (tracked in
-                  agents/new-pages-endpoints), so live rows cannot be loaded.
+                <TableCell colSpan={showSubAccountColumn ? 8 : 7} className="py-10 text-center text-muted-foreground">
+                  No transactions to display.
                 </TableCell>
               </TableRow>
             )}
