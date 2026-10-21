@@ -445,9 +445,44 @@ func TestGateway_PawaPayDepositCallback_Post(t *testing.T) {
 }
 
 // fakeOverviewService implements transactionsgrpc.DashboardOverviewServiceServer
-// for the overview-route gateway test.
+// for the overview-route gateway tests.
 type fakeOverviewService struct {
 	transactionsgrpc.UnimplementedDashboardOverviewServiceServer
+
+	// listReq records the request the gateway produced so tests can assert
+	// query-parameter binding end to end.
+	listReq *transactionsgrpc.ListTransactionsRequest
+	// listErr, when set, is returned by ListTransactions (error-mapping tests).
+	listErr error
+	// listRowSubAccount overrides the sub_account echoed on the canned row.
+	listRowSubAccount string
+}
+
+// ListTransactions returns a single canned row and records the request.
+func (f *fakeOverviewService) ListTransactions(_ context.Context, req *transactionsgrpc.ListTransactionsRequest) (*transactionsgrpc.ListTransactionsResponse, error) {
+	f.listReq = req
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	subAccount := f.listRowSubAccount
+	if subAccount == "" {
+		subAccount = req.GetSubAccount()
+	}
+	return &transactionsgrpc.ListTransactionsResponse{
+		Rows: []*transactionsgrpc.TransactionListRow{{
+			Id:         "dep-1",
+			ShortId:    "dep-1",
+			SubAccount: subAccount,
+			Customer:   "cust-1",
+			Amount:     "XAF 1000.00",
+			Status:     "Success",
+			Gateway:    "MTN MoMo",
+			Date:       "Sep 08, 2026",
+		}},
+		Total:    1,
+		Page:     req.GetPage(),
+		PageSize: req.GetPageSize(),
+	}, nil
 }
 
 func (f *fakeOverviewService) GetOverviewSnapshot(_ context.Context, _ *transactionsgrpc.GetOverviewSnapshotRequest) (*transactionsgrpc.GetOverviewSnapshotResponse, error) {
@@ -523,5 +558,163 @@ func TestGateway_OverviewSnapshotRoute_NotOnOldPath(t *testing.T) {
 
 	if resp.StatusCode == http.StatusOK {
 		t.Fatalf("old route /v1/public/overview/snapshot unexpectedly returned %d", resp.StatusCode)
+	}
+}
+
+// newOverviewGateway mounts only the DashboardOverviewService gateway handler
+// behind the root HTTP mux, mirroring transactions/cmd/grpc-service/main.go.
+func newOverviewGateway(t *testing.T, overview *fakeOverviewService) *httptest.Server {
+	t.Helper()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	gatewayMux := runtime.NewServeMux()
+	if err := transactionsgrpc.RegisterDashboardOverviewServiceHandlerServer(ctx, gatewayMux, overview); err != nil {
+		t.Fatalf("register overview grpc-gateway handler: %v", err)
+	}
+
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", gatewayMux)
+	srv := httptest.NewServer(httpMux)
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestGateway_ListTransactionsRoute_IdentifierParamsBindToRPC proves the
+// sub-account identifiers and pagination reach the ListTransactions RPC from
+// the HTTP query string of the existing GET /v1/public/transactions route —
+// both the proto (snake_case) field names used by the repository convention
+// (page_size/sub_account) and the lowerCamelCase JSON aliases.
+func TestGateway_ListTransactionsRoute_IdentifierParamsBindToRPC(t *testing.T) {
+	fake := &fakeOverviewService{}
+	srv := newOverviewGateway(t, fake)
+
+	clientID := "7f2c1e34-1f61-4bd0-9a5f-0c9d5f2b8a11"
+	resp, err := http.Get(srv.URL + "/v1/public/transactions?client_id=" + clientID + "&page=2&page_size=5")
+	if err != nil {
+		t.Fatalf("GET /v1/public/transactions: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	if fake.listReq == nil {
+		t.Fatal("ListTransactions RPC was not invoked")
+	}
+	if got := fake.listReq.GetClientId(); got != clientID {
+		t.Errorf("client_id = %q, want %q", got, clientID)
+	}
+	if fake.listReq.GetPage() != 2 || fake.listReq.GetPageSize() != 5 {
+		t.Errorf("page/page_size = %d/%d, want 2/5", fake.listReq.GetPage(), fake.listReq.GetPageSize())
+	}
+
+	// location_id (proto name).
+	resp, err = http.Get(srv.URL + "/v1/public/transactions?location_id=loc-1")
+	if err != nil {
+		t.Fatalf("GET with location_id: %v", err)
+	}
+	resp.Body.Close()
+	if got := fake.listReq.GetLocationId(); got != "loc-1" {
+		t.Errorf("location_id = %q, want loc-1", got)
+	}
+
+	// locationId / clientId JSON-name aliases.
+	resp, err = http.Get(srv.URL + "/v1/public/transactions?locationId=loc-2")
+	if err != nil {
+		t.Fatalf("GET with locationId: %v", err)
+	}
+	resp.Body.Close()
+	if got := fake.listReq.GetLocationId(); got != "loc-2" {
+		t.Errorf("locationId alias = %q, want loc-2 (grpc-gateway JSON-name query binding)", got)
+	}
+}
+
+// TestGateway_ListTransactionsRoute_SuccessSerialization proves the successful
+// response serializes the existing row shape (ids, sub_account, amount,
+// status, gateway, date) with total/page/page_size.
+func TestGateway_ListTransactionsRoute_SuccessSerialization(t *testing.T) {
+	fake := &fakeOverviewService{listRowSubAccount: "highlevel-loc-a"}
+	srv := newOverviewGateway(t, fake)
+
+	resp, err := http.Get(srv.URL + "/v1/public/transactions?location_id=loc-a&page=1&page_size=20")
+	if err != nil {
+		t.Fatalf("GET /v1/public/transactions: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	// int64 fields encode as JSON strings in protojson (grpc-gateway default);
+	// int32 fields (page_size) stay JSON numbers.
+	if got := body["total"]; got != "1" {
+		t.Errorf("total = %v, want \"1\"", got)
+	}
+	if got := body["pageSize"]; got != float64(20) {
+		t.Errorf("pageSize = %v, want 20", got)
+	}
+	rows, ok := body["rows"].([]interface{})
+	if !ok || len(rows) != 1 {
+		t.Fatalf("rows = %v, want exactly 1 row", body["rows"])
+	}
+	row, ok := rows[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("row = %T, want object", rows[0])
+	}
+	if got := row["subAccount"]; got != "highlevel-loc-a" {
+		t.Errorf("subAccount = %v, want highlevel-loc-a", got)
+	}
+	for _, key := range []string{"id", "shortId", "customer", "amount", "status", "gateway", "date"} {
+		if _, ok := row[key]; !ok {
+			t.Errorf("row is missing serialized field %q", key)
+		}
+	}
+}
+
+// TestGateway_ListTransactionsRoute_InvalidIdentifierMapsTo400 proves a
+// malformed identifier surfaces as HTTP 400 through the existing gateway
+// error mapping (the service returns codes.InvalidArgument).
+func TestGateway_ListTransactionsRoute_InvalidIdentifierMapsTo400(t *testing.T) {
+	fake := &fakeOverviewService{
+		listErr: status.Error(codes.InvalidArgument, "client_id must be a valid UUID"),
+	}
+	srv := newOverviewGateway(t, fake)
+
+	resp, err := http.Get(srv.URL + "/v1/public/transactions?client_id=not-a-uuid")
+	if err != nil {
+		t.Fatalf("GET /v1/public/transactions: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d for a malformed client_id", resp.StatusCode, http.StatusBadRequest)
+	}
+	if fake.listReq == nil || fake.listReq.GetClientId() != "not-a-uuid" {
+		t.Errorf("malformed identifier must still reach the RPC for validation, got %+v", fake.listReq)
+	}
+}
+
+// TestGateway_ListTransactionsRoute_UnknownClientMapsTo404 proves an unknown
+// client id surfaces as HTTP 404 through the gateway error mapping (the
+// service returns codes.NotFound after the Clients lookup).
+func TestGateway_ListTransactionsRoute_UnknownClientMapsTo404(t *testing.T) {
+	fake := &fakeOverviewService{
+		listErr: status.Error(codes.NotFound, "client not found"),
+	}
+	srv := newOverviewGateway(t, fake)
+
+	resp, err := http.Get(srv.URL + "/v1/public/transactions?client_id=0c9d5f2b-8a11-4e3f-b7c6-111111111111")
+	if err != nil {
+		t.Fatalf("GET /v1/public/transactions: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d for an unknown client id", resp.StatusCode, http.StatusNotFound)
 	}
 }

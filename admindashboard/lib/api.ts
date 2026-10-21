@@ -200,8 +200,13 @@ export type DisputesListResponse = {
   pageSize: number;
 };
 
-async function getJson<T>(service: ApiService, path: string, baseUrl: string): Promise<T> {
-  return requestJson<T>(service, "GET", `${baseUrl}${path}`, path, baseUrl, false)
+async function getJson<T>(
+  service: ApiService,
+  path: string,
+  baseUrl: string,
+  authenticated = true
+): Promise<T> {
+  return requestJson<T>(service, "GET", `${baseUrl}${path}`, path, baseUrl, false, undefined, authenticated)
 }
 
 // requestJson is the shared transport. It attaches the bearer access token
@@ -215,7 +220,8 @@ async function requestJson<T>(
   path: string,
   baseUrl: string,
   isRetry: boolean,
-  body?: unknown
+  body?: unknown,
+  authenticated = true
 ): Promise<T> {
   const environment = getSelectedEnvironment()
   const environmentLabel = ENVIRONMENTS[environment].label
@@ -224,8 +230,9 @@ async function requestJson<T>(
   const startedAt = Date.now()
   let response: Response
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" }
-    const token = getAccessToken()
+    const headers: Record<string, string> = {}
+    if (body !== undefined) headers["Content-Type"] = "application/json"
+    const token = authenticated ? getAccessToken() : null
     if (token) {
       headers.Authorization = `Bearer ${token}`
     }
@@ -251,11 +258,11 @@ async function requestJson<T>(
   }
   logApiResponse(response.status, Date.now() - startedAt)
 
-  if (response.status === 401 && !isRetry && path !== "/v1/public/auth/sign-in") {
+  if (authenticated && response.status === 401 && !isRetry && path !== "/v1/public/auth/sign-in") {
     // Access token missing/expired: attempt one rotation and retry once.
     const refreshed = await tryRefresh()
     if (refreshed) {
-      return requestJson<T>(service, method, url, path, baseUrl, true, body)
+      return requestJson<T>(service, method, url, path, baseUrl, true, body, authenticated)
     }
     dropSession()
   }
@@ -428,16 +435,26 @@ export function fetchTransactions(params: {
   search?: string;
   status?: string;
   subAccount?: string;
+  locationId?: string;
   page?: number;
   pageSize?: number;
-}): Promise<TransactionsListResponse> {
+}, options: { authenticated?: boolean } = {}): Promise<TransactionsListResponse> {
   const query = new URLSearchParams();
   if (params.search) query.set("search", params.search);
   if (params.status) query.set("status", params.status);
   if (params.subAccount) query.set("sub_account", params.subAccount);
+  if (params.locationId) {
+    query.set("location_id", params.locationId);
+    query.set("sub_account", `highlevel-${params.locationId}`);
+  }
   query.set("page", String(params.page ?? 1));
   query.set("page_size", String(params.pageSize ?? 20));
-  return getJson("transactions", `/v1/public/transactions?${query.toString()}`, getTransactionsBaseUrl());
+  return getJson(
+    "transactions",
+    `/v1/public/transactions?${query.toString()}`,
+    getTransactionsBaseUrl(),
+    options.authenticated ?? true
+  );
 }
 
 // fetchUsers loads a paginated, searchable, role-filtered list of

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/google/uuid"
 
@@ -26,7 +27,14 @@ type Impl struct {
 	payoutRepo   repo.PayoutRepo
 	disputeRepo  repo.DisputeRepo
 	customerRepo repo.CustomerRepo
-	logger       zerolog.Logger
+	// clientResolver maps an RVPay client/sub-account id (clients.id, owned
+	// by the Clients service) to the canonical RVPay client name used by the
+	// deposits tenant boundary. It is only consulted when a ListTransactions
+	// request supplies client_id. May be nil: requests without client_id
+	// never touch it, and a request that does supply client_id without a
+	// configured resolver fails closed with codes.FailedPrecondition.
+	clientResolver ClientResolver
+	logger         zerolog.Logger
 
 	transactionsgrpc.UnimplementedDashboardOverviewServiceServer
 }
@@ -37,14 +45,16 @@ func NewOverviewService(
 	payoutRepo repo.PayoutRepo,
 	disputeRepo repo.DisputeRepo,
 	customerRepo repo.CustomerRepo,
+	clientResolver ClientResolver,
 	logger zerolog.Logger,
 ) *Impl {
 	return &Impl{
-		depositRepo:  depositRepo,
-		payoutRepo:   payoutRepo,
-		disputeRepo:  disputeRepo,
-		customerRepo: customerRepo,
-		logger:       logger,
+		depositRepo:    depositRepo,
+		payoutRepo:     payoutRepo,
+		disputeRepo:    disputeRepo,
+		customerRepo:   customerRepo,
+		clientResolver: clientResolver,
+		logger:         logger,
 	}
 }
 
@@ -228,6 +238,8 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 		Str("operation", "ListTransactions").
 		Str("status", req.GetStatus()).
 		Str("sub_account", req.GetSubAccount()).
+		Str("client_id", req.GetClientId()).
+		Str("location_id", req.GetLocationId()).
 		Msg("dashboard API request received")
 
 	defer func() {
@@ -268,7 +280,15 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 	}
 	offset := (page - 1) * pageSize
 
-	deposits, err := s.depositRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), req.GetSubAccount(), pageSize, offset)
+	// Resolve the sub-account identifier(s) server-side into the canonical
+	// RVPay client-name filter before touching the database. Filtering stays
+	// entirely server-side; the caller (and any frontend) never narrows rows.
+	subAccountFilter, err := s.resolveSubAccountFilter(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	deposits, err := s.depositRepo.ListFiltered(ctx, req.GetSearch(), req.GetStatus(), subAccountFilter, pageSize, offset)
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("operation", "ListTransactions").
@@ -277,7 +297,7 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 			Msg("could not list transactions")
 		return nil, status.Error(codes.Internal, "could not list transactions")
 	}
-	total, err := s.depositRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus(), req.GetSubAccount())
+	total, err := s.depositRepo.CountFiltered(ctx, req.GetSearch(), req.GetStatus(), subAccountFilter)
 	if err != nil {
 		s.logger.Error().Err(err).
 			Str("operation", "ListTransactions").
@@ -314,6 +334,86 @@ func (s *Impl) ListTransactions(ctx context.Context, req *transactionsgrpc.ListT
 		Page:     page,
 		PageSize: pageSize,
 	}, nil
+}
+
+// highlevelClientNamePrefix is the RVPay client-name convention binding a
+// deposit to its HighLevel location ("highlevel-<locationId>"). It mirrors
+// ghlsync.clientNamePrefix; the convention is the canonical, repo-wide
+// relationship between a GHL locationId and the RVPay client/sub-account
+// (see clients.proto Client.name and the Clients install flow).
+const highlevelClientNamePrefix = "highlevel-"
+
+// resolveSubAccountFilter folds the sub-account identifiers accepted by
+// ListTransactions into the single canonical RVPay client-name filter used by
+// the deposits table (deposits.client_name). All resolution happens
+// server-side:
+//
+//   - sub_account is the canonical client name itself (existing behavior,
+//     forwarded verbatim when no other identifier is supplied);
+//   - client_id is the RVPay client/sub-account primary key (clients.id,
+//     owned by the Clients service) and is resolved to the client name
+//     through the ClientResolver (ClientsService.GetClient over gRPC).
+//     Unknown ids surface codes.NotFound;
+//   - location_id is the GHL locationId and maps through the established
+//     "highlevel-<locationId>" naming convention. An unknown location simply
+//     matches no transactions (no Clients lookup exists for an exact
+//     locationId-to-client mapping, so absence is expressed by the filter
+//     itself).
+//
+// When several identifiers are supplied they must all resolve to the same
+// client name; conflicting identifiers are rejected with
+// codes.InvalidArgument rather than silently picking one. Existing search,
+// status, pagination and ordering behavior is unchanged.
+func (s *Impl) resolveSubAccountFilter(ctx context.Context, req *transactionsgrpc.ListTransactionsRequest) (string, error) {
+	clientID := strings.TrimSpace(req.GetClientId())
+	locationID := strings.TrimSpace(req.GetLocationId())
+
+	// Preserve the legacy path exactly: without the new identifiers the raw
+	// sub_account value is forwarded unchanged.
+	if clientID == "" && locationID == "" {
+		return req.GetSubAccount(), nil
+	}
+
+	filter := strings.TrimSpace(req.GetSubAccount())
+
+	if clientID != "" {
+		if _, err := uuid.Parse(clientID); err != nil {
+			return "", status.Error(codes.InvalidArgument, "client_id must be a valid UUID")
+		}
+		if s.clientResolver == nil {
+			return "", status.Error(codes.FailedPrecondition, "client resolver is not configured")
+		}
+		name, err := s.clientResolver.ClientNameByID(ctx, clientID)
+		if err != nil {
+			if status.Code(err) == codes.NotFound {
+				return "", status.Error(codes.NotFound, "client not found")
+			}
+			s.logger.Error().Err(err).
+				Str("operation", "ListTransactions").
+				Str("client_id", clientID).
+				Msg("could not resolve client id through the clients service")
+			return "", status.Error(codes.Internal, "could not resolve client")
+		}
+		if filter == "" {
+			filter = name
+		} else if filter != name {
+			return "", status.Error(codes.InvalidArgument, "conflicting sub-account identifiers")
+		}
+	}
+
+	if locationID != "" {
+		if strings.IndexFunc(locationID, unicode.IsSpace) >= 0 {
+			return "", status.Error(codes.InvalidArgument, "location_id is malformed")
+		}
+		name := highlevelClientNamePrefix + locationID
+		if filter == "" {
+			filter = name
+		} else if filter != name {
+			return "", status.Error(codes.InvalidArgument, "conflicting sub-account identifiers")
+		}
+	}
+
+	return filter, nil
 }
 
 // GetDisputeStats returns the Needs Response / Under Review counters for the

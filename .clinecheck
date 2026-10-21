@@ -72,3 +72,7 @@
 - [x] No DB backfill, no migration, no proto/Dashboard/infra change; NULL rows are now handled by the application.
 - [x] Tests: 3 new DB-backed repo regression tests (NULL / friendly / multi-account) PASS; `go test ./clients/... -count=1` PASS; `go vet ./clients/...` PASS; `git diff --check` PASS.
 - [x] Runtime VERIFIED with real auth: pre-fix HTTP 500 (`dest[4] display_name`) → post-fix HTTP 200, 2 accounts, friendly name preserved, NULL row rendered as `highlevel-<locationId>`. Test token + scratch DB removed; Clients service stopped.
+
+## Sub-Account transaction listing — 2026-10-09
+- [x] GET /v1/public/transactions extended (Case B, no duplicate): server-side `client_id` (Clients GetClient via CLIENTS_GRPC_ADDR) + `location_id` (`highlevel-<locationId>` convention); conflicts→400, unknown client→404; NO SQL/migration; +18 tests (service/gateway/DB-backed); build/vet/test transactions+clients+shared PASS.
+- [ ] SKIPPED: DB-backed repo tests (no TRANSACTIONS_TEST_DATABASE_URL, no Docker/local PG server); live authenticated HTTP check of the new params pending (no admin token).

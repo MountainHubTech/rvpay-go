@@ -453,3 +453,28 @@ If the HighLevel OAuth integration is reauthorized, the location cache must be r
 - Deploy and verify with live HighLevel API
 - Consider adding database columns for `display_name` and `customer_name` if persistence is required
 - Monitor backfill completeness
+
+## Sub-Account transaction listing (`client_id` / `location_id`)
+
+`GET /v1/public/transactions` (admin Bearer) lists a sub-account's
+transactions with **server-side** filtering. In addition to the existing
+`search`, `status` and `sub_account` (exact `client_name`) filters it accepts:
+
+| Parameter | Meaning |
+| --- | --- |
+| `client_id` | RVPay client/sub-account primary key (`clients.id`, a UUID owned by the Clients service). Resolved to the canonical `client_name` through the Clients `GetClient` RPC over `CLIENTS_GRPC_ADDR`; an unknown id returns 404. |
+| `location_id` | HighLevel `locationId`. Mapped to the canonical `highlevel-<locationId>` client-name convention; an unknown location matches no transactions (empty result). |
+| `sub_account` | Canonical RVPay `client_name` (existing filter, unchanged). |
+
+Notes:
+
+- Query-parameter names follow the gRPC-gateway proto convention
+  (`client_id`, `location_id`, like `page_size` / `sub_account`); the JSON
+  aliases `clientId` / `locationId` are accepted as well.
+- Supplying identifiers that resolve to different sub-accounts is rejected
+  with 400 `InvalidArgument`; agreeing identifiers are accepted.
+- No SQL, sqlc or migration change was made. `search`, `status`, `page`,
+  `page_size`, totals and the deterministic `created_at DESC` ordering are
+  unchanged. Cross-sub-account isolation is covered by service-level and
+  DB-backed tests (`transactions/overview/service_test.go`,
+  `transactions/db/repo/deposit_repo_filtered_test.go`).
