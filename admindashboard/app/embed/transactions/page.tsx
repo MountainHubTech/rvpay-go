@@ -2,7 +2,7 @@
 
 import * as React from "react"
 import { ArrowLeft, ArrowRight, Check, Wallet, X } from "lucide-react"
-import { useSearchParams } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,13 +13,78 @@ import {
   fetchOverviewSnapshot,
   fetchTransactions,
   type OverviewSnapshotResponse,
+  type TransactionListRow,
   type TransactionsListResponse,
 } from "@/lib/api"
 
 const TRANSACTIONS_STATUSES = ["Success", "Failed", "Refunded", "Pending"] as const
 type TransactionsStatus = (typeof TRANSACTIONS_STATUSES)[number]
 
+const SAMPLE_TRANSACTIONS: TransactionListRow[] = [
+  {
+    id: "sample-tx-001",
+    shortId: "TX-80421",
+    subAccount: "Sample account",
+    customer: "Maya Chen",
+    customerName: "Maya Chen",
+    customerInitials: "MC",
+    amount: "$248.00",
+    status: "Success",
+    gateway: "MTN Mobile Money",
+    date: "Oct 22, 2026",
+  },
+  {
+    id: "sample-tx-002",
+    shortId: "TX-80420",
+    subAccount: "Sample account",
+    customer: "Daniel Okafor",
+    customerName: "Daniel Okafor",
+    customerInitials: "DO",
+    amount: "$1,200.00",
+    status: "Pending",
+    gateway: "Orange Money",
+    date: "Oct 22, 2026",
+  },
+  {
+    id: "sample-tx-003",
+    shortId: "TX-80419",
+    subAccount: "Sample account",
+    customer: "Ava Williams",
+    customerName: "Ava Williams",
+    customerInitials: "AW",
+    amount: "$86.50",
+    status: "Success",
+    gateway: "Airtel Money",
+    date: "Oct 21, 2026",
+  },
+  {
+    id: "sample-tx-004",
+    shortId: "TX-80418",
+    subAccount: "Sample account",
+    customer: "Noah Patel",
+    customerName: "Noah Patel",
+    customerInitials: "NP",
+    amount: "$64.00",
+    status: "Failed",
+    gateway: "MTN Mobile Money",
+    date: "Oct 20, 2026",
+  },
+  {
+    id: "sample-tx-005",
+    shortId: "TX-80417",
+    subAccount: "Sample account",
+    customer: "Sofia Mensah",
+    customerName: "Sofia Mensah",
+    customerInitials: "SM",
+    amount: "$312.75",
+    status: "Refunded",
+    gateway: "Orange Money",
+    date: "Oct 19, 2026",
+  },
+]
+
 function EmbedTransactionsContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
   const locationId = searchParams.get("locationId")?.trim() ?? ""
   const [status, setStatus] = React.useState<"all" | TransactionsStatus>("all")
@@ -107,9 +172,27 @@ function EmbedTransactionsContent() {
         }]
       : []
   const isLoading = Boolean(locationId) && completedRequestKey !== requestKey
+  const showingSampleTransactions = !isLoading && rows.length === 0
+  const visibleRows = showingSampleTransactions
+    ? SAMPLE_TRANSACTIONS.filter((row) => appliedStatus === "all" || row.status === appliedStatus)
+    : rows
   const visibleError = locationId
     ? listError?.key === requestKey ? listError.message : null
     : "This transactions view is not configured."
+
+  function openTransaction(row: TransactionListRow) {
+    const details = new URLSearchParams({
+      shortId: row.shortId,
+      customer: row.customerName || row.customer,
+      amount: row.amount,
+      status: row.status,
+      provider: row.gateway,
+      date: row.date,
+      sample: row.id.startsWith("sample-tx-") ? "true" : "false",
+    })
+    if (locationId) details.set("locationId", locationId)
+    router.push(`/embed/transactions/${encodeURIComponent(row.id)}?${details.toString()}`)
+  }
 
   function closeWithdrawal() {
     setWithdrawalOpen(false)
@@ -176,6 +259,11 @@ function EmbedTransactionsContent() {
           </Card>
         </div>
       </section>
+      {showingSampleTransactions && (
+        <p className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">
+          Sample transactions are shown for visualisation only. They are not real payments.
+        </p>
+      )}
       <TransactionsView
         description="Recent payment activity."
         showSubAccountFilter={false}
@@ -196,12 +284,13 @@ function EmbedTransactionsContent() {
           setAppliedStatus("all")
           setPage(1)
         }}
-        rows={locationId && !isLoading ? rows : []}
+        rows={isLoading ? [] : visibleRows}
         loading={isLoading}
-        total={locationId && !isLoading ? total : 0}
+        total={showingSampleTransactions ? visibleRows.length : total}
         page={page}
         pageSize={pageSize}
         onPageChange={setPage}
+        onTransactionClick={openTransaction}
       />
       {withdrawalOpen && (
         <div

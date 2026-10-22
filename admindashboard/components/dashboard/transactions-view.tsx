@@ -97,6 +97,7 @@ export function TransactionsView({
   page = 1,
   pageSize = 20,
   onPageChange,
+  onTransactionClick,
 }: {
   stats?: TransactionsStat[]
   subAccounts?: Array<{ id: string; name: string }>
@@ -130,6 +131,7 @@ export function TransactionsView({
   page?: number
   pageSize?: number
   onPageChange?: (next: number) => void
+  onTransactionClick?: (row: NonNullable<typeof rows>[number]) => void
 }) {
   const pageCount = Math.max(1, Math.ceil(total / pageSize))
   const hasRows = rows.length > 0
@@ -255,7 +257,19 @@ export function TransactionsView({
           <TableBody>
             {hasRows &&
               rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  tabIndex={onTransactionClick ? 0 : undefined}
+                  aria-label={onTransactionClick ? `View transaction ${row.shortId}` : undefined}
+                  className={onTransactionClick ? "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring" : undefined}
+                  onClick={onTransactionClick ? () => onTransactionClick(row) : undefined}
+                  onKeyDown={onTransactionClick ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault()
+                      onTransactionClick(row)
+                    }
+                  } : undefined}
+                >
                   <TableCell className="font-mono text-xs">{row.shortId}</TableCell>
                   {showSubAccountColumn && <TableCell className="font-medium">{row.subAccount}</TableCell>}
                   <TableCell>
