@@ -373,12 +373,14 @@ export async function signOutRequest(): Promise<void> {
 // Transactions-service endpoints (overview snapshot, payout stats, payout
 // list): resolved against the selected environment's transactionsBaseUrl.
 export function fetchOverviewSnapshot(
-  period: OverviewPeriod
+  period: OverviewPeriod,
+  options: { authenticated?: boolean } = {}
 ): Promise<OverviewSnapshotResponse> {
   return getJson(
     "transactions",
     `/v1/public/transactions/overview/snapshot?period=${encodeURIComponent(period)}`,
-    getTransactionsBaseUrl()
+    getTransactionsBaseUrl(),
+    options.authenticated ?? true
   );
 }
 
