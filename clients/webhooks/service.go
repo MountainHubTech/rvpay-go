@@ -308,6 +308,9 @@ func (s *Service) resolveOrProvisionTenant(ctx context.Context, locationID strin
 	// Authoritative provisioning mapping.
 	integration, err := s.integrationsRepo.GetByExternalAccountID(ctx, locationID)
 	if err == nil {
+		if err := s.reactivateClientForInstall(ctx, integration.ClientID); err != nil {
+			return uuid.Nil, err
+		}
 		return integration.ID, nil
 	}
 	if err != repo.ErrNotFound {
@@ -317,6 +320,14 @@ func (s *Service) resolveOrProvisionTenant(ctx context.Context, locationID strin
 	// Fall back to the payment provider config mapping.
 	config, configErr := s.paymentProviderConfigRepo.GetByLocationID(ctx, locationID)
 	if configErr == nil {
+		configIntegration, err := s.integrationsRepo.GetByID(ctx, config.IntegrationID)
+		if err == nil {
+			if err := s.reactivateClientForInstall(ctx, configIntegration.ClientID); err != nil {
+				return uuid.Nil, err
+			}
+		} else if err != repo.ErrNotFound {
+			return uuid.Nil, translateError(err)
+		}
 		return config.IntegrationID, nil
 	}
 	if configErr != repo.ErrNotFound {
@@ -324,6 +335,41 @@ func (s *Service) resolveOrProvisionTenant(ctx context.Context, locationID strin
 	}
 
 	return s.provisionTenant(ctx, locationID)
+}
+
+// reactivateClientForInstall flips a previously deactivated client back to
+// ACTIVE during a HighLevel INSTALL/reinstall. It is idempotent and never
+// deletes local state. HighLevel INSTALL is an explicit reinstall signal, so a
+// CLOSED (or otherwise non-ACTIVE) tenant is reactivated.
+func (s *Service) reactivateClientForInstall(ctx context.Context, clientID uuid.UUID) error {
+	if s.clientsRepo == nil {
+		return nil
+	}
+
+	client, err := s.clientsRepo.GetByID(ctx, clientID)
+	if err == repo.ErrNotFound {
+		// Preserve the pre-existing INSTALL behavior for an integration whose
+		// client row is missing; there is nothing to reactivate here.
+		return nil
+	}
+	if err != nil {
+		return translateError(err)
+	}
+
+	if client.Status == sqlc.ClientStatusACTIVE {
+		return nil
+	}
+
+	if _, err := s.clientsRepo.UpdateStatus(ctx, clientID, sqlc.ClientStatusACTIVE); err != nil {
+		return translateError(err)
+	}
+
+	s.logger.Info().
+		Str("client_id", clientID.String()).
+		Str("previous_status", string(client.Status)).
+		Msg("HighLevel INSTALL reactivated client")
+
+	return nil
 }
 
 // provisionTenant creates the RVPay client and integration for a HighLevel
@@ -364,6 +410,10 @@ func (s *Service) provisionTenant(ctx context.Context, locationID string) (uuid.
 			return uuid.Nil, ErrClientNotFound
 		}
 		return uuid.Nil, translateError(err)
+	}
+
+	if err := s.reactivateClientForInstall(ctx, client.ID); err != nil {
+		return uuid.Nil, err
 	}
 
 	// Reuse the integration when it already exists (idempotency); otherwise

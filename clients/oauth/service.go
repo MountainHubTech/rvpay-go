@@ -281,6 +281,21 @@ func (s *Service) HandleCallback(ctx context.Context, code, state string) (*Call
 		return nil, translateError(err)
 	}
 
+	// A Marketplace reinstall arrives for a client that may have been
+	// deactivated (CLOSED) by a prior uninstall. Reinstall is an explicit
+	// activation signal, so reactivate the existing client non-destructively
+	// before the shared callback processing re-validates it.
+	if client.Status != sqlc.ClientStatusACTIVE {
+		s.logger.Info().
+			Str("client_id", client.ID.String()).
+			Str("previous_status", string(client.Status)).
+			Msg("reactivating client for HighLevel reinstall")
+		client, err = s.clientsRepo.UpdateStatus(ctx, client.ID, sqlc.ClientStatusACTIVE)
+		if err != nil {
+			return nil, translateError(err)
+		}
+	}
+
 	// Create the client's integration to the platform during installation,
 	// mapped to the GHL locationId. Reuse it if a prior install already
 	// created it. Status CREATED lets the shared callback activate the
@@ -428,23 +443,30 @@ func (s *Service) processCallbackWithToken(ctx context.Context, clientID, platfo
 	var integration sqlc.Integration
 	existing, err := s.integrationsRepo.GetByClientAndPlatform(ctx, clientID, platformID)
 	if err == nil {
-		if existing.Status != sqlc.IntegrationStatusCREATED {
+		if existing.Status == sqlc.IntegrationStatusACTIVE {
+			// Reauthorization of an already-installed location: keep the
+			// integration active and replace the stored OAuth token below.
 			integration = existing
 			s.logger.Info().
 				Str("integration_id", existing.ID.String()).
 				Str("location_id", tokenResp.LocationID).
 				Msg("reauthorization of installed location; stored OAuth token will be replaced")
 		} else {
-			// Reuse the pre-provisioned CREATED integration. Activate it. The
-			// external_account_id is set to the GHL locationId when the
-			// provider registration persists the payment_provider_configs
-			// record; the locationId is the deterministic GHL sub-account
-			// identifier.
+			// Reuse a pre-provisioned CREATED integration, or reactivate an
+			// integration deactivated by a prior uninstall (e.g. REVOKED).
+			// The external_account_id is set to the GHL locationId when the
+			// integration is provisioned; the locationId is the deterministic
+			// GHL sub-account identifier.
 			integration, err = s.integrationsRepo.UpdateStatus(ctx, existing.ID, sqlc.IntegrationStatusACTIVE)
 			if err != nil {
 				return nil, translateError(err)
 			}
-			s.logger.Info().Str("integration_id", integration.ID.String()).Str("client_id", clientID.String()).Str("platform_id", platformID.String()).Msg("reused pre-provisioned CREATED integration")
+			s.logger.Info().
+				Str("integration_id", integration.ID.String()).
+				Str("client_id", clientID.String()).
+				Str("platform_id", platformID.String()).
+				Str("previous_status", string(existing.Status)).
+				Msg("reactivated integration during OAuth callback")
 		}
 	} else if !errors.Is(err, repo.ErrNotFound) {
 		return nil, translateError(err)

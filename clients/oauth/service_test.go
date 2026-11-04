@@ -123,7 +123,6 @@ func (m *mockClientRepo) CountSubAccounts(ctx context.Context, search, status st
 	return 0, nil
 }
 
-
 func (m *mockClientRepo) ListActive(ctx context.Context, limit, offset int32) ([]sqlc.Client, error) {
 	clients := make([]sqlc.Client, 0)
 	for _, client := range m.clients {
@@ -947,6 +946,52 @@ func TestHandleCallbackNoState_ResolvesByExternalAccountID(t *testing.T) {
 	}
 
 	// Token and config must be persisted for the reused integration.
+	if len(tokenRepo.tokens) != 1 {
+		t.Fatalf("expected 1 token, got %d", len(tokenRepo.tokens))
+	}
+	if len(configRepo.configs) != 1 {
+		t.Fatalf("expected 1 provider config, got %d", len(configRepo.configs))
+	}
+}
+
+func TestHandleCallbackNoState_ReinstallReactivatesClientAndIntegration(t *testing.T) {
+	t.Parallel()
+
+	// A reinstall after uninstall must reactivate both the tenant client and
+	// the integration instead of failing with ErrClientInactive.
+	svc, integrationRepo, tokenRepo, clientRepo, platformRepo, _, configRepo := newRegistrationTestService(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"success":true}`))
+	})
+
+	clientID := uuid.New()
+	platformID := uuid.New()
+	clientRepo.clients[clientID.String()] = sqlc.Client{
+		ID:         clientID,
+		ClientName: "highlevel-loc-123",
+		Status:     sqlc.ClientStatusCLOSED,
+	}
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+
+	deactivated, err := integrationRepo.Create(context.Background(), clientID, platformID, "loc-123", sqlc.IntegrationStatusREVOKED)
+	if err != nil {
+		t.Fatalf("create deactivated integration: %v", err)
+	}
+
+	result, err := svc.HandleCallback(context.Background(), "test-code", "")
+	if err != nil {
+		t.Fatalf("HandleCallback failed: %v", err)
+	}
+
+	if result.IntegrationID != deactivated.ID {
+		t.Fatalf("IntegrationID = %v, want %v", result.IntegrationID, deactivated.ID)
+	}
+	if got := clientRepo.clients[clientID.String()].Status; got != sqlc.ClientStatusACTIVE {
+		t.Fatalf("client status = %s, want ACTIVE after reinstall", got)
+	}
+	if got := integrationRepo.integrations[deactivated.ID.String()].Status; got != sqlc.IntegrationStatusACTIVE {
+		t.Fatalf("integration status = %s, want ACTIVE after reinstall", got)
+	}
 	if len(tokenRepo.tokens) != 1 {
 		t.Fatalf("expected 1 token, got %d", len(tokenRepo.tokens))
 	}

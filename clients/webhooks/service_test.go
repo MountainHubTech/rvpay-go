@@ -126,7 +126,13 @@ func (m *mockWebhookIntegrationRepo) ExistsByClientAndPlatform(ctx context.Conte
 }
 
 func (m *mockWebhookIntegrationRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status sqlc.IntegrationStatus) (sqlc.Integration, error) {
-	return sqlc.Integration{}, nil
+	integration, ok := m.integrations[id.String()]
+	if !ok {
+		return sqlc.Integration{}, repo.ErrNotFound
+	}
+	integration.Status = status
+	m.integrations[id.String()] = integration
+	return integration, nil
 }
 
 func (m *mockWebhookIntegrationRepo) UpdateLastSyncAt(ctx context.Context, id uuid.UUID, lastSyncAt pgtype.Timestamptz) (sqlc.Integration, error) {
@@ -1092,6 +1098,80 @@ func TestProcessWebhook_InstallRepeatedReusesRecords(t *testing.T) {
 	}
 	if len(configRepo.configs) != 1 {
 		t.Fatalf("expected 1 provider config (reused), got %d", len(configRepo.configs))
+	}
+}
+
+func TestProcessWebhook_InstallReactivatesInactiveClientAndIntegration(t *testing.T) {
+	t.Parallel()
+
+	// A reinstall INSTALL for a previously deactivated tenant must reactivate
+	// both the client and the integration without duplicating local records.
+	integrationRepo := newMockWebhookIntegrationRepo()
+	clientRepo := newMockWebhookClientRepo()
+	configRepo := newMockPaymentProviderConfigRepo()
+	platformRepo := newMockWebhookPlatformRepo()
+
+	platformID := uuid.New()
+	platformRepo.platforms[platformID.String()] = sqlc.Platform{ID: platformID, Name: "HighLevel", Slug: "highlevel", Enabled: true}
+
+	clientID := uuid.New()
+	clientRepo.clients[clientID.String()] = sqlc.Client{
+		ID:         clientID,
+		ClientName: "highlevel-GHL_LOC_REINSTALL",
+		Status:     sqlc.ClientStatusCLOSED,
+	}
+	integrationID := uuid.New()
+	integrationRepo.integrations[integrationID.String()] = sqlc.Integration{
+		ID:                integrationID,
+		ClientID:          clientID,
+		PlatformID:        platformID,
+		ExternalAccountID: "GHL_LOC_REINSTALL",
+		Status:            sqlc.IntegrationStatusREVOKED,
+	}
+
+	dispatcher := providers.NewHighLevelWebhookDispatcher(
+		&testWebhookLogger{},
+		integrationRepo,
+		configRepo,
+		providers.ProviderConfigSettings{Name: "RVPay"},
+	)
+
+	publicKeyPEM, priv := testWebhookEd25519KeyPair(t)
+	registry := providers.NewProviderRegistry()
+	registry.Register(providers.NewHighLevelProvider("test-client", "test-secret", "https://example.com/callback", publicKeyPEM, nil, zerolog.Nop()))
+
+	svc := NewService(
+		integrationRepo,
+		clientRepo,
+		newMockWebhookRepo(),
+		newMockWebhookEventRepo(),
+		platformRepo,
+		configRepo,
+		registry,
+		dispatcher,
+		zerolog.Nop(),
+	)
+
+	body := []byte(`{"type":"INSTALL","appId":"app-1","locationId":"GHL_LOC_REINSTALL","companyId":"company-1","timestamp":"2026-08-17T09:06:59.366Z","webhookId":"evt-reinstall-1"}`)
+	headers := map[string]string{
+		"X-GHL-Signature": signWebhookBody(t, priv, body),
+	}
+
+	if err := svc.ProcessWebhook(context.Background(), "highlevel", headers, body); err != nil {
+		t.Fatalf("ProcessWebhook failed: %v", err)
+	}
+
+	if got := clientRepo.clients[clientID.String()].Status; got != sqlc.ClientStatusACTIVE {
+		t.Fatalf("client status = %s, want ACTIVE after reinstall", got)
+	}
+	if got := integrationRepo.integrations[integrationID.String()].Status; got != sqlc.IntegrationStatusACTIVE {
+		t.Fatalf("integration status = %s, want ACTIVE after reinstall", got)
+	}
+	if len(clientRepo.clients) != 1 {
+		t.Fatalf("expected 1 client (reused), got %d", len(clientRepo.clients))
+	}
+	if len(integrationRepo.integrations) != 1 {
+		t.Fatalf("expected 1 integration (reused), got %d", len(integrationRepo.integrations))
 	}
 }
 
